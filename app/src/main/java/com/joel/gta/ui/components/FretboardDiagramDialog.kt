@@ -140,7 +140,11 @@ private fun CanvasFretboard(
 ) {
     Canvas(modifier = modifier) {
         val numStrings = 6
-        val numFrets = 4 // Display 4 frets
+        val maxRelativeFret = voicing.frets
+            .filter { it > 0 }
+            .map { if (voicing.baseFret > 1) (it - voicing.baseFret + 1) else it }
+            .maxOrNull() ?: 4
+        val numFrets = maxOf(4, maxRelativeFret.coerceAtMost(6))
         val leftMargin = 38f
         val rightMargin = 20f
         val topMargin = 34f

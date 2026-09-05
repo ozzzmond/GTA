@@ -15,6 +15,7 @@ import com.joel.gta.data.local.entity.SetlistEntity
 import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.local.entity.SongEntity
 import com.joel.gta.data.parser.SongParser
+import com.joel.gta.data.repository.ChordRepository
 import com.joel.gta.data.repository.SongRepository
 import com.joel.gta.ui.screens.HomeTab
 import com.joel.gta.BuildConfig
@@ -68,6 +69,7 @@ data class WebImportUiState(
 class SongViewerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = SongRepository(GtaDatabase.getDatabase(application))
+    private val chordRepository = ChordRepository(GtaDatabase.getDatabase(application))
 
     private val _footswitchAction = MutableSharedFlow<FootswitchAction>(extraBufferCapacity = 1)
     val footswitchAction: SharedFlow<FootswitchAction> = _footswitchAction.asSharedFlow()
@@ -150,6 +152,10 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             bandSyncManager.incomingMessages.collect { msg ->
                 handleIncomingSyncMessage(msg)
             }
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            chordRepository.preloadIfNeeded(application)
         }
     }
 

@@ -32,7 +32,7 @@ object TransposeEngine {
      * Group 3: Optional slash bass note (e.g., "F#", "A")
      */
     private val CHORD_SPLIT_REGEX = Regex(
-        "^([A-G][#b]?)(.*?)(?:\\/([A-G][#b]?))?$",
+        "^([A-G][#b♯♭]?)(.*?)(?:\\/([A-G][#b♯♭]?))?$",
         RegexOption.IGNORE_CASE
     )
 
@@ -40,20 +40,35 @@ object TransposeEngine {
      * Transposes a single note by given semitones (-11..+11).
      */
     fun transposeNote(note: String, semitones: Int, preferFlats: Boolean = false): String {
-        val pitch = NOTE_PITCH_MAP[note] ?: return note
+        val normalized = note.trim().replace("♯", "#").replace("♭", "b")
+        val lookup = if (normalized.length >= 2) {
+            "${normalized[0].uppercaseChar()}${normalized.substring(1)}"
+        } else {
+            normalized.uppercase()
+        }
+        val pitch = NOTE_PITCH_MAP[lookup] ?: return note
         val targetPitch = Math.floorMod(pitch + semitones, 12)
         val scale = if (preferFlats) FLAT_SCALE else SHARP_SCALE
         return scale[targetPitch]
     }
 
     /**
-     * Transposes a single chord (e.g., "D/F#" + 2 -> "E/G#").
+     * Transposes a single chord (e.g., "D/F#" + 2 -> "E/G#", "G13" + 2 -> "A13").
      */
     fun transposeChord(chord: String, semitones: Int, preferFlats: Boolean = false): String {
         if (semitones % 12 == 0) return chord
-        val clean = chord.trim(' ', '[', ']', '<', '>', '(', ')')
-        if (clean.equals("N.C.", ignoreCase = true) || clean.equals("NC", ignoreCase = true)) {
+        val trimmed = chord.trim()
+        if (trimmed.equals("N.C.", ignoreCase = true) || trimmed.equals("NC", ignoreCase = true)) {
             return chord
+        }
+
+        // Check if wrapped in outer enclosing parens like (Am7), while avoiding compound tensions like (b9)
+        val hasOuterParens = trimmed.startsWith("(") && trimmed.endsWith(")") &&
+                !trimmed.drop(1).dropLast(1).contains("(")
+        val clean = if (hasOuterParens) {
+            trimmed.substring(1, trimmed.length - 1).trim()
+        } else {
+            trimmed.trim(' ', '[', ']', '<', '>')
         }
 
         val match = CHORD_SPLIT_REGEX.matchEntire(clean) ?: return chord
@@ -61,12 +76,13 @@ object TransposeEngine {
         val quality = match.groupValues[2]
         val slashBass = match.groupValues.getOrNull(3)?.takeIf { it.isNotEmpty() }
 
-        val shouldUseFlats = preferFlats || root.contains('b') || (slashBass?.contains('b') == true)
+        val shouldUseFlats = preferFlats || root.contains('b') || root.contains('♭') || (slashBass?.contains('b') == true) || (slashBass?.contains('♭') == true)
 
         val newRoot = transposeNote(root, semitones, shouldUseFlats)
         val newSlash = slashBass?.let { "/${transposeNote(it, semitones, shouldUseFlats)}" } ?: ""
 
-        return "$newRoot$quality$newSlash"
+        val transposedCore = "$newRoot$quality$newSlash"
+        return if (hasOuterParens) "($transposedCore)" else transposedCore
     }
 
     /**
@@ -89,18 +105,13 @@ object TransposeEngine {
                     i++
                 }
                 val rawToken = chordLine.substring(start, i)
-                val cleanToken = rawToken.trim('(', ')', '[', ']', '<', '>', ',', '|', '-', '–', '—', ':', ';', '~')
 
-                if (cleanToken.isNotEmpty() && ChordRegex.CHORD_TOKEN_REGEX.matches(cleanToken)) {
-                    val prefix = rawToken.takeWhile { it in "([<,|-–—:;~" }
-                    val suffix = rawToken.takeLastWhile { it in ")]>|,|-–—:;~" }
-                    val transposed = transposeChord(cleanToken, semitones, preferFlats)
-                    val replacement = "$prefix$transposed$suffix"
+                if (ChordRegex.CHORD_TOKEN_REGEX.matches(rawToken)) {
+                    // Direct chord match (e.g. G13, A6, Dbdim, G7(b9), D/F#)
+                    val transposed = transposeChord(rawToken, semitones, preferFlats)
+                    result.append(transposed)
 
-                    result.append(replacement)
-
-                    // Spacing compensation to keep columns aligned (preserving single delimiter spaces)
-                    val diff = replacement.length - rawToken.length
+                    val diff = transposed.length - rawToken.length
                     if (diff > 0) {
                         var spaceCount = 0
                         var checkIdx = i
@@ -124,22 +135,59 @@ object TransposeEngine {
                             }
                         }
                     }
-                } else if (cleanToken.contains('-') || cleanToken.contains('–') || cleanToken.contains('—') || cleanToken.contains('|')) {
-                    // Handle hyphen/pipe connected progressions without spaces (e.g. G-D/F# or |G|D|)
-                    val parts = rawToken.split(Regex("(?<=[-|–—])|(?=[-|–—])"))
-                    val transposedParts = parts.joinToString("") { part ->
-                        val subClean = part.trim('(', ')', '[', ']', '<', '>', ',', '|', '-', '–', '—', ':', ';', '~')
-                        if (subClean.isNotEmpty() && ChordRegex.CHORD_TOKEN_REGEX.matches(subClean)) {
-                            val subPrefix = part.takeWhile { it in "([<,|-–—:;~" }
-                            val subSuffix = part.takeLastWhile { it in ")]>|,|-–—:;~" }
-                            "$subPrefix${transposeChord(subClean, semitones, preferFlats)}$subSuffix"
-                        } else {
-                            part
-                        }
-                    }
-                    result.append(transposedParts)
                 } else {
-                    result.append(rawToken)
+                    val prefix = rawToken.takeWhile { it in "([<,|-–—:;~" }
+                    val suffix = rawToken.takeLastWhile { it in ")]>|,|-–—:;~" }
+                    val cleanToken = if (prefix.length + suffix.length <= rawToken.length) {
+                        rawToken.substring(prefix.length, rawToken.length - suffix.length)
+                    } else ""
+
+                    if (cleanToken.isNotEmpty() && ChordRegex.CHORD_TOKEN_REGEX.matches(cleanToken)) {
+                        val transposed = transposeChord(cleanToken, semitones, preferFlats)
+                        val replacement = "$prefix$transposed$suffix"
+                        result.append(replacement)
+
+                        val diff = replacement.length - rawToken.length
+                        if (diff > 0) {
+                            var spaceCount = 0
+                            var checkIdx = i
+                            while (checkIdx < chordLine.length && chordLine[checkIdx] == ' ') {
+                                spaceCount++
+                                checkIdx++
+                            }
+                            val maxConsumable = (spaceCount - 1).coerceAtLeast(0)
+                            val spacesToConsume = minOf(diff, maxConsumable)
+                            i += spacesToConsume
+                        } else if (diff < 0) {
+                            var spaceCount = 0
+                            var checkIdx = i
+                            while (checkIdx < chordLine.length && chordLine[checkIdx] == ' ') {
+                                spaceCount++
+                                checkIdx++
+                            }
+                            if (spaceCount > 1) {
+                                repeat(-diff) {
+                                    result.append(' ')
+                                }
+                            }
+                        }
+                    } else if (rawToken.contains('-') || rawToken.contains('–') || rawToken.contains('—') || rawToken.contains('|')) {
+                        // Handle hyphen/pipe connected progressions without spaces (e.g. G-D/F# or |G|D|)
+                        val parts = rawToken.split(Regex("(?<=[-|–—|])|(?=[-|–—|])"))
+                        val transposedParts = parts.joinToString("") { part ->
+                            val subClean = part.trim('(', ')', '[', ']', '<', '>', ',', '|', '-', '–', '—', ':', ';', '~')
+                            if (subClean.isNotEmpty() && ChordRegex.CHORD_TOKEN_REGEX.matches(subClean)) {
+                                val subPrefix = part.takeWhile { it in "([<,|-–—:;~" }
+                                val subSuffix = part.takeLastWhile { it in ")]>|,|-–—:;~" }
+                                "$subPrefix${transposeChord(subClean, semitones, preferFlats)}$subSuffix"
+                            } else {
+                                part
+                            }
+                        }
+                        result.append(transposedParts)
+                    } else {
+                        result.append(rawToken)
+                    }
                 }
             }
         }

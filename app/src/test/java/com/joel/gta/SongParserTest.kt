@@ -13,13 +13,21 @@ class SongParserTest {
     fun testChordRegexValidChords() {
         val validChords = listOf(
             "C", "G", "Em", "Am7", "F#m", "Bb", "Dsus4", "Cadd9",
-            "G/B", "D/F#", "F#m7b5", "A#dim7", "B7#9", "N.C."
+            "G/B", "D/F#", "F#m7b5", "A#dim7", "B7#9", "N.C.",
+            // Extended / Jazz chords, alterations, tensions & compound modifiers
+            "G13", "A6", "Dbdim", "Dbdim7", "Cmaj7#11", "G7alt", "Galt",
+            "Csus2", "Dsus4", "C6/9", "C69", "G7(b9)", "Cmaj7(#11)", "C7(b9,b13)",
+            "Cm(maj7)", "G13/B", "F#m11", "Am9", "Cmaj9", "Cmaj13",
+            "C+", "Caug", "Caug7", "C°", "C°7", "Cø", "Cø7", "CΔ7", "C5"
         )
         for (chord in validChords) {
             assertTrue("Expected '$chord' to be a valid chord", ChordRegex.CHORD_TOKEN_REGEX.matches(chord))
         }
 
-        val nonChords = listOf("Kamukha", "Paraluman", "sumayaw", "the", "night")
+        val nonChords = listOf(
+            "Kamukha", "Paraluman", "sumayaw", "the", "night",
+            "And", "Are", "At", "All", "Be", "But", "Can", "Do", "Day", "Every", "For", "Go"
+        )
         for (word in nonChords) {
             assertFalse("Expected '$word' NOT to be a chord", ChordRegex.CHORD_TOKEN_REGEX.matches(word))
         }
@@ -47,15 +55,23 @@ class SongParserTest {
         assertTrue(SongParser.isChordLine("| G | D/F# | Em7 | C |"))
         assertTrue(SongParser.isChordLine("|: G | D | Em | C :|"))
 
+        // Extended Jazz Chords with delimiters
+        assertTrue(SongParser.isChordLine("G13 - A6 - Dbdim"))
+        assertTrue(SongParser.isChordLine("| G13 | A6 | Dbdim |"))
+        assertTrue(SongParser.isChordLine("F#m7b5 - B7alt - Em9 - A13"))
+        assertTrue(SongParser.isChordLine("Cmaj7(#11) - A7(b13) - Dm9 - G13(b9)"))
+
+        // Slashes as delimiters / beat indicators
+        assertTrue(SongParser.isChordLine("G / D / Em / C"))
+        assertTrue(SongParser.isChordLine("G / / / | C / / /"))
+
         // Chords with repeat or timing indicators
         assertTrue(SongParser.isChordLine("G - D/F# - Em7 - C (x2)"))
         assertTrue(SongParser.isChordLine("G - D - Em - C (hold)"))
 
-        // Slash beat indicators
-        assertTrue(SongParser.isChordLine("G / / / | C / / /"))
-
         // Tab lines must NOT be treated as chord line
         assertFalse(SongParser.isChordLine("e|---0-2-3---|"))
+        assertFalse(SongParser.isChordLine("e|---3h5---|"))
         assertFalse(SongParser.isChordLine("B|---1-0-----|"))
         assertFalse(SongParser.isChordLine("|---3h5---|"))
     }
@@ -76,6 +92,44 @@ class SongParserTest {
         assertTrue("Line under [Intro] should be SongLine.ChordLine", parsed.lines[1] is SongLine.ChordLine)
         val chordLine = parsed.lines[1] as SongLine.ChordLine
         assertEquals("G - D/F# - Em7 - C - D", chordLine.chords)
+    }
+
+    @Test
+    fun testIntroWithExtendedJazzChordsParsing() {
+        val raw = """
+            [Intro]
+            G13 - A6 - Dbdim
+
+            [Verse 1]
+            Cmaj7#11      F#m7b5
+            Smooth sailing in the jazz club
+        """.trimIndent()
+
+        val parsed = SongParser.parse(raw, "Jazz Intro Song")
+        assertEquals(SongLine.SectionHeader("Intro"), parsed.lines[0])
+        assertTrue("Line under [Intro] should be SongLine.ChordLine", parsed.lines[1] is SongLine.ChordLine)
+        val chordLine = parsed.lines[1] as SongLine.ChordLine
+        assertEquals("G13 - A6 - Dbdim", chordLine.chords)
+
+        // Ensure Verse chord line is also a ChordLine (index 4 after EmptyLine and SectionHeader)
+        assertTrue("Verse chord line should be SongLine.ChordLine", parsed.lines[4] is SongLine.ChordLine)
+        val verseChords = parsed.lines[4] as SongLine.ChordLine
+        assertTrue(verseChords.chords.contains("Cmaj7#11"))
+        assertTrue(verseChords.chords.contains("F#m7b5"))
+    }
+
+    @Test
+    fun testCombinedIntroAndChordsOnSingleLine() {
+        val raw = """
+            [Intro] G - D/F# - Em7 - C - D
+            Kamukha mo si Paraluman
+        """.trimIndent()
+
+        val parsed = SongParser.parse(raw)
+        assertEquals(SongLine.SectionHeader("Intro"), parsed.lines[0])
+        assertTrue("Chords should be extracted as SongLine.ChordLine", parsed.lines[1] is SongLine.ChordLine)
+        assertEquals("G - D/F# - Em7 - C - D", (parsed.lines[1] as SongLine.ChordLine).chords)
+        assertTrue("Lyrics should be SongLine.LyricLine", parsed.lines[2] is SongLine.LyricLine)
     }
 
     @Test

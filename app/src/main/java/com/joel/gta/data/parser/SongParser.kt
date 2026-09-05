@@ -54,9 +54,22 @@ object SongParser {
                 continue
             }
 
-            // 4. Section headers like [Verse 1], <Verse 1>, [Chorus], <Chorus>, [Intro], [Solo]
+            // 4a. Check for combined section header and chord progression on same line: e.g. "[Intro] G - D/F# - Em7" or "Intro: G - D/F# - Em7"
+            val combinedHeaderMatch = Regex("^([\\[<]?(?:Intro|Verse|Chorus|Bridge|Pre-Chorus|Outro|Solo|Interlude|Hook|Ending|Riff|Instrumental)(?:\\s+[0-9A-Za-z]+)?[\\]>]?:?)\\s+(.*)$", RegexOption.IGNORE_CASE).matchEntire(trimmed)
+            if (combinedHeaderMatch != null) {
+                val headerPart = combinedHeaderMatch.groupValues[1].trim('[', ']', '<', '>', ':').trim()
+                val restPart = combinedHeaderMatch.groupValues[2].trim()
+                if (isChordLine(restPart)) {
+                    parsedLines.add(SongLine.SectionHeader(headerPart))
+                    parsedLines.add(SongLine.ChordLine(restPart))
+                    twoLineChordCount++
+                    continue
+                }
+            }
+
+            // 4b. Standalone section headers like [Verse 1], <Verse 1>, [Chorus], <Chorus>, [Intro], [Solo]
             if (ChordRegex.SECTION_HEADER_REGEX.matches(trimmed) && trimmed.length < 40) {
-                val cleanTitle = trimmed.trim('[', ']', '<', '>').trim()
+                val cleanTitle = trimmed.trim('[', ']', '<', '>', ':').trim()
                 parsedLines.add(SongLine.SectionHeader(cleanTitle))
                 continue
             }
@@ -152,7 +165,10 @@ object SongParser {
             sb.delete(match.startIndex, match.endIndex)
         }
         val remainingText = sb.toString()
-        return remainingText.any { it.isLetter() }
+        val stripped = remainingText.replace(Regex("[-–—|/\\\\:;,.·~()\\[\\]{}%*+^'\"\\s]+"), "").trim()
+        if (stripped.isEmpty()) return false
+        if (stripped.matches(Regex("^(?:x?\\d+x?|hold|break|stop|fade|riff|nc)$", RegexOption.IGNORE_CASE))) return false
+        return stripped.any { it.isLetter() }
     }
 
     /**
@@ -221,17 +237,39 @@ object SongParser {
         var chordCount = 0
         var lyricWordCount = 0
 
-        // Sub-split tokens if they are connected by hyphens or pipes without spaces (e.g. "G-D/F#-Em7" or "|G|D|")
+        // Sub-split tokens if they are connected by hyphens, pipes, or slashes without spaces (e.g. "G-D/F#-Em7" or "|G|D|" or "G/D/Em")
         val processedTokens = mutableListOf<String>()
         for (token in rawTokens) {
-            val clean = token.trim('(', ')', '[', ']', '<', '>', '{', '}', ',', ';', ':')
-            // If the token matches a chord directly, keep it
-            if (ChordRegex.CHORD_TOKEN_REGEX.matches(clean)) {
-                processedTokens.add(clean)
-            } else if (clean.contains('-') || clean.contains('|') || clean.contains('–') || clean.contains('—')) {
+            // First check if token directly matches CHORD_TOKEN_REGEX (e.g. G13, A6, Dbdim, Cmaj7(#11), G7(b9), D/F#)
+            if (ChordRegex.CHORD_TOKEN_REGEX.matches(token)) {
+                processedTokens.add(token)
+                continue
+            }
+
+            // Check if enclosed in outer brackets/parens (e.g. [G], <G>, (Am))
+            val stripped = if (token.startsWith("(") && token.endsWith(")")) {
+                token.substring(1, token.length - 1).trim()
+            } else {
+                token.trim('[', ']', '<', '>', '{', '}', ',', ';', ':', '|', '–', '—')
+            }
+            if (ChordRegex.CHORD_TOKEN_REGEX.matches(stripped)) {
+                processedTokens.add(stripped)
+                continue
+            }
+
+            val clean = token.trim('[', ']', '<', '>', '{', '}', ',', ';', ':')
+            if (clean.contains('-') || clean.contains('|') || clean.contains('–') || clean.contains('—')) {
                 // Split by dash/pipe while respecting slash chords (do not split on '/')
                 val parts = clean.split(Regex("[-|–—]")).map { it.trim() }.filter { it.isNotEmpty() }
                 if (parts.isNotEmpty()) {
+                    processedTokens.addAll(parts)
+                } else {
+                    processedTokens.add(token)
+                }
+            } else if (clean.contains('/') && !clean.startsWith("/") && !clean.endsWith("/")) {
+                // Split delimiter slashes (e.g. G/D/Em) where / separates distinct chords rather than being a single slash chord
+                val parts = clean.split("/").map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.size > 1 && parts.all { ChordRegex.CHORD_TOKEN_REGEX.matches(it) }) {
                     processedTokens.addAll(parts)
                 } else {
                     processedTokens.add(token)
@@ -244,10 +282,22 @@ object SongParser {
         for (token in processedTokens) {
             // Check if token is a musical delimiter/separator
             if (isDelimiterToken(token)) {
-                continue // Musical separators like '-', '|', '/', '...', 'x2' do not count as lyrics
+                continue // Musical separators like '-', '|', '/', '...', 'x2', 'Intro:' do not count as lyrics
             }
 
-            val cleanToken = token.trim('(', ')', '[', ']', '<', '>', ',', '|', '{', '}', '/', '-', '–', '—', ':', ';', '.')
+            // Direct check for chords (preserves compound modifiers like Cmaj7(#11) without mangling parens)
+            if (ChordRegex.CHORD_TOKEN_REGEX.matches(token)) {
+                chordCount++
+                continue
+            }
+
+            // Unwrap outer parens/brackets if any (e.g. (Am7), [G], <D>)
+            val cleanToken = if (token.startsWith("(") && token.endsWith(")")) {
+                token.substring(1, token.length - 1).trim()
+            } else {
+                token.trim('[', ']', '<', '>', ',', '|', '{', '}', '/', '-', '–', '—', ':', ';', '.')
+            }
+
             if (cleanToken.isEmpty()) {
                 continue
             }
@@ -277,9 +327,9 @@ object SongParser {
         if (token.matches(Regex("^x?\\d+x?$", RegexOption.IGNORE_CASE))) return true
         if (token.matches(Regex("^\\d+/\\d+$"))) return true
 
-        // Common stage/chord sheet annotations like "(x2)", "(hold)", "(break)", "(stop)", "(fade)", "N.C."
-        val stripped = token.trim('(', ')', '[', ']', '<', '>')
-        if (stripped.matches(Regex("^(?:x?\\d+x?|hold|break|stop|fade|riff|nc|n\\.c\\.)$", RegexOption.IGNORE_CASE))) {
+        // Common stage/chord sheet annotations like "(x2)", "(hold)", "(break)", "(stop)", "(fade)", "N.C.", "Intro:", etc.
+        val stripped = token.trim('(', ')', '[', ']', '<', '>', '{', '}', ':')
+        if (stripped.matches(Regex("^(?:x?\\d+x?|hold|break|stop|fade|riff|nc|n\\.c\\.|intro|outro|verse|chorus|bridge|solo|interlude)$", RegexOption.IGNORE_CASE))) {
             return true
         }
 

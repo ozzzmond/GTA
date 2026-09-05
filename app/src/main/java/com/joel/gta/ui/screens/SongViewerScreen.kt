@@ -1654,7 +1654,8 @@ private fun extractChordAtOffset(text: String, offset: Int): String? {
         return null
     }
 
-    val isDelim = { c: Char -> c.isWhitespace() || c in "-–—|,:;()[]{}" }
+    // Delimiters that separate chords (do not treat internal parentheses like (b9) as delimiters)
+    val isDelim = { c: Char -> c.isWhitespace() || c in "-–—|,:;[]{}" }
 
     if (isDelim(text[offset])) {
         if (offset > 0 && !isDelim(text[offset - 1])) {
@@ -1676,11 +1677,28 @@ private fun extractChordAtOffset(text: String, offset: Int): String? {
         end++
     }
 
-    val word = text.substring(start, end).trim('[', ']', '(', ')', '{', '}', ',', ';', ':', '-', '–', '—', '|')
-    if (word.isBlank() || !ChordRegex.CHORD_TOKEN_REGEX.matches(word)) {
-        return null
+    val word = text.substring(start, end).trim(' ', '\t', '[', ']', '{', '}', ',', ';', ':', '-', '–', '—', '|')
+
+    // Direct match (e.g. G13, A6, Dbdim, G7(b9), D/F#)
+    if (word.isNotBlank() && ChordRegex.CHORD_TOKEN_REGEX.matches(word)) {
+        return word
     }
-    return word
+
+    // Check if enclosed in outer parentheses like (Am7)
+    if (word.startsWith("(") && word.endsWith(")")) {
+        val unwrapped = word.substring(1, word.length - 1).trim()
+        if (ChordRegex.CHORD_TOKEN_REGEX.matches(unwrapped)) {
+            return unwrapped
+        }
+    }
+
+    // Clean any trailing delimiter punctuation like "/" or "."
+    val cleaned = word.trim('(', ')', '/', '.')
+    if (cleaned.isNotBlank() && ChordRegex.CHORD_TOKEN_REGEX.matches(cleaned)) {
+        return cleaned
+    }
+
+    return null
 }
 
 @Composable
