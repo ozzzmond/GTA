@@ -18,6 +18,8 @@ import com.joel.gta.data.parser.SongParser
 import com.joel.gta.data.repository.ChordRepository
 import com.joel.gta.data.repository.SongRepository
 import com.joel.gta.ui.screens.HomeTab
+import com.joel.gta.ui.screens.SongSortOrder
+import com.joel.gta.ui.screens.SetlistSortOrder
 import com.joel.gta.BuildConfig
 import com.joel.gta.data.backup.BackupManager
 import com.joel.gta.data.backup.RestoreSummary
@@ -95,6 +97,84 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setActiveHomeTab(tab: HomeTab) {
         _activeHomeTab.value = tab
+    }
+
+    // Persistent Home View & Navigation Filter States
+    private val _homeSearchQuery = MutableStateFlow("")
+    val homeSearchQuery: StateFlow<String> = _homeSearchQuery.asStateFlow()
+
+    private val _homeShowOnlyFavorites = MutableStateFlow(false)
+    val homeShowOnlyFavorites: StateFlow<Boolean> = _homeShowOnlyFavorites.asStateFlow()
+
+    private val _homeSelectedTag = MutableStateFlow<String?>(null)
+    val homeSelectedTag: StateFlow<String?> = _homeSelectedTag.asStateFlow()
+
+    private val _songSortOrder = MutableStateFlow(SongSortOrder.TITLE_ASC)
+    val songSortOrder: StateFlow<SongSortOrder> = _songSortOrder.asStateFlow()
+
+    private val _setlistSortOrder = MutableStateFlow(SetlistSortOrder.NEWEST)
+    val setlistSortOrder: StateFlow<SetlistSortOrder> = _setlistSortOrder.asStateFlow()
+
+    private val _expandedSetlistIds = MutableStateFlow<Set<Long>>(emptySet())
+    val expandedSetlistIds: StateFlow<Set<Long>> = _expandedSetlistIds.asStateFlow()
+
+    // Scroll tracking across screen navigations
+    var songbookScrollIndex: Int = 0
+    var songbookScrollOffset: Int = 0
+    var setlistsScrollIndex: Int = 0
+    var setlistsScrollOffset: Int = 0
+    var trashScrollIndex: Int = 0
+    var trashScrollOffset: Int = 0
+
+    fun setHomeSearchQuery(query: String) {
+        _homeSearchQuery.value = query
+    }
+
+    fun setHomeShowOnlyFavorites(show: Boolean) {
+        _homeShowOnlyFavorites.value = show
+    }
+
+    fun setHomeSelectedTag(tag: String?) {
+        _homeSelectedTag.value = tag
+    }
+
+    fun setSongSortOrder(order: SongSortOrder) {
+        _songSortOrder.value = order
+    }
+
+    fun setSetlistSortOrder(order: SetlistSortOrder) {
+        _setlistSortOrder.value = order
+    }
+
+    fun toggleSetlistExpanded(setlistId: Long) {
+        _expandedSetlistIds.value = if (_expandedSetlistIds.value.contains(setlistId)) {
+            _expandedSetlistIds.value - setlistId
+        } else {
+            _expandedSetlistIds.value + setlistId
+        }
+    }
+
+    fun setSetlistExpanded(setlistId: Long, expanded: Boolean) {
+        _expandedSetlistIds.value = if (expanded) {
+            _expandedSetlistIds.value + setlistId
+        } else {
+            _expandedSetlistIds.value - setlistId
+        }
+    }
+
+    fun updateSongbookScroll(index: Int, offset: Int) {
+        songbookScrollIndex = index
+        songbookScrollOffset = offset
+    }
+
+    fun updateSetlistsScroll(index: Int, offset: Int) {
+        setlistsScrollIndex = index
+        setlistsScrollOffset = offset
+    }
+
+    fun updateTrashScroll(index: Int, offset: Int) {
+        trashScrollIndex = index
+        trashScrollOffset = offset
     }
 
     private val _uiState = MutableStateFlow<SongViewerState>(SongViewerState.Empty)
@@ -209,7 +289,6 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
      */
     fun loadSongFromEntity(entity: SongEntity) {
         viewModelScope.launch {
-            _activeHomeTab.value = HomeTab.SONGBOOK
             _uiState.value = SongViewerState.Loading
             _isAutoScrolling.value = false
 
@@ -250,6 +329,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         val entity = songs[index]
         viewModelScope.launch {
             _activeHomeTab.value = HomeTab.SETLISTS
+            _expandedSetlistIds.value = _expandedSetlistIds.value + setlist.id
             _uiState.value = SongViewerState.Loading
             _isAutoScrolling.value = false
 

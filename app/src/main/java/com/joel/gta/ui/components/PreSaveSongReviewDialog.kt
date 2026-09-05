@@ -5,6 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,7 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -70,6 +75,13 @@ fun PreSaveSongReviewDialog(
         }
     }
 
+    val textSelectionColors = remember(customColors.chordAccent) {
+        TextSelectionColors(
+            handleColor = customColors.chordAccent,
+            backgroundColor = customColors.chordAccent.copy(alpha = 0.35f)
+        )
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -78,14 +90,15 @@ fun PreSaveSongReviewDialog(
             dismissOnClickOutside = false
         )
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(if (isWideScreen) 24.dp else 8.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = customColors.surfaceBackground,
-            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-        ) {
+        CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(if (isWideScreen) 24.dp else 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = customColors.surfaceBackground,
+                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+            ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header Bar
                 Row(
@@ -178,7 +191,9 @@ fun PreSaveSongReviewDialog(
                             focusedBorderColor = customColors.chordAccent,
                             unfocusedBorderColor = customColors.divider,
                             focusedTextColor = customColors.textPrimary,
-                            unfocusedTextColor = customColors.textPrimary
+                            unfocusedTextColor = customColors.textPrimary,
+                            cursorColor = customColors.chordAccent,
+                            selectionColors = textSelectionColors
                         )
                     )
 
@@ -192,7 +207,9 @@ fun PreSaveSongReviewDialog(
                             focusedBorderColor = customColors.chordAccent,
                             unfocusedBorderColor = customColors.divider,
                             focusedTextColor = customColors.textPrimary,
-                            unfocusedTextColor = customColors.textPrimary
+                            unfocusedTextColor = customColors.textPrimary,
+                            cursorColor = customColors.chordAccent,
+                            selectionColors = textSelectionColors
                         )
                     )
 
@@ -206,7 +223,9 @@ fun PreSaveSongReviewDialog(
                             focusedBorderColor = customColors.chordAccent,
                             unfocusedBorderColor = customColors.divider,
                             focusedTextColor = customColors.textPrimary,
-                            unfocusedTextColor = customColors.textPrimary
+                            unfocusedTextColor = customColors.textPrimary,
+                            cursorColor = customColors.chordAccent,
+                            selectionColors = textSelectionColors
                         )
                     )
 
@@ -220,7 +239,9 @@ fun PreSaveSongReviewDialog(
                             focusedBorderColor = customColors.chordAccent,
                             unfocusedBorderColor = customColors.divider,
                             focusedTextColor = customColors.textPrimary,
-                            unfocusedTextColor = customColors.textPrimary
+                            unfocusedTextColor = customColors.textPrimary,
+                            cursorColor = customColors.chordAccent,
+                            selectionColors = textSelectionColors
                         )
                     )
                 }
@@ -243,7 +264,9 @@ fun PreSaveSongReviewDialog(
                             focusedBorderColor = customColors.chordAccent,
                             unfocusedBorderColor = customColors.divider,
                             focusedTextColor = customColors.textPrimary,
-                            unfocusedTextColor = customColors.textPrimary
+                            unfocusedTextColor = customColors.textPrimary,
+                            cursorColor = customColors.chordAccent,
+                            selectionColors = textSelectionColors
                         ),
                         leadingIcon = {
                             Icon(Icons.Default.LocalOffer, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(18.dp))
@@ -393,6 +416,7 @@ fun PreSaveSongReviewDialog(
                         }
                     }
                 }
+                }
             }
         }
     }
@@ -405,24 +429,103 @@ private fun RawTextEditorField(
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
-    OutlinedTextField(
-        value = text,
-        onValueChange = onTextChanged,
-        modifier = modifier,
-        textStyle = androidx.compose.ui.text.TextStyle(
-            fontFamily = FontFamily.Monospace,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            color = customColors.textPrimary
-        ),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = customColors.canvasBackground,
-            unfocusedContainerColor = customColors.canvasBackground,
-            focusedBorderColor = customColors.chordAccent,
-            unfocusedBorderColor = customColors.divider
-        ),
-        shape = RoundedCornerShape(10.dp)
-    )
+    val clipboardManager = LocalClipboardManager.current
+    val textSelectionColors = remember(customColors.chordAccent) {
+        TextSelectionColors(
+            handleColor = customColors.chordAccent,
+            backgroundColor = customColors.chordAccent.copy(alpha = 0.35f)
+        )
+    }
+
+    Column(modifier = modifier) {
+        // Quick Action Text Editing Bar (Paste, Copy All, Clear)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 6.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = customColors.surfaceBackground,
+                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            val clip = clipboardManager.getText()?.text
+                            if (!clip.isNullOrBlank()) {
+                                onTextChanged(clip)
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(15.dp), tint = customColors.chordAccent)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Paste", color = customColors.chordAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
+
+                    TextButton(
+                        onClick = {
+                            if (text.isNotBlank()) {
+                                clipboardManager.setText(AnnotatedString(text))
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp), tint = customColors.textSecondary)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Copy All", color = customColors.textPrimary, fontSize = 12.sp)
+                    }
+
+                    VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
+
+                    TextButton(
+                        onClick = { onTextChanged("") },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(15.dp), tint = customColors.textSecondary)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Clear", color = customColors.textSecondary, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+            SelectionContainer(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = onTextChanged,
+                    modifier = Modifier.fillMaxSize(),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = customColors.textPrimary
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = customColors.textPrimary,
+                        unfocusedTextColor = customColors.textPrimary,
+                        focusedContainerColor = customColors.canvasBackground,
+                        unfocusedContainerColor = customColors.canvasBackground,
+                        focusedBorderColor = customColors.chordAccent,
+                        unfocusedBorderColor = customColors.divider,
+                        cursorColor = customColors.chordAccent,
+                        selectionColors = textSelectionColors
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                )
+            }
+        }
+    }
 }
 
 @Composable

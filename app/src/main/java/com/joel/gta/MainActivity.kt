@@ -49,6 +49,12 @@ class MainActivity : ComponentActivity() {
             val favoriteSongs by viewModel.favoriteSongs.collectAsState()
             val allSetlists by viewModel.allSetlists.collectAsState()
             val activeHomeTab by viewModel.activeHomeTab.collectAsState()
+            val homeSearchQuery by viewModel.homeSearchQuery.collectAsState()
+            val homeShowOnlyFavorites by viewModel.homeShowOnlyFavorites.collectAsState()
+            val homeSelectedTag by viewModel.homeSelectedTag.collectAsState()
+            val songSortOrder by viewModel.songSortOrder.collectAsState()
+            val setlistSortOrder by viewModel.setlistSortOrder.collectAsState()
+            val expandedSetlistIds by viewModel.expandedSetlistIds.collectAsState()
             val deletedSongs by viewModel.deletedSongs.collectAsState()
             val bulkImportState by viewModel.bulkImportState.collectAsState()
             val webImportState by viewModel.webImportState.collectAsState()
@@ -67,6 +73,27 @@ class MainActivity : ComponentActivity() {
                             setlists = allSetlists,
                             selectedTab = activeHomeTab,
                             onTabSelected = { tab -> viewModel.setActiveHomeTab(tab) },
+                            searchQuery = homeSearchQuery,
+                            onSearchQueryChange = { q -> viewModel.setHomeSearchQuery(q) },
+                            showOnlyFavorites = homeShowOnlyFavorites,
+                            onToggleShowOnlyFavorites = { fav -> viewModel.setHomeShowOnlyFavorites(fav) },
+                            selectedTag = homeSelectedTag,
+                            onSelectTag = { tag -> viewModel.setHomeSelectedTag(tag) },
+                            songSortOrder = songSortOrder,
+                            onSongSortOrderChange = { order -> viewModel.setSongSortOrder(order) },
+                            setlistSortOrder = setlistSortOrder,
+                            onSetlistSortOrderChange = { order -> viewModel.setSetlistSortOrder(order) },
+                            expandedSetlistIds = expandedSetlistIds,
+                            onToggleSetlistExpanded = { id -> viewModel.toggleSetlistExpanded(id) },
+                            songbookScrollIndex = viewModel.songbookScrollIndex,
+                            songbookScrollOffset = viewModel.songbookScrollOffset,
+                            onUpdateSongbookScroll = { idx, off -> viewModel.updateSongbookScroll(idx, off) },
+                            setlistsScrollIndex = viewModel.setlistsScrollIndex,
+                            setlistsScrollOffset = viewModel.setlistsScrollOffset,
+                            onUpdateSetlistsScroll = { idx, off -> viewModel.updateSetlistsScroll(idx, off) },
+                            trashScrollIndex = viewModel.trashScrollIndex,
+                            trashScrollOffset = viewModel.trashScrollOffset,
+                            onUpdateTrashScroll = { idx, off -> viewModel.updateTrashScroll(idx, off) },
                             onSelectSongEntity = { entity ->
                                 viewModel.loadSongFromEntity(entity)
                             },

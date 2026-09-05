@@ -4,9 +4,12 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 
 enum class AppThemeMode {
@@ -205,7 +208,17 @@ fun GTATheme(
         }
     }
 
-    CompositionLocalProvider(LocalGtaColors provides customColors) {
+    val textSelectionColors = remember(customColors.chordAccent) {
+        TextSelectionColors(
+            handleColor = customColors.chordAccent,
+            backgroundColor = customColors.chordAccent.copy(alpha = 0.35f)
+        )
+    }
+
+    CompositionLocalProvider(
+        LocalGtaColors provides customColors,
+        LocalTextSelectionColors provides textSelectionColors
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

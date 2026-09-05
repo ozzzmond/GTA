@@ -1,5 +1,6 @@
 package com.joel.gta.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -174,6 +175,15 @@ fun SongViewerScreen(
             if (clean.isNotBlank()) {
                 selectedChordVoicing = ChordDictionary.getVoicing(clean, context)
             }
+        }
+    }
+
+    // Hardware/System Back Button handler - navigate cleanly back to previous view
+    BackHandler {
+        if (isFocusMode) {
+            isFocusMode = false
+        } else {
+            onBack()
         }
     }
 

@@ -3,6 +3,7 @@
 package com.joel.gta.ui.screens
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -10,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -110,12 +112,67 @@ fun HomeScreen(
     onExportBackupShare: () -> Unit = {},
     onExportBackupSaf: (Uri) -> Unit = {},
     onRestoreBackup: (Uri) -> Unit = {},
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
+    showOnlyFavorites: Boolean = false,
+    onToggleShowOnlyFavorites: (Boolean) -> Unit = {},
+    selectedTag: String? = null,
+    onSelectTag: (String?) -> Unit = {},
+    songSortOrder: SongSortOrder = SongSortOrder.TITLE_ASC,
+    onSongSortOrderChange: (SongSortOrder) -> Unit = {},
+    setlistSortOrder: SetlistSortOrder = SetlistSortOrder.NEWEST,
+    onSetlistSortOrderChange: (SetlistSortOrder) -> Unit = {},
+    expandedSetlistIds: Set<Long> = emptySet(),
+    onToggleSetlistExpanded: (Long) -> Unit = {},
+    songbookScrollIndex: Int = 0,
+    songbookScrollOffset: Int = 0,
+    onUpdateSongbookScroll: (Int, Int) -> Unit = { _, _ -> },
+    setlistsScrollIndex: Int = 0,
+    setlistsScrollOffset: Int = 0,
+    onUpdateSetlistsScroll: (Int, Int) -> Unit = { _, _ -> },
+    trashScrollIndex: Int = 0,
+    trashScrollOffset: Int = 0,
+    onUpdateTrashScroll: (Int, Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
-    var searchQuery by remember { mutableStateOf("") }
-    var showOnlyFavorites by remember { mutableStateOf(false) }
-    var selectedTag by remember { mutableStateOf<String?>(null) }
+
+    // Hardware/System Back Button handler in HomeScreen for clean filter/subview unrolling
+    val canGoBackInHome = searchQuery.isNotBlank() || selectedTag != null || showOnlyFavorites || selectedTab != HomeTab.SONGBOOK
+    BackHandler(enabled = canGoBackInHome) {
+        when {
+            searchQuery.isNotBlank() -> onSearchQueryChange("")
+            selectedTag != null -> onSelectTag(null)
+            showOnlyFavorites -> onToggleShowOnlyFavorites(false)
+            selectedTab != HomeTab.SONGBOOK -> onTabSelected(HomeTab.SONGBOOK)
+        }
+    }
+
+    // Preserved LazyListStates synced with ViewModel
+    val songbookListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = songbookScrollIndex,
+        initialFirstVisibleItemScrollOffset = songbookScrollOffset
+    )
+    LaunchedEffect(songbookListState.firstVisibleItemIndex, songbookListState.firstVisibleItemScrollOffset) {
+        onUpdateSongbookScroll(songbookListState.firstVisibleItemIndex, songbookListState.firstVisibleItemScrollOffset)
+    }
+
+    val setlistsListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = setlistsScrollIndex,
+        initialFirstVisibleItemScrollOffset = setlistsScrollOffset
+    )
+    LaunchedEffect(setlistsListState.firstVisibleItemIndex, setlistsListState.firstVisibleItemScrollOffset) {
+        onUpdateSetlistsScroll(setlistsListState.firstVisibleItemIndex, setlistsListState.firstVisibleItemScrollOffset)
+    }
+
+    val trashListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = trashScrollIndex,
+        initialFirstVisibleItemScrollOffset = trashScrollOffset
+    )
+    LaunchedEffect(trashListState.firstVisibleItemIndex, trashListState.firstVisibleItemScrollOffset) {
+        onUpdateTrashScroll(trashListState.firstVisibleItemIndex, trashListState.firstVisibleItemScrollOffset)
+    }
+
     var editingSongForTags by remember { mutableStateOf<SongEntity?>(null) }
 
     var browserInitialUrl by remember { mutableStateOf<String?>(null) }
@@ -123,10 +180,7 @@ fun HomeScreen(
     var showAddSourceDialog by remember { mutableStateOf(false) }
     var customSourceUrlInput by remember { mutableStateOf("") }
 
-    var songSortOrder by remember { mutableStateOf(SongSortOrder.TITLE_ASC) }
     var showSongSortMenu by remember { mutableStateOf(false) }
-
-    var setlistSortOrder by remember { mutableStateOf(SetlistSortOrder.NEWEST) }
     var showSetlistSortMenu by remember { mutableStateOf(false) }
 
     var showCreateSetlistDialog by remember { mutableStateOf(false) }
@@ -430,14 +484,30 @@ fun HomeScreen(
                         ) {
                             OutlinedTextField(
                                 value = searchQuery,
-                                onValueChange = { searchQuery = it },
+                                onValueChange = onSearchQueryChange,
                                 placeholder = { Text("Search songs...") },
                                 leadingIcon = {
                                     Icon(Icons.Default.Search, contentDescription = null, tint = customColors.textSecondary)
                                 },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(52.dp),
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { onSearchQueryChange("") }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Clear search", tint = customColors.textSecondary)
+                                        }
+                                    }
+                                },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = customColors.textPrimary,
+                                    unfocusedTextColor = customColors.textPrimary,
+                                    focusedBorderColor = customColors.chordAccent,
+                                    unfocusedBorderColor = customColors.divider,
+                                    cursorColor = customColors.chordAccent,
+                                    selectionColors = androidx.compose.foundation.text.selection.TextSelectionColors(
+                                        handleColor = customColors.chordAccent,
+                                        backgroundColor = customColors.chordAccent.copy(alpha = 0.35f)
+                                    )
+                                ),
+                                modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true
                             )
@@ -447,8 +517,9 @@ fun HomeScreen(
                             FilterChip(
                                 selected = showOnlyFavorites,
                                 onClick = {
-                                    showOnlyFavorites = !showOnlyFavorites
-                                    if (showOnlyFavorites) selectedTag = null
+                                    val nextFav = !showOnlyFavorites
+                                    onToggleShowOnlyFavorites(nextFav)
+                                    if (nextFav) onSelectTag(null)
                                 },
                                 label = { Text("★") },
                                 leadingIcon = {
@@ -522,7 +593,7 @@ fun HomeScreen(
                                                 }
                                             },
                                             onClick = {
-                                                songSortOrder = order
+                                                onSongSortOrderChange(order)
                                                 showSongSortMenu = false
                                             }
                                         )
@@ -543,8 +614,8 @@ fun HomeScreen(
                                 FilterChip(
                                     selected = selectedTag == null && !showOnlyFavorites,
                                     onClick = {
-                                        selectedTag = null
-                                        showOnlyFavorites = false
+                                        onSelectTag(null)
+                                        onToggleShowOnlyFavorites(false)
                                     },
                                     label = { Text("All (${savedSongs.size})") },
                                     shape = RoundedCornerShape(10.dp),
@@ -561,8 +632,9 @@ fun HomeScreen(
                                 FilterChip(
                                     selected = selectedTag == tag,
                                     onClick = {
-                                        selectedTag = if (selectedTag == tag) null else tag
-                                        showOnlyFavorites = false
+                                        val nextTag = if (selectedTag == tag) null else tag
+                                        onSelectTag(nextTag)
+                                        onToggleShowOnlyFavorites(false)
                                     },
                                     label = { Text(if (count > 0) "$tag ($count)" else tag) },
                                     shape = RoundedCornerShape(10.dp),
@@ -611,6 +683,7 @@ fun HomeScreen(
                             }
                         } else {
                             LazyColumn(
+                                state = songbookListState,
                                 modifier = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -713,7 +786,7 @@ fun HomeScreen(
                                                     }
                                                 },
                                                 onClick = {
-                                                    setlistSortOrder = order
+                                                    onSetlistSortOrderChange(order)
                                                     showSetlistSortMenu = false
                                                 }
                                             )
@@ -767,12 +840,15 @@ fun HomeScreen(
                             }
                         } else {
                             LazyColumn(
+                                state = setlistsListState,
                                 modifier = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 items(sortedSetlists, key = { it.setlist.id }) { setlistWithSongs ->
                                     SetlistCard(
                                         setlistWithSongs = setlistWithSongs,
+                                        isExpanded = expandedSetlistIds.contains(setlistWithSongs.setlist.id),
+                                        onToggleExpand = { onToggleSetlistExpanded(setlistWithSongs.setlist.id) },
                                         onOpenSong = { index ->
                                             onOpenSongFromSetlist(setlistWithSongs.setlist, setlistWithSongs.songs, index)
                                         },
@@ -1548,7 +1624,8 @@ fun HomeScreen(
                         deletedSongs = deletedSongs,
                         onRestoreSong = onRestoreSong,
                         onPermanentDeleteSong = onPermanentDeleteSong,
-                        onEmptyTrash = onEmptyTrash
+                        onEmptyTrash = onEmptyTrash,
+                        scrollState = trashListState
                     )
                 }
             }
@@ -2009,13 +2086,14 @@ private fun SongCard(
 @Composable
 private fun SetlistCard(
     setlistWithSongs: SetlistWithSongs,
+    isExpanded: Boolean = false,
+    onToggleExpand: () -> Unit = {},
     onOpenSong: (Int) -> Unit,
     onMoveSong: (Long, Boolean) -> Unit,
     onRemoveSong: (Long) -> Unit,
     onDeleteSetlist: () -> Unit
 ) {
     val customColors = LocalGtaColors.current
-    var isExpanded by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2036,7 +2114,7 @@ private fun SetlistCard(
                             if (setlistWithSongs.songs.isNotEmpty()) {
                                 onOpenSong(0)
                             } else {
-                                isExpanded = !isExpanded
+                                onToggleExpand()
                             }
                         }
                         .padding(vertical = 4.dp, horizontal = 4.dp),
@@ -2092,7 +2170,7 @@ private fun SetlistCard(
                     }
                 }
 
-                IconButton(onClick = { isExpanded = !isExpanded }) {
+                IconButton(onClick = onToggleExpand) {
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = "Expand Setlist",
@@ -2329,6 +2407,7 @@ private fun TrashTabContent(
     onRestoreSong: (Long) -> Unit,
     onPermanentDeleteSong: (Long) -> Unit,
     onEmptyTrash: () -> Unit,
+    scrollState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -2428,6 +2507,7 @@ private fun TrashTabContent(
             }
 
             LazyColumn(
+                state = scrollState,
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
