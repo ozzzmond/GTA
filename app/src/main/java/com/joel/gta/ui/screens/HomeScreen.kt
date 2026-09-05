@@ -308,32 +308,6 @@ fun HomeScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        // Check for Updates Action
-                        IconButton(
-                            onClick = onCheckForUpdates,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(customColors.surfaceBackground)
-                        ) {
-                            if (isCheckingUpdates) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = customColors.chordAccent
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.SystemUpdate,
-                                    contentDescription = "Check for Updates",
-                                    tint = customColors.chordAccent
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
                         // Theme Mode Switcher
                         IconButton(
                             onClick = onToggleTheme,

@@ -12,10 +12,10 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -39,10 +39,13 @@ object UpdateManager {
 
     private const val GITHUB_LATEST_RELEASE_URL =
         "https://api.github.com/repos/ozzzmond/GTA/releases/latest"
+    private const val GITHUB_TAGS_URL =
+        "https://api.github.com/repos/ozzzmond/GTA/tags"
 
     /**
      * Checks the GitHub Releases API for the latest published GTA release.
-     * Compares version semantics against [currentVersion] (e.g. "1.0.28").
+     * If /releases/latest returns 404 (e.g. no official releases published or private repo),
+     * falls back to checking /tags or displays a friendly "No official releases found on GitHub yet."
      */
     suspend fun checkForUpdates(currentVersion: String): UpdateCheckResult = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
@@ -57,48 +60,51 @@ object UpdateManager {
             }
 
             val responseCode = connection.responseCode
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                return@withContext UpdateCheckResult.Error("Unable to check updates (HTTP $responseCode)")
-            }
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val jsonString = connection.inputStream.bufferedReader(Charsets.UTF_8).use(BufferedReader::readText)
+                val jsonObject = JSONObject(jsonString)
 
-            val jsonString = connection.inputStream.bufferedReader(Charsets.UTF_8).use(BufferedReader::readText)
-            val jsonObject = JSONObject(jsonString)
+                val tagName = jsonObject.optString("tag_name", "")
+                val cleanLatestVersion = tagName.removePrefix("v").removePrefix("V").trim()
+                val releaseTitle = jsonObject.optString("name", "GTA $tagName")
+                val releaseNotes = jsonObject.optString("body", "Bug fixes and stage enhancements.")
+                val htmlUrl = jsonObject.optString("html_url", "https://github.com/ozzzmond/GTA/releases")
 
-            val tagName = jsonObject.optString("tag_name", "")
-            val cleanLatestVersion = tagName.removePrefix("v").removePrefix("V").trim()
-            val releaseTitle = jsonObject.optString("name", "GTA $tagName")
-            val releaseNotes = jsonObject.optString("body", "Bug fixes and stage enhancements.")
-            val htmlUrl = jsonObject.optString("html_url", "https://github.com/ozzzmond/GTA/releases")
-
-            // Look for .apk asset
-            var apkDownloadUrl: String? = null
-            val assetsArray = jsonObject.optJSONArray("assets")
-            if (assetsArray != null) {
-                for (i in 0 until assetsArray.length()) {
-                    val asset = assetsArray.getJSONObject(i)
-                    val assetName = asset.optString("name", "")
-                    if (assetName.endsWith(".apk", ignoreCase = true)) {
-                        apkDownloadUrl = if (asset.has("browser_download_url")) asset.getString("browser_download_url") else null
-                        break
+                // Look for .apk asset
+                var apkDownloadUrl: String? = null
+                val assetsArray = jsonObject.optJSONArray("assets")
+                if (assetsArray != null) {
+                    for (i in 0 until assetsArray.length()) {
+                        val asset = assetsArray.getJSONObject(i)
+                        val assetName = asset.optString("name", "")
+                        if (assetName.endsWith(".apk", ignoreCase = true)) {
+                            apkDownloadUrl = if (asset.has("browser_download_url")) asset.getString("browser_download_url") else null
+                            break
+                        }
                     }
                 }
-            }
 
-            val isNewer = isVersionNewer(cleanLatestVersion, currentVersion)
-            val info = ReleaseInfo(
-                tagName = tagName,
-                versionName = cleanLatestVersion,
-                releaseTitle = releaseTitle,
-                releaseNotes = releaseNotes,
-                apkDownloadUrl = apkDownloadUrl,
-                htmlUrl = htmlUrl,
-                isNewer = isNewer
-            )
+                val isNewer = isVersionNewer(cleanLatestVersion, currentVersion)
+                val info = ReleaseInfo(
+                    tagName = tagName,
+                    versionName = cleanLatestVersion,
+                    releaseTitle = releaseTitle,
+                    releaseNotes = releaseNotes,
+                    apkDownloadUrl = apkDownloadUrl,
+                    htmlUrl = htmlUrl,
+                    isNewer = isNewer
+                )
 
-            if (isNewer) {
-                UpdateCheckResult.UpdateAvailable(info)
+                if (isNewer) {
+                    UpdateCheckResult.UpdateAvailable(info)
+                } else {
+                    UpdateCheckResult.UpToDate(currentVersion)
+                }
+            } else if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
+                // Fallback: Check Git tags or show friendly notice
+                checkFallbackGitTags(currentVersion)
             } else {
-                UpdateCheckResult.UpToDate(currentVersion)
+                UpdateCheckResult.Error("Unable to check updates (HTTP $responseCode)")
             }
         } catch (e: Exception) {
             UpdateCheckResult.Error("Unable to check updates. Check your connection.")
@@ -107,8 +113,52 @@ object UpdateManager {
         }
     }
 
+    private fun checkFallbackGitTags(currentVersion: String): UpdateCheckResult {
+        var tagsConnection: HttpURLConnection? = null
+        try {
+            val tagsUrl = URL(GITHUB_TAGS_URL)
+            tagsConnection = (tagsUrl.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 7000
+                readTimeout = 7000
+                setRequestProperty("Accept", "application/vnd.github.v3+json")
+                setRequestProperty("User-Agent", "GTA-Android-App")
+            }
+
+            if (tagsConnection.responseCode == HttpURLConnection.HTTP_OK) {
+                val tagsJson = tagsConnection.inputStream.bufferedReader(Charsets.UTF_8).use(BufferedReader::readText)
+                val tagsArray = JSONArray(tagsJson)
+                if (tagsArray.length() > 0) {
+                    val latestTag = tagsArray.getJSONObject(0).optString("name", "")
+                    val cleanTag = latestTag.removePrefix("v").removePrefix("V").trim()
+                    val isNewer = isVersionNewer(cleanTag, currentVersion)
+                    if (isNewer) {
+                        val info = ReleaseInfo(
+                            tagName = latestTag,
+                            versionName = cleanTag,
+                            releaseTitle = "GTA $latestTag",
+                            releaseNotes = "New release tag $latestTag available on GitHub. Tap to view release details or download build artifacts.",
+                            apkDownloadUrl = null,
+                            htmlUrl = "https://github.com/ozzzmond/GTA/releases",
+                            isNewer = true
+                        )
+                        return UpdateCheckResult.UpdateAvailable(info)
+                    } else {
+                        return UpdateCheckResult.UpToDate(currentVersion)
+                    }
+                }
+            }
+            // Friendly message instead of raw 404
+            return UpdateCheckResult.Error("No official releases found on GitHub yet.")
+        } catch (e: Exception) {
+            return UpdateCheckResult.Error("No official releases found on GitHub yet.")
+        } finally {
+            tagsConnection?.disconnect()
+        }
+    }
+
     /**
-     * Compares numeric semantic version parts (e.g. "1.0.28" vs "1.0.27").
+     * Compares numeric semantic version parts (e.g. "1.0.30" vs "1.0.29").
      */
     fun isVersionNewer(latest: String, current: String): Boolean {
         val cleanLatest = latest.removePrefix("v").removePrefix("V").trim()
