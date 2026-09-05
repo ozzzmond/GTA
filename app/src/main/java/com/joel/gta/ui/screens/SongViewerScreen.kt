@@ -143,7 +143,7 @@ fun SongViewerScreen(
 
     var currentCapo by remember(song.capo) { mutableStateOf(song.capo ?: "No Capo") }
     var pedalFeedbackText by remember { mutableStateOf<String?>(null) }
-    var showCapoSheet by remember { mutableStateOf(false) }
+    var showKeyPickerDialog by remember { mutableStateOf(false) }
 
     // Auto-dismiss pedal HUD indicator after 1.2 seconds
     LaunchedEffect(pedalFeedbackText) {
@@ -440,83 +440,70 @@ fun SongViewerScreen(
                             }
                         }
 
-                        // Capo Dropdown Selector (Upper Right)
-                        var capoDropdownExpanded by remember { mutableStateOf(false) }
-                        val hasActiveCapo = currentCapo.isNotBlank() &&
-                                !currentCapo.equals("None", ignoreCase = true) &&
-                                !currentCapo.equals("No Capo", ignoreCase = true)
+                        // Standard Transpose Stepper Control: [ - ] Key: G (+1) [ + ]
+                        val offsetStr = when {
+                            transposeOffset > 0 -> "+$transposeOffset"
+                            transposeOffset < 0 -> "$transposeOffset"
+                            else -> "0"
+                        }
+                        val currentEffectiveKey = song.key ?: originalKey ?: "Orig"
 
-                        Box {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (hasActiveCapo) customColors.chordAccent.copy(alpha = 0.2f) else customColors.canvasBackground,
-                                border = androidx.compose.foundation.BorderStroke(
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (transposeOffset != 0) customColors.chordAccent.copy(alpha = 0.15f) else customColors.canvasBackground)
+                                .border(
                                     1.dp,
-                                    if (hasActiveCapo) customColors.chordAccent else customColors.divider
-                                ),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { capoDropdownExpanded = true }
+                                    if (transposeOffset != 0) customColors.chordAccent else customColors.divider,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(horizontal = 2.dp, vertical = 2.dp)
+                        ) {
+                            IconButton(
+                                onClick = { onTranspose(-1) },
+                                modifier = Modifier.size(28.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Tune,
-                                        contentDescription = "Capo Selector",
-                                        tint = if (hasActiveCapo) customColors.chordAccent else customColors.textSecondary,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (hasActiveCapo) currentCapo else "Capo",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (hasActiveCapo) customColors.chordAccent else customColors.textPrimary
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowDropDown,
-                                        contentDescription = null,
-                                        tint = if (hasActiveCapo) customColors.chordAccent else customColors.textSecondary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Remove,
+                                    contentDescription = "Transpose Down (-1)",
+                                    tint = customColors.textPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
 
-                            DropdownMenu(
-                                expanded = capoDropdownExpanded,
-                                onDismissRequest = { capoDropdownExpanded = false },
-                                modifier = Modifier.background(customColors.surfaceBackground)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { showKeyPickerDialog = true }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
                             ) {
-                                val capoOptions = listOf("None", "Fret 1", "Fret 2", "Fret 3", "Fret 4", "Fret 5", "Fret 6", "Fret 7")
-                                capoOptions.forEach { fret ->
-                                    val isSelected = currentCapo.equals(fret, ignoreCase = true) ||
-                                            (fret == "None" && (currentCapo.isBlank() || currentCapo.equals("No Capo", ignoreCase = true)))
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                text = fret,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) customColors.chordAccent else customColors.textPrimary
-                                            )
-                                        },
-                                        trailingIcon = if (isSelected) {
-                                            {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = "Selected",
-                                                    tint = customColors.chordAccent,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        } else null,
-                                        onClick = {
-                                            currentCapo = fret
-                                            capoDropdownExpanded = false
-                                        }
-                                    )
-                                }
+                                Text(
+                                    text = if (transposeOffset != 0) "Key: $currentEffectiveKey ($offsetStr)" else "Key: $currentEffectiveKey",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (transposeOffset != 0) customColors.chordAccent else customColors.textPrimary
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Select Target Key",
+                                    tint = if (transposeOffset != 0) customColors.chordAccent else customColors.textSecondary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { onTranspose(1) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Transpose Up (+1)",
+                                    tint = customColors.textPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         }
 
@@ -1043,7 +1030,7 @@ fun SongViewerScreen(
                     }
                 }
 
-                // Stage Focus Mode: Clickable Capo Badge (Upper Left)
+                // Stage Focus Mode: Clickable Transpose Badge (Upper Left)
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isFocusMode,
                     enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
@@ -1052,15 +1039,21 @@ fun SongViewerScreen(
                         .align(Alignment.TopStart)
                         .padding(top = 16.dp, start = 16.dp)
                 ) {
-                    val hasActiveCapo = currentCapo.isNotBlank() &&
-                            !currentCapo.equals("None", ignoreCase = true) &&
-                            !currentCapo.equals("No Capo", ignoreCase = true)
+                    val offsetStr = when {
+                        transposeOffset > 0 -> "+$transposeOffset"
+                        transposeOffset < 0 -> "$transposeOffset"
+                        else -> "0"
+                    }
+                    val currentEffectiveKey = song.key ?: originalKey ?: "Orig"
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = customColors.surfaceBackground.copy(alpha = 0.90f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent.copy(alpha = 0.5f)),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (transposeOffset != 0) customColors.chordAccent else customColors.divider
+                        ),
                         shadowElevation = 6.dp,
-                        modifier = Modifier.clickable { showCapoSheet = true }
+                        modifier = Modifier.clickable { showKeyPickerDialog = true }
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -1069,22 +1062,15 @@ fun SongViewerScreen(
                             Icon(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = null,
-                                tint = customColors.chordAccent,
+                                tint = if (transposeOffset != 0) customColors.chordAccent else customColors.textSecondary,
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (hasActiveCapo) "CAPO: ${currentCapo.uppercase()}" else "CAPO: NONE",
+                                text = if (transposeOffset != 0) "KEY: $currentEffectiveKey ($offsetStr)" else "KEY: $currentEffectiveKey",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = customColors.chordAccent
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Choose Capo",
-                                tint = customColors.chordAccent,
-                                modifier = Modifier.size(16.dp)
+                                color = if (transposeOffset != 0) customColors.chordAccent else customColors.textPrimary
                             )
                         }
                     }
@@ -1119,64 +1105,67 @@ fun SongViewerScreen(
         }
     }
 
-    // Clean Capo Fret Selector Bottom Sheet
-    if (showCapoSheet) {
-        val capoFrets = listOf(
-            "None",
-            "Fret 1",
-            "Fret 2",
-            "Fret 3",
-            "Fret 4",
-            "Fret 5",
-            "Fret 6",
-            "Fret 7"
-        )
-        ModalBottomSheet(
-            onDismissRequest = { showCapoSheet = false },
+    // Clean Transpose & Target Key Selector Dialog
+    if (showKeyPickerDialog) {
+        val baseKey = originalKey ?: song.key ?: "C"
+        AlertDialog(
+            onDismissRequest = { showKeyPickerDialog = false },
             containerColor = customColors.surfaceBackground,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = customColors.divider) }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
-            ) {
+            title = {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Tune,
-                        contentDescription = null,
-                        tint = customColors.chordAccent
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Capo Position",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = "Transpose Key",
                         fontWeight = FontWeight.Bold,
                         color = customColors.textPrimary
                     )
+                    if (transposeOffset != 0) {
+                        TextButton(
+                            onClick = {
+                                onResetTranspose()
+                                showKeyPickerDialog = false
+                            }
+                        ) {
+                            Text("Reset (Orig)", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
-
+            },
+            text = {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 380.dp)
+                        .heightIn(max = 400.dp)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    for (fret in capoFrets) {
-                        val isSelected = currentCapo.equals(fret, ignoreCase = true) ||
-                                (fret == "None" && (currentCapo.isBlank() || currentCapo.equals("No Capo", ignoreCase = true)))
+                    Text(
+                        text = "Select semitone shift or target key:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    for (k in -6..6) {
+                        val targetKeyName = TransposeEngine.transposeChord(baseKey, k)
+                        val isSelected = k == transposeOffset
+                        val offsetLabel = when {
+                            k > 0 -> "+$k"
+                            k < 0 -> "$k"
+                            else -> "0"
+                        }
+
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    currentCapo = fret
-                                    showCapoSheet = false
+                                    onSelectTransposeOffset(k)
+                                    showKeyPickerDialog = false
                                 },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isSelected) customColors.chordAccent.copy(alpha = 0.2f) else customColors.canvasBackground
                             ),
@@ -1188,32 +1177,64 @@ fun SongViewerScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = fret,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) customColors.chordAccent else customColors.textPrimary
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = if (isSelected) customColors.chordAccent else customColors.surfaceBackground,
+                                        modifier = Modifier.width(44.dp)
+                                    ) {
+                                        Text(
+                                            text = offsetLabel,
+                                            modifier = Modifier.padding(vertical = 3.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Color.Black else customColors.textSecondary,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Text(
+                                        text = targetKeyName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) customColors.chordAccent else customColors.textPrimary
+                                    )
+
+                                    if (k == 0) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "(Original)",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = customColors.textSecondary
+                                        )
+                                    }
+                                }
+
                                 if (isSelected) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
+                                        contentDescription = "Selected Key",
                                         tint = customColors.chordAccent,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(20.dp))
+            },
+            confirmButton = {
+                TextButton(onClick = { showKeyPickerDialog = false }) {
+                    Text("Close", color = customColors.chordAccent)
+                }
             }
-        }
+        )
     }
 
     // Add to Setlist Dialog

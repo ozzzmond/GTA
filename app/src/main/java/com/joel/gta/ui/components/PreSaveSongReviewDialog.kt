@@ -56,7 +56,7 @@ fun PreSaveSongReviewDialog(
     var songCapo by remember(scrapedSong) { mutableStateOf(scrapedSong.capo ?: "") }
     var songTags by remember(scrapedSong) { mutableStateOf(initialTags) }
     var rawText by remember(scrapedSong) { mutableStateOf(scrapedSong.rawContent) }
-    var activeMode by remember { mutableStateOf(ReviewMode.EDIT_RAW) }
+    var activeMode by remember { mutableStateOf(ReviewMode.LIVE_PREVIEW) }
 
 
     // Real-time live parsed song

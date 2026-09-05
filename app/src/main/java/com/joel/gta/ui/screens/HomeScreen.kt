@@ -872,6 +872,7 @@ fun HomeScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .padding(vertical = 4.dp)
+                                                .clickable { onSelectSearchResult(item) }
                                         ) {
                                             Row(
                                                 modifier = Modifier
@@ -941,11 +942,11 @@ fun HomeScreen(
                                                     enabled = !webImportState.isLoading,
                                                     colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black),
                                                     shape = RoundedCornerShape(8.dp),
-                                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                                 ) {
-                                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
                                                     Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("Import", fontWeight = FontWeight.Bold)
+                                                    Text("Preview", fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                         }
@@ -1308,7 +1309,58 @@ fun HomeScreen(
         }
     }
 
-    // Pre-Save Song Review Dialog
+    // Loading overlay when fetching chords preview
+    if (webImportState.isLoading) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = customColors.surfaceBackground,
+                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = customColors.chordAccent,
+                        modifier = Modifier.size(28.dp),
+                        strokeWidth = 3.dp
+                    )
+                    Text(
+                        text = "Loading chords preview...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = customColors.textPrimary
+                    )
+                }
+            }
+        }
+    }
+
+    // Error Alert if song scraping/fetching fails
+    if (webImportState.error != null) {
+        AlertDialog(
+            onDismissRequest = onDismissWebReview,
+            title = {
+                Text("Import Preview", fontWeight = FontWeight.Bold, color = customColors.textPrimary)
+            },
+            text = {
+                Text(webImportState.error, color = customColors.textSecondary)
+            },
+            confirmButton = {
+                Button(
+                    onClick = onDismissWebReview,
+                    colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent)
+                ) {
+                    Text("OK", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // Pre-Save Song Review & Preview Dialog
     if (webImportState.pendingSong != null) {
         PreSaveSongReviewDialog(
             scrapedSong = webImportState.pendingSong,

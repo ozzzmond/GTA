@@ -713,14 +713,14 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     fun fetchSongFromUrl(url: String) {
         if (url.isBlank()) return
         viewModelScope.launch {
-            _webImportState.value = WebImportUiState(isLoading = true, error = null, pendingSong = null)
+            _webImportState.value = _webImportState.value.copy(isLoading = true, error = null, pendingSong = null)
             val result = WebScraperEngine.scrapeUrl(url)
             result.fold(
                 onSuccess = { song ->
-                    _webImportState.value = WebImportUiState(isLoading = false, error = null, pendingSong = song)
+                    _webImportState.value = _webImportState.value.copy(isLoading = false, error = null, pendingSong = song)
                 },
                 onFailure = { err ->
-                    _webImportState.value = WebImportUiState(
+                    _webImportState.value = _webImportState.value.copy(
                         isLoading = false,
                         error = err.localizedMessage ?: "Failed to import song from URL.",
                         pendingSong = null
@@ -741,7 +741,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             fetchSongFromUrl(trimmed)
         } else {
             val song = WebScraperEngine.parseFromClipboard(trimmed)
-            _webImportState.value = WebImportUiState(isLoading = false, error = null, pendingSong = song)
+            _webImportState.value = _webImportState.value.copy(isLoading = false, error = null, pendingSong = song)
         }
     }
 
