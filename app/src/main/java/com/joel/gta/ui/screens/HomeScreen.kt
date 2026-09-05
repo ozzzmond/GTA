@@ -32,8 +32,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.joel.gta.BuildConfig
 import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.local.entity.SongEntity
+import com.joel.gta.ui.components.GtaBrandLogo
 import com.joel.gta.ui.components.PreSaveSongReviewDialog
 import com.joel.gta.ui.components.StageToolsDialog
 import com.joel.gta.ui.theme.LocalGtaColors
@@ -158,28 +160,35 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(customColors.chordAccent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MusicNote,
-                                contentDescription = "GTA Logo",
-                                tint = Color.Black,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
+                        GtaBrandLogo(size = 38.dp)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text(
-                                text = "GTA",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Black,
-                                color = customColors.textPrimary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "GTA",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Black,
+                                    color = customColors.textPrimary
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = customColors.surfaceBackground,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                                ) {
+                                    Text(
+                                        text = "v${BuildConfig.VERSION_NAME}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = customColors.textSecondary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = "Guitar Tool Application",
                                 style = MaterialTheme.typography.bodySmall,
