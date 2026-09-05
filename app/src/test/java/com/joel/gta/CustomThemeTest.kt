@@ -102,4 +102,25 @@ class CustomThemeTest {
         assertEquals(Color(0xFF64748B), palette.textSecondary)
         assertEquals(Color(0xFFDFD7C7), palette.divider)
     }
+
+    @Test
+    fun testAntigravityDarkTealAndSlatePresets() {
+        val darkTeal = CustomStageColors.parseColorOrNull("#0E2226")
+        assertNotNull(darkTeal)
+        assertTrue("Antigravity Dark Teal should be recognized as dark", CustomStageColors.isColorDark(darkTeal!!))
+
+        val slate = CustomStageColors.parseColorOrNull("#1E1F22")
+        assertNotNull(slate)
+        assertTrue("Slate should be recognized as dark", CustomStageColors.isColorDark(slate!!))
+
+        val darkTealTheme = CustomStageColors(
+            canvasBackgroundHex = "#0E2226",
+            chordAccentHex = "#FFC107",
+            textPrimaryHex = "#F1F5F9",
+            sectionHeaderHex = "#818CF8"
+        ).toGtaCustomColors()
+
+        assertEquals(darkTeal, darkTealTheme.canvasBackground)
+        assertEquals(Color(0xFF94A3B8), darkTealTheme.textSecondary)
+    }
 }

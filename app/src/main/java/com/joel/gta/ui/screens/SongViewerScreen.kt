@@ -108,7 +108,8 @@ fun SongViewerScreen(
     val focusRequester = remember { FocusRequester() }
 
     val configuration = LocalConfiguration.current
-    val isTabletOrLandscape = configuration.screenWidthDp >= 600
+    val isTabletOrLandscape = configuration.screenWidthDp >= 600 ||
+            configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     var columnCount by remember(isTabletOrLandscape) { mutableIntStateOf(1) }
 
     // Bi-directional hysteresis toggle:
@@ -128,7 +129,16 @@ fun SongViewerScreen(
     }
 
     var currentCapo by remember(song.capo) { mutableStateOf(song.capo ?: "No Capo") }
+    var pedalFeedbackText by remember { mutableStateOf<String?>(null) }
     var showCapoSheet by remember { mutableStateOf(false) }
+
+    // Auto-dismiss pedal HUD indicator after 1.2 seconds
+    LaunchedEffect(pedalFeedbackText) {
+        if (pedalFeedbackText != null) {
+            kotlinx.coroutines.delay(1200)
+            pedalFeedbackText = null
+        }
+    }
     var showSetlistDialog by remember { mutableStateOf(false) }
     var showKeyPickerDialog by remember { mutableStateOf(false) }
     var showStageToolsDialog by remember { mutableStateOf(false) }
@@ -150,8 +160,10 @@ fun SongViewerScreen(
             when (action) {
                 FootswitchAction.NEXT_SONG_OR_PAGE_DOWN -> {
                     if (isInSetlistMode && hasNextSong) {
+                        pedalFeedbackText = "PEDAL: NEXT SONG"
                         onNextSong?.invoke()
                     } else {
+                        pedalFeedbackText = "PEDAL: PAGE DOWN"
                         val pageStep = 600
                         verticalScrollState.animateScrollTo(
                             (verticalScrollState.value + pageStep).coerceAtMost(verticalScrollState.maxValue)
@@ -160,8 +172,10 @@ fun SongViewerScreen(
                 }
                 FootswitchAction.PREV_SONG_OR_PAGE_UP -> {
                     if (isInSetlistMode && hasPreviousSong && verticalScrollState.value <= 80) {
+                        pedalFeedbackText = "PEDAL: PREVIOUS SONG"
                         onPreviousSong?.invoke()
                     } else {
+                        pedalFeedbackText = "PEDAL: PAGE UP"
                         val pageStep = 600
                         verticalScrollState.animateScrollTo(
                             (verticalScrollState.value - pageStep).coerceAtLeast(0)
@@ -169,18 +183,21 @@ fun SongViewerScreen(
                     }
                 }
                 FootswitchAction.SCROLL_DOWN -> {
+                    pedalFeedbackText = "PEDAL: SCROLL DOWN"
                     val step = 450
                     verticalScrollState.animateScrollTo(
                         (verticalScrollState.value + step).coerceAtMost(verticalScrollState.maxValue)
                     )
                 }
                 FootswitchAction.SCROLL_UP -> {
+                    pedalFeedbackText = "PEDAL: SCROLL UP"
                     val step = 450
                     verticalScrollState.animateScrollTo(
                         (verticalScrollState.value - step).coerceAtLeast(0)
                     )
                 }
                 FootswitchAction.TOGGLE_SCROLL -> {
+                    pedalFeedbackText = if (isAutoScrolling) "PEDAL: PAUSE SCROLL" else "PEDAL: START SCROLL"
                     onToggleAutoScroll()
                 }
             }
@@ -772,20 +789,24 @@ fun SongViewerScreen(
                 .onPreviewKeyEvent { keyEvent ->
                     if (keyEvent.type == KeyEventType.KeyDown) {
                         when (keyEvent.nativeKeyEvent.keyCode) {
-                            AndroidKeyEvent.KEYCODE_PAGE_DOWN, AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            AndroidKeyEvent.KEYCODE_PAGE_DOWN, AndroidKeyEvent.KEYCODE_DPAD_RIGHT, AndroidKeyEvent.KEYCODE_BUTTON_R1 -> {
                                 if (isInSetlistMode && hasNextSong) {
+                                    pedalFeedbackText = "PEDAL: NEXT SONG"
                                     onNextSong?.invoke()
                                 } else {
+                                    pedalFeedbackText = "PEDAL: PAGE DOWN"
                                     coroutineScope.launch {
                                         verticalScrollState.animateScrollTo((verticalScrollState.value + 600).coerceAtMost(verticalScrollState.maxValue))
                                     }
                                 }
                                 true
                             }
-                            AndroidKeyEvent.KEYCODE_PAGE_UP, AndroidKeyEvent.KEYCODE_DPAD_LEFT -> {
+                            AndroidKeyEvent.KEYCODE_PAGE_UP, AndroidKeyEvent.KEYCODE_DPAD_LEFT, AndroidKeyEvent.KEYCODE_BUTTON_L1 -> {
                                 if (isInSetlistMode && hasPreviousSong && verticalScrollState.value <= 80) {
+                                    pedalFeedbackText = "PEDAL: PREVIOUS SONG"
                                     onPreviousSong?.invoke()
                                 } else {
+                                    pedalFeedbackText = "PEDAL: PAGE UP"
                                     coroutineScope.launch {
                                         verticalScrollState.animateScrollTo((verticalScrollState.value - 600).coerceAtLeast(0))
                                     }
@@ -793,18 +814,21 @@ fun SongViewerScreen(
                                 true
                             }
                             AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+                                pedalFeedbackText = "PEDAL: SCROLL DOWN"
                                 coroutineScope.launch {
                                     verticalScrollState.animateScrollTo((verticalScrollState.value + 450).coerceAtMost(verticalScrollState.maxValue))
                                 }
                                 true
                             }
                             AndroidKeyEvent.KEYCODE_DPAD_UP -> {
+                                pedalFeedbackText = "PEDAL: SCROLL UP"
                                 coroutineScope.launch {
                                     verticalScrollState.animateScrollTo((verticalScrollState.value - 450).coerceAtLeast(0))
                                 }
                                 true
                             }
                             AndroidKeyEvent.KEYCODE_SPACE, AndroidKeyEvent.KEYCODE_ENTER, AndroidKeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                                pedalFeedbackText = if (isAutoScrolling) "PEDAL: PAUSE SCROLL" else "PEDAL: START SCROLL"
                                 onToggleAutoScroll()
                                 true
                             }
@@ -941,6 +965,42 @@ fun SongViewerScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
+                            )
+                        }
+                    }
+                }
+
+                // Bluetooth Footswitch Stage HUD Feedback Pill
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = pedalFeedbackText != null,
+                    enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
+                    exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = if (isFocusMode) 60.dp else 16.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFF0F172A).copy(alpha = 0.94f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent),
+                        shadowElevation = 8.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = customColors.chordAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = pedalFeedbackText ?: "",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = customColors.chordAccent
                             )
                         }
                     }

@@ -225,11 +225,11 @@ class MainActivity : ComponentActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (event?.repeatCount == 0 && viewModel.uiState.value is SongViewerState.Loaded) {
             when (keyCode) {
-                KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_BUTTON_R1 -> {
                     viewModel.sendFootswitchAction(FootswitchAction.NEXT_SONG_OR_PAGE_DOWN)
                     return true
                 }
-                KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_DPAD_LEFT -> {
+                KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_BUTTON_L1 -> {
                     viewModel.sendFootswitchAction(FootswitchAction.PREV_SONG_OR_PAGE_UP)
                     return true
                 }

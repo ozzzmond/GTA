@@ -38,7 +38,9 @@ import com.joel.gta.ui.theme.LocalGtaColors
 private data class ColorPreset(val name: String, val hex: String)
 
 private val BackgroundPresets = listOf(
-    ColorPreset("AMOLED", "#000000"),
+    ColorPreset("Dark Teal", "#0E2226"),
+    ColorPreset("Slate", "#1E1F22"),
+    ColorPreset("Pure AMOLED", "#000000"),
     ColorPreset("Deep Slate", "#121212"),
     ColorPreset("Sepia", "#FBF0D9"),
     ColorPreset("Soft Gray", "#262626"),
