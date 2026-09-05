@@ -39,6 +39,9 @@ private enum class ReviewMode {
 @Composable
 fun PreSaveSongReviewDialog(
     scrapedSong: ScrapedSong,
+    dialogTitle: String = "Review & Edit Song",
+    saveButtonText: String = "Save to Songbook",
+    initialTags: String = "",
     onDismiss: () -> Unit,
     onSave: (title: String, artist: String?, rawContent: String, key: String?, capo: String?, tags: String) -> Unit
 ) {
@@ -51,7 +54,7 @@ fun PreSaveSongReviewDialog(
     var songArtist by remember(scrapedSong) { mutableStateOf(scrapedSong.artist ?: "") }
     var songKey by remember(scrapedSong) { mutableStateOf(scrapedSong.key ?: "") }
     var songCapo by remember(scrapedSong) { mutableStateOf(scrapedSong.capo ?: "") }
-    var songTags by remember(scrapedSong) { mutableStateOf("") }
+    var songTags by remember(scrapedSong) { mutableStateOf(initialTags) }
     var rawText by remember(scrapedSong) { mutableStateOf(scrapedSong.rawContent) }
     var activeMode by remember { mutableStateOf(ReviewMode.EDIT_RAW) }
 
@@ -104,7 +107,7 @@ fun PreSaveSongReviewDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
                             Text(
-                                text = "Review & Edit Song",
+                                text = dialogTitle,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = customColors.textPrimary
@@ -112,7 +115,7 @@ fun PreSaveSongReviewDialog(
                             val sourceLabel = if (scrapedSong.sourceUrl.isNotBlank()) {
                                 "Source: ${scrapedSong.sourceUrl.take(45)}${if (scrapedSong.sourceUrl.length > 45) "..." else ""}"
                             } else {
-                                "Source: Clipboard Ingest"
+                                "Source: Songbook / Text Ingest"
                             }
                             Text(
                                 text = sourceLabel,
@@ -148,7 +151,7 @@ fun PreSaveSongReviewDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Save to Songbook",
+                            text = saveButtonText,
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelLarge
                         )

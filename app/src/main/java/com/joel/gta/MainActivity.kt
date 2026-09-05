@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
             val favoriteSongs by viewModel.favoriteSongs.collectAsState()
             val allSetlists by viewModel.allSetlists.collectAsState()
             val activeHomeTab by viewModel.activeHomeTab.collectAsState()
+            val deletedSongs by viewModel.deletedSongs.collectAsState()
             val bulkImportState by viewModel.bulkImportState.collectAsState()
             val webImportState by viewModel.webImportState.collectAsState()
             val bandSyncState by viewModel.bandSyncState.collectAsState()
@@ -114,6 +115,16 @@ class MainActivity : ComponentActivity() {
                             },
                             onDeleteSong = { entity ->
                                 viewModel.deleteSong(entity)
+                            },
+                            deletedSongs = deletedSongs,
+                            onRestoreSong = { songId ->
+                                viewModel.restoreSong(songId)
+                            },
+                            onPermanentDeleteSong = { songId ->
+                                viewModel.permanentDeleteSong(songId)
+                            },
+                            onEmptyTrash = {
+                                viewModel.emptyTrash()
                             },
                             onCreateSetlist = { name ->
                                 viewModel.createSetlist(name)
@@ -191,7 +202,13 @@ class MainActivity : ComponentActivity() {
                             onStartBandHost = { viewModel.startBandHost() },
                             onStartBandClient = { viewModel.startBandClient() },
                             onConnectBandHost = { hostAddress -> viewModel.connectToBandHost(hostAddress) },
-                            onStopBandSync = { viewModel.stopBandSync() }
+                            onStopBandSync = { viewModel.stopBandSync() },
+                            songEntityId = state.songEntityId,
+                            rawContent = state.rawContent,
+                            tags = state.tags,
+                            onUpdateSongDetails = { id, title, artist, tags, rawContent, key, capo ->
+                                viewModel.updateSongDetails(id, title, artist, tags, rawContent, key, capo)
+                            }
                         )
                     }
 

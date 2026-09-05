@@ -82,6 +82,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     val allSetlists: StateFlow<List<SetlistWithSongs>> = repository.allSetlists
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val deletedSongs: StateFlow<List<SongEntity>> = repository.deletedSongs
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     private val _activeHomeTab = MutableStateFlow(HomeTab.SONGBOOK)
     val activeHomeTab: StateFlow<HomeTab> = _activeHomeTab.asStateFlow()
 
@@ -178,7 +181,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                         fileName = fileName,
                         songEntityId = entityId,
                         isFavorite = savedEntity?.isFavorite ?: false,
-                        transposeOffset = 0
+                        transposeOffset = 0,
+                        rawContent = content,
+                        tags = ""
                     )
                 }
             }
@@ -220,7 +225,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 fileName = entity.title,
                 songEntityId = entity.id,
                 isFavorite = entity.isFavorite,
-                transposeOffset = entity.transposeOffset
+                transposeOffset = entity.transposeOffset,
+                rawContent = entity.rawContent,
+                tags = entity.tags
             )
             broadcastSongIfHost(transposed, entity.rawContent, entity.id)
         }
@@ -255,6 +262,8 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 songEntityId = entity.id,
                 isFavorite = entity.isFavorite,
                 transposeOffset = entity.transposeOffset,
+                rawContent = entity.rawContent,
+                tags = entity.tags,
                 setlistId = setlist.id,
                 setlistName = setlist.name,
                 setlistSongs = songs,
@@ -394,11 +403,71 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun deleteSong(entity: SongEntity) {
+        softDeleteSong(entity.id)
+    }
+
+    fun softDeleteSong(id: Long) {
         viewModelScope.launch {
-            repository.deleteSong(entity)
+            repository.softDeleteSong(id)
             val current = _uiState.value as? SongViewerState.Loaded
-            if (current?.songEntityId == entity.id) {
+            if (current?.songEntityId == id) {
                 clearSong()
+            }
+        }
+    }
+
+    fun restoreSong(id: Long) {
+        viewModelScope.launch {
+            repository.restoreSong(id)
+        }
+    }
+
+    fun permanentDeleteSong(id: Long) {
+        viewModelScope.launch {
+            repository.permanentDeleteSong(id)
+        }
+    }
+
+    fun emptyTrash() {
+        viewModelScope.launch {
+            repository.emptyTrash()
+        }
+    }
+
+    fun updateSongDetails(
+        id: Long,
+        title: String,
+        artist: String?,
+        tags: String,
+        rawContent: String,
+        key: String?,
+        capo: String?
+    ) {
+        viewModelScope.launch {
+            repository.updateSongDetails(id, title, artist, tags, rawContent, key, capo)
+            val current = _uiState.value as? SongViewerState.Loaded
+            if (current != null && current.songEntityId == id) {
+                val parsedOriginal = SongParser.parse(rawContent, defaultTitle = title).let { base ->
+                    base.copy(
+                        title = title,
+                        artist = artist?.takeIf { it.isNotBlank() } ?: base.artist,
+                        key = key?.takeIf { it.isNotBlank() } ?: base.key,
+                        capo = capo?.takeIf { it.isNotBlank() } ?: base.capo
+                    )
+                }
+                val transposed = if (current.transposeOffset != 0) {
+                    TransposeEngine.transposeSong(parsedOriginal, current.transposeOffset)
+                } else {
+                    parsedOriginal
+                }
+                _uiState.value = current.copy(
+                    song = transposed,
+                    originalSong = parsedOriginal,
+                    fileName = title,
+                    rawContent = rawContent,
+                    tags = tags
+                )
+                broadcastSongIfHost(transposed, rawContent, id)
             }
         }
     }
@@ -789,7 +858,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                     fileName = defaultTitle,
                     songEntityId = entityId,
                     isFavorite = savedEntity?.isFavorite ?: false,
-                    transposeOffset = 0
+                    transposeOffset = 0,
+                    rawContent = rawContent,
+                    tags = tags
                 )
                 broadcastSongIfHost(parsed, rawContent, entityId)
             }
@@ -818,7 +889,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                     fileName = defaultTitle,
                     songEntityId = msg.songId ?: 0L,
                     isFavorite = false,
-                    transposeOffset = 0
+                    transposeOffset = 0,
+                    rawContent = msg.rawContent,
+                    tags = ""
                 )
             }
             is SyncMessage.ScrollSync -> {

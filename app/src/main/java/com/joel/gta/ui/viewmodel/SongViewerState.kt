@@ -13,6 +13,8 @@ sealed class SongViewerState {
         val songEntityId: Long? = null,
         val isFavorite: Boolean = false,
         val transposeOffset: Int = 0,
+        val rawContent: String = "",
+        val tags: String = "",
         val setlistId: Long? = null,
         val setlistName: String? = null,
         val setlistSongs: List<SongEntity> = emptyList(),

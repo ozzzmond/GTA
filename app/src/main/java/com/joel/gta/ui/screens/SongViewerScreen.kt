@@ -52,6 +52,8 @@ import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.model.ParsedSong
 import com.joel.gta.data.model.SongLine
 import com.joel.gta.data.parser.SongParser
+import com.joel.gta.data.scraper.ScrapedSong
+import com.joel.gta.ui.components.PreSaveSongReviewDialog
 import com.joel.gta.ui.components.StageToolsDialog
 import com.joel.gta.ui.theme.ChordMonospaceStyle
 import com.joel.gta.ui.theme.LocalGtaColors
@@ -106,6 +108,10 @@ fun SongViewerScreen(
     onStartBandClient: () -> Unit = {},
     onConnectBandHost: (String) -> Unit = {},
     onStopBandSync: () -> Unit = {},
+    songEntityId: Long? = null,
+    rawContent: String = "",
+    tags: String = "",
+    onUpdateSongDetails: (id: Long, title: String, artist: String?, tags: String, rawContent: String, key: String?, capo: String?) -> Unit = { _, _, _, _, _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -148,6 +154,7 @@ fun SongViewerScreen(
     }
     var showSetlistDialog by remember { mutableStateOf(false) }
     var showStageToolsDialog by remember { mutableStateOf(false) }
+    var showEditSongDialog by remember { mutableStateOf(false) }
     var showSpeedInputDialog by remember { mutableStateOf(false) }
     var newSetlistName by remember { mutableStateOf("") }
     var isCreatingSetlist by remember { mutableStateOf(false) }
@@ -348,6 +355,17 @@ fun SongViewerScreen(
                                     imageVector = Icons.Default.SkipNext,
                                     contentDescription = "Next Song in Setlist",
                                     tint = if (hasNextSong) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.35f)
+                                )
+                            }
+                        }
+
+                        // Songbook Editor: Pencil icon if saved song
+                        if (songEntityId != null) {
+                            IconButton(onClick = { showEditSongDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Song in Songbook",
+                                    tint = customColors.textPrimary
                                 )
                             }
                         }
@@ -1382,6 +1400,36 @@ fun SongViewerScreen(
             onStartBandClient = onStartBandClient,
             onConnectBandHost = onConnectBandHost,
             onStopBandSync = onStopBandSync
+        )
+    }
+
+    // Songbook Editor Dialog (PreSaveSongReviewDialog with prefilled content and tags)
+    if (showEditSongDialog && songEntityId != null) {
+        PreSaveSongReviewDialog(
+            scrapedSong = ScrapedSong(
+                title = song.title,
+                artist = song.artist,
+                key = originalKey ?: song.key,
+                capo = currentCapo,
+                rawContent = rawContent.ifBlank { song.title },
+                sourceUrl = ""
+            ),
+            dialogTitle = "Edit Song: ${song.title}",
+            saveButtonText = "Save Changes",
+            initialTags = tags,
+            onDismiss = { showEditSongDialog = false },
+            onSave = { updatedTitle, updatedArtist, updatedContent, updatedKey, updatedCapo, updatedTags ->
+                onUpdateSongDetails(
+                    songEntityId,
+                    updatedTitle,
+                    updatedArtist,
+                    updatedTags,
+                    updatedContent,
+                    updatedKey,
+                    updatedCapo
+                )
+                showEditSongDialog = false
+            }
         )
     }
 }

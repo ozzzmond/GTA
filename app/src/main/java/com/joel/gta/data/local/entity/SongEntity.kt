@@ -9,6 +9,7 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["title"]),
         Index(value = ["isFavorite"]),
+        Index(value = ["isDeleted"]),
         Index(value = ["lastOpenedAt"]),
         Index(value = ["createdAt"])
     ]
@@ -25,6 +26,7 @@ data class SongEntity(
     val isFavorite: Boolean = false,
     val transposeOffset: Int = 0,
     val tags: String = "",
+    val isDeleted: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val lastOpenedAt: Long = System.currentTimeMillis()
 ) {

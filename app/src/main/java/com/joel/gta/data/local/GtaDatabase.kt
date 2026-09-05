@@ -16,7 +16,7 @@ import com.joel.gta.data.local.entity.SongEntity
         SetlistEntity::class,
         SetlistSongCrossRef::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class GtaDatabase : RoomDatabase() {
@@ -34,6 +34,13 @@ abstract class GtaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE songs ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_songs_isDeleted ON songs(isDeleted)")
+            }
+        }
+
         fun getDatabase(context: Context): GtaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -41,7 +48,7 @@ abstract class GtaDatabase : RoomDatabase() {
                     GtaDatabase::class.java,
                     "gta_database.db"
                 )
-                .addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

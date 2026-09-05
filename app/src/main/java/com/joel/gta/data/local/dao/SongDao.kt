@@ -7,11 +7,14 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SongDao {
 
-    @Query("SELECT * FROM songs ORDER BY lastOpenedAt DESC")
+    @Query("SELECT * FROM songs WHERE isDeleted = 0 ORDER BY lastOpenedAt DESC")
     fun getAllSongs(): Flow<List<SongEntity>>
 
-    @Query("SELECT * FROM songs WHERE isFavorite = 1 ORDER BY lastOpenedAt DESC")
+    @Query("SELECT * FROM songs WHERE isDeleted = 0 AND isFavorite = 1 ORDER BY lastOpenedAt DESC")
     fun getFavoriteSongs(): Flow<List<SongEntity>>
+
+    @Query("SELECT * FROM songs WHERE isDeleted = 1 ORDER BY lastOpenedAt DESC")
+    fun getDeletedSongs(): Flow<List<SongEntity>>
 
     @Query("SELECT * FROM songs WHERE id = :id LIMIT 1")
     suspend fun getSongById(id: Long): SongEntity?
@@ -37,6 +40,29 @@ interface SongDao {
     @Query("UPDATE songs SET tags = :tags WHERE id = :id")
     suspend fun updateTags(id: Long, tags: String)
 
+    @Query("UPDATE songs SET title = :title, artist = :artist, tags = :tags, rawContent = :rawContent, key = :key, capo = :capo, lastOpenedAt = :timestamp WHERE id = :id")
+    suspend fun updateSongDetails(
+        id: Long,
+        title: String,
+        artist: String?,
+        tags: String,
+        rawContent: String,
+        key: String?,
+        capo: String?,
+        timestamp: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE songs SET isDeleted = 1 WHERE id = :id")
+    suspend fun softDeleteSong(id: Long)
+
+    @Query("UPDATE songs SET isDeleted = 0 WHERE id = :id")
+    suspend fun restoreSong(id: Long)
+
+    @Query("DELETE FROM songs WHERE id = :id")
+    suspend fun permanentDeleteSong(id: Long)
+
+    @Query("DELETE FROM songs WHERE isDeleted = 1")
+    suspend fun emptyTrash()
 
     @Query("UPDATE songs SET lastOpenedAt = :timestamp WHERE id = :id")
     suspend fun updateLastOpened(id: Long, timestamp: Long = System.currentTimeMillis())

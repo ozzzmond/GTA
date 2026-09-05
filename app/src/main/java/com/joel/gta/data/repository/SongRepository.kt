@@ -19,6 +19,7 @@ class SongRepository(private val database: GtaDatabase) {
 
     val allSongs: Flow<List<SongEntity>> = songDao.getAllSongs()
     val favoriteSongs: Flow<List<SongEntity>> = songDao.getFavoriteSongs()
+    val deletedSongs: Flow<List<SongEntity>> = songDao.getDeletedSongs()
     
     val allSetlists: Flow<List<SetlistWithSongs>> = setlistDao.getAllSetlistsWithSongs()
         .combine(setlistDao.getAllCrossRefs()) { setlists, crossRefs ->
@@ -56,6 +57,7 @@ class SongRepository(private val database: GtaDatabase) {
                 format = song.format.name,
                 transposeOffset = transposeOffset,
                 tags = if (tags.isNotBlank()) tags else existing.tags,
+                isDeleted = false,
                 lastOpenedAt = System.currentTimeMillis()
             )
             songDao.updateSong(updated)
@@ -98,7 +100,35 @@ class SongRepository(private val database: GtaDatabase) {
 
 
     suspend fun deleteSong(song: SongEntity) = withContext(Dispatchers.IO) {
-        songDao.deleteSong(song)
+        songDao.softDeleteSong(song.id)
+    }
+
+    suspend fun softDeleteSong(id: Long) = withContext(Dispatchers.IO) {
+        songDao.softDeleteSong(id)
+    }
+
+    suspend fun restoreSong(id: Long) = withContext(Dispatchers.IO) {
+        songDao.restoreSong(id)
+    }
+
+    suspend fun permanentDeleteSong(id: Long) = withContext(Dispatchers.IO) {
+        songDao.permanentDeleteSong(id)
+    }
+
+    suspend fun emptyTrash() = withContext(Dispatchers.IO) {
+        songDao.emptyTrash()
+    }
+
+    suspend fun updateSongDetails(
+        id: Long,
+        title: String,
+        artist: String?,
+        tags: String,
+        rawContent: String,
+        key: String?,
+        capo: String?
+    ) = withContext(Dispatchers.IO) {
+        songDao.updateSongDetails(id, title, artist, tags, rawContent, key, capo)
     }
 
     suspend fun createSetlist(name: String): Long = withContext(Dispatchers.IO) {

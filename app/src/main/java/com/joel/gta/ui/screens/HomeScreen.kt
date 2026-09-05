@@ -42,7 +42,8 @@ import com.joel.gta.ui.viewmodel.WebImportUiState
 enum class HomeTab {
     SONGBOOK,
     SETLISTS,
-    IMPORT
+    IMPORT,
+    TRASH
 }
 
 enum class SongSortOrder(val label: String) {
@@ -99,6 +100,10 @@ fun HomeScreen(
     onStartBandClient: () -> Unit = {},
     onConnectBandHost: (String) -> Unit = {},
     onStopBandSync: () -> Unit = {},
+    deletedSongs: List<SongEntity> = emptyList(),
+    onRestoreSong: (Long) -> Unit = {},
+    onPermanentDeleteSong: (Long) -> Unit = {},
+    onEmptyTrash: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -256,6 +261,17 @@ fun HomeScreen(
                             )
                         },
                         icon = { Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    Tab(
+                        selected = selectedTab == HomeTab.TRASH,
+                        onClick = { onTabSelected(HomeTab.TRASH) },
+                        text = {
+                            Text(
+                                text = "Trash (${deletedSongs.size})",
+                                fontWeight = if (selectedTab == HomeTab.TRASH) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        icon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     )
                 }
             }
@@ -1279,6 +1295,15 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(32.dp))
                     }
                 }
+
+                HomeTab.TRASH -> {
+                    TrashTabContent(
+                        deletedSongs = deletedSongs,
+                        onRestoreSong = onRestoreSong,
+                        onPermanentDeleteSong = onPermanentDeleteSong,
+                        onEmptyTrash = onEmptyTrash
+                    )
+                }
             }
         }
     }
@@ -1996,6 +2021,271 @@ private fun SpecPill(icon: ImageVector, label: String) {
             style = MaterialTheme.typography.labelSmall,
             color = customColors.textSecondary,
             fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun TrashTabContent(
+    deletedSongs: List<SongEntity>,
+    onRestoreSong: (Long) -> Unit,
+    onPermanentDeleteSong: (Long) -> Unit,
+    onEmptyTrash: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val customColors = LocalGtaColors.current
+    var showEmptyTrashConfirmDialog by remember { mutableStateOf(false) }
+    var songToPermanentDelete by remember { mutableStateOf<SongEntity?>(null) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+    ) {
+        if (deletedSongs.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(customColors.surfaceBackground),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = null,
+                            tint = customColors.textSecondary.copy(alpha = 0.6f),
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Trash is Empty",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = customColors.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Songs deleted from your Songbook will appear here.\nYou can restore them anytime or delete them permanently.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            // Header with count and Empty Trash button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Recycle Bin",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = customColors.textPrimary
+                    )
+                    Text(
+                        text = "${deletedSongs.size} deleted ${if (deletedSongs.size == 1) "song" else "songs"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary
+                    )
+                }
+
+                Button(
+                    onClick = { showEmptyTrashConfirmDialog = true },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE53935).copy(alpha = 0.15f),
+                        contentColor = Color(0xFFEF5350)
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteForever,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Empty Trash",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(deletedSongs, key = { it.id }) { entity ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = entity.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textPrimary
+                                )
+                                val subtitle = listOfNotNull(
+                                    entity.artist?.takeIf { it.isNotBlank() },
+                                    entity.key?.let { "Key: $it" }
+                                ).joinToString(" • ")
+
+                                if (subtitle.isNotBlank()) {
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = customColors.textSecondary
+                                    )
+                                }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                // Restore Button
+                                FilledTonalButton(
+                                    onClick = { onRestoreSong(entity.id) },
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = customColors.chordAccent.copy(alpha = 0.2f),
+                                        contentColor = customColors.chordAccent
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Restore,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Restore",
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+
+                                // Delete Forever Button
+                                IconButton(onClick = { songToPermanentDelete = entity }) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteForever,
+                                        contentDescription = "Delete Permanently",
+                                        tint = Color(0xFFEF5350),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Confirmation dialog for Empty Trash
+    if (showEmptyTrashConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showEmptyTrashConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Empty Trash?",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "This will permanently delete all ${deletedSongs.size} songs in the Trash. This action cannot be undone.",
+                    color = customColors.textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onEmptyTrash()
+                        showEmptyTrashConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFD32F2F),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Delete All Permanently", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEmptyTrashConfirmDialog = false }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            }
+        )
+    }
+
+    // Confirmation dialog for single song permanent delete
+    songToPermanentDelete?.let { song ->
+        AlertDialog(
+            onDismissRequest = { songToPermanentDelete = null },
+            title = {
+                Text(
+                    text = "Delete Permanently?",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to permanently delete \"${song.title}\"? This cannot be undone.",
+                    color = customColors.textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onPermanentDeleteSong(song.id)
+                        songToPermanentDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFD32F2F),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Delete Permanently", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { songToPermanentDelete = null }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            }
         )
     }
 }
