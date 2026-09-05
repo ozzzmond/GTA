@@ -163,4 +163,14 @@ class SongRepository(private val database: GtaDatabase) {
     suspend fun deleteSetlist(setlist: SetlistEntity) = withContext(Dispatchers.IO) {
         setlistDao.deleteSetlist(setlist)
     }
+
+    suspend fun createBackupPayload(appVersion: String): String = withContext(Dispatchers.IO) {
+        val allSongs = songDao.getAllSongsDirect()
+        val allSetlists = setlistDao.getAllSetlistsWithSongsDirect()
+        com.joel.gta.data.backup.BackupManager.createBackupJson(allSongs, allSetlists, appVersion)
+    }
+
+    suspend fun restoreBackup(jsonString: String): com.joel.gta.data.backup.RestoreSummary = withContext(Dispatchers.IO) {
+        com.joel.gta.data.backup.BackupManager.restoreBackup(jsonString, songDao, setlistDao)
+    }
 }

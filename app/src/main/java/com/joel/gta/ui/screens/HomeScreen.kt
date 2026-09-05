@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joel.gta.BuildConfig
+import com.joel.gta.data.backup.BackupManager
 import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.local.entity.SongEntity
 import com.joel.gta.ui.components.GtaBrandLogo
@@ -106,6 +107,9 @@ fun HomeScreen(
     onRestoreSong: (Long) -> Unit = {},
     onPermanentDeleteSong: (Long) -> Unit = {},
     onEmptyTrash: () -> Unit = {},
+    onExportBackupShare: () -> Unit = {},
+    onExportBackupSaf: (Uri) -> Unit = {},
+    onRestoreBackup: (Uri) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -128,7 +132,7 @@ fun HomeScreen(
     var showCreateSetlistDialog by remember { mutableStateOf(false) }
     var newSetlistName by remember { mutableStateOf("") }
     var showStageToolsDialog by remember { mutableStateOf(false) }
-
+    var showBackupRestoreMenu by remember { mutableStateOf(false) }
 
     // SAF Document Picker launcher - accepts .txt, .chordtxt, or all text formats
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -145,6 +149,24 @@ fun HomeScreen(
     ) { uri: Uri? ->
         if (uri != null) {
             onFolderSelected(uri)
+        }
+    }
+
+    // SAF Backup Restore Picker launcher - accepts .json files
+    val backupPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onRestoreBackup(uri)
+        }
+    }
+
+    // SAF Backup Save launcher - creates .json file in user selected directory
+    val backupSaveSafLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onExportBackupSaf(uri)
         }
     }
 
@@ -227,6 +249,81 @@ fun HomeScreen(
                                 contentDescription = "Toggle Theme: $currentThemeName",
                                 tint = customColors.chordAccent
                             )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Backup & Restore Overflow Menu
+                        Box {
+                            IconButton(
+                                onClick = { showBackupRestoreMenu = true },
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(customColors.surfaceBackground)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Backup & Restore Options",
+                                    tint = customColors.chordAccent
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showBackupRestoreMenu,
+                                onDismissRequest = { showBackupRestoreMenu = false },
+                                containerColor = customColors.surfaceBackground
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Export Backup (Share / Google Drive)") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.CloudUpload,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        onExportBackupShare()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Save Backup to Device (.json)") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Save,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        backupSaveSafLauncher.launch(BackupManager.generateBackupFileName())
+                                    }
+                                )
+                                HorizontalDivider(color = customColors.divider)
+                                DropdownMenuItem(
+                                    text = { Text("Restore from Backup (Smart Merge)") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.CloudDownload,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        backupPickerLauncher.launch(
+                                            arrayOf(
+                                                "application/json",
+                                                "application/octet-stream",
+                                                "text/plain",
+                                                "*/*"
+                                            )
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -1295,6 +1392,146 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text(
                                         text = "Import Song Folder",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 3. Cloud Backup & Smart Restore Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
+                            shape = RoundedCornerShape(20.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(customColors.chordAccent.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudSync,
+                                        contentDescription = null,
+                                        tint = customColors.chordAccent,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Text(
+                                    text = "Backup & Restore (Smart Merge)",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textPrimary,
+                                    textAlign = TextAlign.Center
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "Export active songs, soft-deleted songs, and setlists into a single JSON file. On restore, songs are merged by Title + Artist without deleting existing records.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = customColors.textSecondary,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 20.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                // Export Backup Button (Share Sheet: Drive / Cloud / Local)
+                                Button(
+                                    onClick = onExportBackupShare,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = customColors.chordAccent,
+                                        contentColor = Color.Black
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudUpload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Export Backup (Share / Google Drive)",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Save via SAF Button
+                                OutlinedButton(
+                                    onClick = { backupSaveSafLauncher.launch(BackupManager.generateBackupFileName()) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = customColors.textPrimary
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Save,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Save Backup to Device (.json)",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Restore from Backup Button
+                                OutlinedButton(
+                                    onClick = {
+                                        backupPickerLauncher.launch(
+                                            arrayOf(
+                                                "application/json",
+                                                "application/octet-stream",
+                                                "text/plain",
+                                                "*/*"
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = customColors.chordAccent
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Restore from Backup (.json)",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )

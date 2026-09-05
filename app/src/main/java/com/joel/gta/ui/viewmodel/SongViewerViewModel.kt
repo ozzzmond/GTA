@@ -17,6 +17,9 @@ import com.joel.gta.data.local.entity.SongEntity
 import com.joel.gta.data.parser.SongParser
 import com.joel.gta.data.repository.SongRepository
 import com.joel.gta.ui.screens.HomeTab
+import com.joel.gta.BuildConfig
+import com.joel.gta.data.backup.BackupManager
+import com.joel.gta.data.backup.RestoreSummary
 import com.joel.gta.ui.theme.AppThemeMode
 import com.joel.gta.ui.theme.CustomStageColors
 import kotlinx.coroutines.Dispatchers
@@ -940,6 +943,45 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
 
     fun stopBandSync() {
         bandSyncManager.stopAll()
+    }
+
+    fun exportBackup(context: Context, onShareReady: (Intent) -> Unit) {
+        viewModelScope.launch {
+            val jsonString = repository.createBackupPayload(BuildConfig.VERSION_NAME)
+            val shareIntent = BackupManager.createShareIntent(context, jsonString)
+            onShareReady(shareIntent)
+        }
+    }
+
+    fun exportBackupToSaf(context: Context, destinationUri: Uri, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val jsonString = repository.createBackupPayload(BuildConfig.VERSION_NAME)
+                val success = BackupManager.writeToSafUri(context, destinationUri, jsonString)
+                if (success) {
+                    onSuccess("Backup saved successfully!")
+                } else {
+                    onError("Failed to save backup file.")
+                }
+            } catch (e: Exception) {
+                onError("Export error: ${e.localizedMessage ?: "Unknown error"}")
+            }
+        }
+    }
+
+    fun restoreBackupFromUri(context: Context, uri: Uri, onResult: (RestoreSummary) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val jsonString = context.contentResolver.openInputStream(uri)?.use { stream ->
+                    stream.bufferedReader(Charsets.UTF_8).readText()
+                } ?: throw IllegalArgumentException("Cannot open backup file")
+
+                val summary = repository.restoreBackup(jsonString)
+                onResult(summary)
+            } catch (e: Exception) {
+                onError("Restore error: ${e.localizedMessage ?: "Invalid JSON backup"}")
+            }
+        }
     }
 
     override fun onCleared() {

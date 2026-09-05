@@ -13,6 +13,13 @@ interface SetlistDao {
     @Query("SELECT * FROM setlists ORDER BY createdAt DESC")
     fun getAllSetlistsWithSongs(): Flow<List<SetlistWithSongs>>
 
+    @Transaction
+    @Query("SELECT * FROM setlists ORDER BY createdAt DESC")
+    suspend fun getAllSetlistsWithSongsDirect(): List<SetlistWithSongs>
+
+    @Query("SELECT * FROM setlists")
+    suspend fun getAllSetlistsDirect(): List<SetlistEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSetlist(setlist: SetlistEntity): Long
 

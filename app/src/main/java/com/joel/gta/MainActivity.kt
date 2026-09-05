@@ -1,7 +1,9 @@
 package com.joel.gta
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -138,7 +140,40 @@ class MainActivity : ComponentActivity() {
                             onToggleTheme = {
                                 showStageThemeDialog = true
                             },
-                            currentThemeName = themeMode.name
+                            currentThemeName = themeMode.name,
+                            onExportBackupShare = {
+                                viewModel.exportBackup(context) { shareIntent ->
+                                    context.startActivity(Intent.createChooser(shareIntent, "Save or Share GTA Backup"))
+                                }
+                            },
+                            onExportBackupSaf = { destUri ->
+                                viewModel.exportBackupToSaf(
+                                    context = context,
+                                    destinationUri = destUri,
+                                    onSuccess = { msg ->
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    },
+                                    onError = { err ->
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            },
+                            onRestoreBackup = { srcUri ->
+                                viewModel.restoreBackupFromUri(
+                                    context = context,
+                                    uri = srcUri,
+                                    onResult = { summary ->
+                                        Toast.makeText(
+                                            context,
+                                            "${summary.songsRestored} songs and ${summary.setlistsRestored} setlists restored/merged!",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    },
+                                    onError = { err ->
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            }
                         )
                     }
 
