@@ -263,4 +263,41 @@ class WebScraperEngineTest {
         assertTrue(song.hasTag("90s rock"))
         assertFalse(song.hasTag("Acoustic"))
     }
+
+    @Test
+    fun testScrapeUrlInputSafety() = kotlinx.coroutines.runBlocking {
+        // Plain text should safely fail without throwing unhandled URISyntaxException
+        val plainTextResult = WebScraperEngine.scrapeUrl("Kamukha mo si Paraluman")
+        assertTrue(plainTextResult.isFailure)
+        val msg = plainTextResult.exceptionOrNull()?.message ?: ""
+        assertTrue(msg.contains("not a valid web URL") || msg.contains("Song Search Bar"))
+
+        // Blank input should safely fail
+        val blankResult = WebScraperEngine.scrapeUrl("   ")
+        assertTrue(blankResult.isFailure)
+    }
+
+    @Test
+    fun testParseOpmTunes() {
+        val html = """
+            <!DOCTYPE html>
+            <html>
+            <head><title>Harana Chords - Parokya ni Edgar | OPMTunes.com</title></head>
+            <body>
+              <pre>
+                G                 C
+                Uso pa ba ang harana?
+                G                 C
+                Marahil ikaw ay nagtataka
+              </pre>
+            </body>
+            </html>
+        """.trimIndent()
+
+        val doc = org.jsoup.Jsoup.parse(html)
+        val scraped = WebScraperEngine.parseOpmTunes(doc, "https://www.opmtunes.com/songs/parokya-ni-edgar/harana")
+        assertEquals("Harana", scraped.title)
+        assertEquals("Parokya ni Edgar", scraped.artist)
+        assertTrue(scraped.rawContent.contains("Uso pa ba ang harana"))
+    }
 }

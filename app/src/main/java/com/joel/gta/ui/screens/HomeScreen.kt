@@ -17,6 +17,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -91,6 +93,7 @@ fun HomeScreen(
     onDismissWebReview: () -> Unit = {},
     onSaveWebReviewSong: (title: String, artist: String?, rawContent: String, key: String?, capo: String?, tags: String) -> Unit = { _, _, _, _, _, _ -> },
     onUpdateSongTags: (Long, String) -> Unit = { _, _ -> },
+    onPrepareScrapedSong: (com.joel.gta.data.scraper.ScrapedSong) -> Unit = {},
     bandSyncState: com.joel.gta.data.sync.BandSyncState = com.joel.gta.data.sync.BandSyncState(),
     onStartBandHost: () -> Unit = {},
     onStartBandClient: () -> Unit = {},
@@ -103,6 +106,11 @@ fun HomeScreen(
     var showOnlyFavorites by remember { mutableStateOf(false) }
     var selectedTag by remember { mutableStateOf<String?>(null) }
     var editingSongForTags by remember { mutableStateOf<SongEntity?>(null) }
+
+    var browserInitialUrl by remember { mutableStateOf<String?>(null) }
+    var browserSourceName by remember { mutableStateOf("") }
+    var showAddSourceDialog by remember { mutableStateOf(false) }
+    var customSourceUrlInput by remember { mutableStateOf("") }
 
     var songSortOrder by remember { mutableStateOf(SongSortOrder.TITLE_ASC) }
     var showSongSortMenu by remember { mutableStateOf(false) }
@@ -348,7 +356,7 @@ fun HomeScreen(
                                         .background(customColors.surfaceBackground)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.Sort,
+                                        imageVector = Icons.AutoMirrored.Filled.Sort,
                                         contentDescription = "Sort Songs (${songSortOrder.label})",
                                         tint = customColors.chordAccent
                                     )
@@ -539,7 +547,7 @@ fun HomeScreen(
                                             .background(customColors.surfaceBackground)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Filled.Sort,
+                                            imageVector = Icons.AutoMirrored.Filled.Sort,
                                             contentDescription = "Sort Setlists (${setlistSortOrder.label})",
                                             tint = customColors.chordAccent
                                         )
@@ -926,6 +934,122 @@ fun HomeScreen(
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Browse External Song Sources (CCLI SongSelect, UG, Chordie, OPMTunes, Custom)
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
+                            shape = RoundedCornerShape(16.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(customColors.chordAccent.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Language,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Browse External Song Sources",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = customColors.textPrimary
+                                        )
+                                        Text(
+                                            text = "In-app browser with 1-tap 'Import Song' button",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = customColors.textSecondary
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                val externalSources = listOf(
+                                    Triple("songselect.ccli.com", "https://songselect.ccli.com", "Praise & Worship / Church Chords"),
+                                    Triple("ultimate-guitar.com", "https://www.ultimate-guitar.com", "Global chords & tabs catalog"),
+                                    Triple("chordie.com", "https://www.chordie.com", "Direct ChordPro catalog"),
+                                    Triple("opmtunes.com", "https://www.opmtunes.com", "OPM hits & Pinoy classics")
+                                )
+
+                                externalSources.forEach { (name, url, desc) ->
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                            .clickable {
+                                                browserSourceName = name
+                                                browserInitialUrl = url
+                                            },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = customColors.canvasBackground,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Public,
+                                                contentDescription = null,
+                                                tint = customColors.chordAccent,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = name,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = customColors.textPrimary,
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                                Text(
+                                                    text = desc,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = customColors.textSecondary
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                                contentDescription = "Open",
+                                                tint = customColors.textSecondary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // + Add Source (Custom URL)
+                                OutlinedButton(
+                                    onClick = { showAddSourceDialog = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent.copy(alpha = 0.5f))
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("+ Add Source (Custom URL)", color = customColors.chordAccent, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -1384,6 +1508,76 @@ fun HomeScreen(
             }
         )
     }
+
+    // In-App Song Browser Dialog (CCLI SongSelect, Ultimate-Guitar, Chordie, OPMTunes, etc.)
+    browserInitialUrl?.let { url ->
+        com.joel.gta.ui.components.InAppSongBrowserDialog(
+            initialUrl = url,
+            sourceName = browserSourceName,
+            onDismissRequest = { browserInitialUrl = null },
+            onSongCaptured = { captured ->
+                browserInitialUrl = null
+                onPrepareScrapedSong(captured)
+            }
+        )
+    }
+
+    // Add Custom Song Source Dialog
+    if (showAddSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddSourceDialog = false },
+            title = {
+                Text(
+                    text = "Open Custom Song Source",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter website or chord page URL. You can browse and use the 1-tap 'Import Song' button on any page:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = customSourceUrlInput,
+                        onValueChange = { customSourceUrlInput = it },
+                        placeholder = { Text("https://my-chords-website.com") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val input = customSourceUrlInput.trim()
+                        if (input.isNotBlank()) {
+                            val validUrl = if (!input.startsWith("http://", ignoreCase = true) && !input.startsWith("https://", ignoreCase = true)) {
+                                "https://$input"
+                            } else input
+                            browserSourceName = "Custom Source"
+                            browserInitialUrl = validUrl
+                            showAddSourceDialog = false
+                            customSourceUrlInput = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent)
+                ) {
+                    Text("Browse", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddSourceDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = customColors.surfaceBackground,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
 }
 
 @Composable
@@ -1460,7 +1654,7 @@ private fun SongCard(
             // Edit Tags button
             IconButton(onClick = onEditTags) {
                 Icon(
-                    imageVector = Icons.Default.Label,
+                    imageVector = Icons.Default.LocalOffer,
                     contentDescription = "Edit Tags",
                     tint = if (entity.tags.isNotBlank()) customColors.chordAccent else customColors.textSecondary,
                     modifier = Modifier.size(20.dp)

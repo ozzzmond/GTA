@@ -741,6 +741,17 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
+     * Web Import Suite: Sets captured or scraped song to trigger the PreSaveSongReviewDialog.
+     */
+    fun prepareSongFromScraped(scraped: com.joel.gta.data.scraper.ScrapedSong) {
+        _webImportState.value = _webImportState.value.copy(
+            isLoading = false,
+            error = null,
+            pendingSong = scraped
+        )
+    }
+
+    /**
      * Saves reviewed song into local Room DB and optionally loads into viewer.
      */
     fun saveSongFromReview(

@@ -38,7 +38,20 @@ object WebScraperEngine {
      */
     suspend fun scrapeUrl(rawUrl: String): Result<ScrapedSong> = withContext(Dispatchers.IO) {
         try {
-            val normalizedUrl = normalizeUrl(rawUrl)
+            val trimmed = rawUrl.trim()
+            if (trimmed.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Please enter a valid song URL."))
+            }
+
+            // Input Safety: validate URL structure without crashing on plain text or spaces
+            val normalizedUrl = normalizeUrl(trimmed)
+            val uri = runCatching { URI(normalizedUrl) }.getOrNull()
+            if (uri == null || uri.host.isNullOrBlank() || !uri.host.contains(".") || normalizedUrl.contains(" ")) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("'$trimmed' is not a valid web URL. To search by song title or artist, use the Song Search Bar above!")
+                )
+            }
+
             val doc = Jsoup.connect(normalizedUrl)
                 .userAgent(USER_AGENT)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -47,12 +60,13 @@ object WebScraperEngine {
                 .followRedirects(true)
                 .get()
 
-            val host = runCatching { URI(normalizedUrl).host?.lowercase() }.getOrNull() ?: ""
+            val host = uri.host?.lowercase() ?: ""
             val scraped = when {
                 host.contains("ultimate-guitar.com") -> parseUltimateGuitar(doc, normalizedUrl)
                 host.contains("chordie.com") -> parseChordie(doc, normalizedUrl)
                 host.contains("e-chords.com") -> parseEChords(doc, normalizedUrl)
                 host.contains("songsterr.com") -> parseSongsterr(doc, normalizedUrl)
+                host.contains("opmtunes.com") -> parseOpmTunes(doc, normalizedUrl)
                 else -> parseGeneric(doc, normalizedUrl)
             }
 
@@ -358,10 +372,33 @@ object WebScraperEngine {
             .replace(Regex("""(?i)\s*@\s*Chordie(\.Com)?"""), "")
             .replace(Regex("""(?i)\s*\|\s*E-Chords(\.Com)?"""), "")
             .replace(Regex("""(?i)\s*\|\s*Songsterr"""), "")
+            .replace(Regex("""(?i)\s*\|\s*OPMTunes(\.com)?"""), "")
+            .replace(Regex("""(?i)\s*\|\s*SongSelect"""), "")
             .replace(Regex("""(?i)\s*Chords\s*&\s*Tabs"""), "")
             .replace(Regex("""(?i)\s*Tabs\s*&\s*Chords"""), "")
             .replace(Regex("""(?i)\s*Guitar\s*(Chords|Tabs)"""), "")
             .trim()
+    }
+
+    /**
+     * OPMTunes Scraper:
+     * Extracts chords and lyrics from OPMTunes pages.
+     */
+    internal fun parseOpmTunes(doc: Document, url: String): ScrapedSong {
+        val (detectedTitle, detectedArtist) = extractTitleFromDoc(doc)
+        val pre = doc.selectFirst("pre")?.text()
+        val content = if (!pre.isNullOrBlank()) {
+            pre
+        } else {
+            val chordDiv = doc.selectFirst(".song-content, .chord-content, #song_content, .entry-content")
+            chordDiv?.text() ?: ""
+        }
+        return ScrapedSong(
+            title = detectedTitle,
+            artist = detectedArtist,
+            rawContent = content.trim(),
+            sourceUrl = url
+        )
     }
 
     /**

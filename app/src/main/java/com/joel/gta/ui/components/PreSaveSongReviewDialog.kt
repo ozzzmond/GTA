@@ -243,12 +243,12 @@ fun PreSaveSongReviewDialog(
                             unfocusedTextColor = customColors.textPrimary
                         ),
                         leadingIcon = {
-                            Icon(Icons.Default.Label, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.LocalOffer, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(18.dp))
                         }
                     )
 
                     // Quick tag suggestions
-                    val quickTags = listOf("OPM", "Acoustic", "Rock", "Slow Rock", "Pop", "Encore")
+                    val quickTags = listOf("Worship", "OPM", "Acoustic", "Rock", "Slow Rock", "Encore")
                     androidx.compose.foundation.lazy.LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.weight(1.2f)

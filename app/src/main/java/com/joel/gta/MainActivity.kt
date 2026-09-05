@@ -95,6 +95,9 @@ class MainActivity : ComponentActivity() {
                             onUpdateSongTags = { songId, tags ->
                                 viewModel.updateSongTags(songId, tags)
                             },
+                            onPrepareScrapedSong = { scraped ->
+                                viewModel.prepareSongFromScraped(scraped)
+                            },
                             bandSyncState = bandSyncState,
                             onStartBandHost = { viewModel.startBandHost() },
                             onStartBandClient = { viewModel.startBandClient() },
