@@ -13,7 +13,22 @@ sealed class SyncMessage {
         val rawContent: String,
         val key: String? = null,
         val capo: String? = null,
-        val songId: Long? = null
+        val songId: Long? = null,
+        val setlistIndex: Int? = null
+    ) : SyncMessage()
+
+    /**
+     * Broadcast by the Host when navigating songs in Setlist Mode
+     * (via swipe gesture, next/prev buttons, or Bluetooth pedal footswitch).
+     */
+    data class SongChange(
+        val songId: Long? = null,
+        val setlistIndex: Int = 0,
+        val title: String = "",
+        val artist: String? = null,
+        val rawContent: String = "",
+        val key: String? = null,
+        val capo: String? = null
     ) : SyncMessage()
 
     /**
@@ -47,6 +62,7 @@ sealed class SyncMessage {
 
     companion object {
         private const val TYPE_SONG = "SONG"
+        private const val TYPE_SONG_CHANGE = "SONG_CHANGE"
         private const val TYPE_SCROLL = "SCROLL"
         private const val TYPE_TEMPO = "TEMPO"
         private const val TYPE_JOIN = "JOIN"
@@ -66,6 +82,21 @@ sealed class SyncMessage {
                     json.put("key", message.key ?: "")
                     json.put("capo", message.capo ?: "")
                     if (message.songId != null) json.put("id", message.songId)
+                    if (message.setlistIndex != null) json.put("setlistIndex", message.setlistIndex)
+                }
+                is SongChange -> {
+                    json.put("type", TYPE_SONG_CHANGE)
+                    if (message.songId != null) {
+                        json.put("songId", message.songId)
+                        json.put("id", message.songId)
+                    }
+                    json.put("setlistIndex", message.setlistIndex)
+                    json.put("title", message.title)
+                    if (!message.artist.isNullOrBlank()) json.put("artist", message.artist)
+                    json.put("content", message.rawContent)
+                    json.put("rawContent", message.rawContent)
+                    if (!message.key.isNullOrBlank()) json.put("key", message.key)
+                    if (!message.capo.isNullOrBlank()) json.put("capo", message.capo)
                 }
                 is ScrollSync -> {
                     json.put("type", TYPE_SCROLL)
@@ -101,8 +132,30 @@ sealed class SyncMessage {
                         rawContent = json.getString("content"),
                         key = json.optString("key").takeIf { it.isNotBlank() },
                         capo = json.optString("capo").takeIf { it.isNotBlank() },
-                        songId = if (json.has("id")) json.getLong("id") else null
+                        songId = if (json.has("id")) json.getLong("id") else if (json.has("songId")) json.getLong("songId") else null,
+                        setlistIndex = if (json.has("setlistIndex")) json.getInt("setlistIndex") else null
                     )
+                    TYPE_SONG_CHANGE -> {
+                        val songId = when {
+                            json.has("songId") -> json.getLong("songId")
+                            json.has("id") -> json.getLong("id")
+                            else -> null
+                        }
+                        val content = when {
+                            json.has("content") -> json.getString("content")
+                            json.has("rawContent") -> json.getString("rawContent")
+                            else -> ""
+                        }
+                        SongChange(
+                            songId = songId,
+                            setlistIndex = json.optInt("setlistIndex", 0),
+                            title = json.optString("title", ""),
+                            artist = json.optString("artist").takeIf { it.isNotBlank() },
+                            rawContent = content,
+                            key = json.optString("key").takeIf { it.isNotBlank() },
+                            capo = json.optString("capo").takeIf { it.isNotBlank() }
+                        )
+                    }
                     TYPE_SCROLL -> ScrollSync(
                         scrollFraction = json.getDouble("scroll").toFloat().coerceIn(0f, 1f)
                     )

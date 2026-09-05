@@ -361,7 +361,13 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 setlistSongs = songs,
                 currentSetlistIndex = index
             )
-            broadcastSongIfHost(transposed, entity.rawContent, entity.id)
+            broadcastSongIfHost(transposed, entity.rawContent, entity.id, setlistIndex = index)
+            broadcastSongChangeIfHost(
+                songId = entity.id,
+                setlistIndex = index,
+                song = transposed,
+                rawContent = entity.rawContent
+            )
         }
     }
 
@@ -395,6 +401,14 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 isFavorite = targetSongEntity.isFavorite,
                 transposeOffset = targetSongEntity.transposeOffset,
                 currentSetlistIndex = targetIndex
+            )
+
+            // Live-Stage Band Sync: broadcast song change to connected band members
+            broadcastSongChangeIfHost(
+                songId = targetSongEntity.id,
+                setlistIndex = targetIndex,
+                song = transposed,
+                rawContent = targetSongEntity.rawContent
             )
         }
     }
@@ -963,27 +977,26 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun handleIncomingSyncMessage(msg: SyncMessage) {
         when (msg) {
-            is SyncMessage.SongSync -> {
-                // Band Member mode: Auto-load the song broadcast by Host
-                val defaultTitle = msg.title.ifBlank { "Synced Song" }
-                val parsed = SongParser.parse(msg.rawContent, defaultTitle = defaultTitle).let { base ->
-                    base.copy(
-                        title = defaultTitle,
-                        artist = msg.artist ?: base.artist,
-                        key = msg.key ?: base.key,
-                        capo = msg.capo ?: base.capo
-                    )
-                }
-                _isAutoScrolling.value = false
-                _uiState.value = SongViewerState.Loaded(
-                    song = parsed,
-                    originalSong = parsed,
-                    fileName = defaultTitle,
-                    songEntityId = msg.songId ?: 0L,
-                    isFavorite = false,
-                    transposeOffset = 0,
+            is SyncMessage.SongChange -> {
+                handleSongChangeMessage(
+                    songId = msg.songId,
+                    setlistIndex = msg.setlistIndex,
+                    title = msg.title,
+                    artist = msg.artist,
                     rawContent = msg.rawContent,
-                    tags = ""
+                    key = msg.key,
+                    capo = msg.capo
+                )
+            }
+            is SyncMessage.SongSync -> {
+                handleSongChangeMessage(
+                    songId = msg.songId,
+                    setlistIndex = msg.setlistIndex,
+                    title = msg.title,
+                    artist = msg.artist,
+                    rawContent = msg.rawContent,
+                    key = msg.key,
+                    capo = msg.capo
                 )
             }
             is SyncMessage.ScrollSync -> {
@@ -997,7 +1010,93 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun broadcastSongIfHost(song: com.joel.gta.data.model.ParsedSong, rawContent: String, songId: Long? = null) {
+    private fun handleSongChangeMessage(
+        songId: Long?,
+        setlistIndex: Int?,
+        title: String,
+        artist: String?,
+        rawContent: String,
+        key: String?,
+        capo: String?
+    ) {
+        viewModelScope.launch {
+            _isAutoScrolling.value = false
+            bandScrollOffset.tryEmit(0f)
+
+            val current = _uiState.value
+            // Scenario 1: Client is already in Setlist Mode
+            if (current is SongViewerState.Loaded && current.isInSetlistMode && current.setlistSongs.isNotEmpty()) {
+                val targetIndex = when {
+                    songId != null && current.setlistSongs.any { it.id == songId } -> {
+                        current.setlistSongs.indexOfFirst { it.id == songId }
+                    }
+                    setlistIndex != null && setlistIndex in current.setlistSongs.indices -> {
+                        setlistIndex
+                    }
+                    else -> -1
+                }
+
+                if (targetIndex in current.setlistSongs.indices) {
+                    val targetSongEntity = current.setlistSongs[targetIndex]
+                    withContext(Dispatchers.IO) {
+                        repository.updateLastOpened(targetSongEntity.id)
+                    }
+                    val parsedOriginal = SongParser.parse(targetSongEntity.rawContent, defaultTitle = targetSongEntity.title)
+                    val transposed = if (targetSongEntity.transposeOffset != 0) {
+                        TransposeEngine.transposeSong(parsedOriginal, targetSongEntity.transposeOffset)
+                    } else {
+                        parsedOriginal
+                    }
+
+                    _uiState.value = current.copy(
+                        song = transposed,
+                        originalSong = parsedOriginal,
+                        fileName = targetSongEntity.title,
+                        songEntityId = targetSongEntity.id,
+                        isFavorite = targetSongEntity.isFavorite,
+                        transposeOffset = targetSongEntity.transposeOffset,
+                        currentSetlistIndex = targetIndex
+                    )
+                    return@launch
+                }
+            }
+
+            // Scenario 2: Fallback for standalone / client not in active setlist mode
+            if (rawContent.isNotBlank() || title.isNotBlank()) {
+                val defaultTitle = title.ifBlank { "Synced Song" }
+                val parsed = SongParser.parse(rawContent, defaultTitle = defaultTitle).let { base ->
+                    base.copy(
+                        title = defaultTitle,
+                        artist = artist ?: base.artist,
+                        key = key ?: base.key,
+                        capo = capo ?: base.capo
+                    )
+                }
+
+                _uiState.value = SongViewerState.Loaded(
+                    song = parsed,
+                    originalSong = parsed,
+                    fileName = defaultTitle,
+                    songEntityId = songId ?: 0L,
+                    isFavorite = false,
+                    transposeOffset = 0,
+                    rawContent = rawContent,
+                    tags = "",
+                    setlistId = (current as? SongViewerState.Loaded)?.setlistId,
+                    setlistName = (current as? SongViewerState.Loaded)?.setlistName,
+                    setlistSongs = (current as? SongViewerState.Loaded)?.setlistSongs ?: emptyList(),
+                    currentSetlistIndex = setlistIndex ?: (current as? SongViewerState.Loaded)?.currentSetlistIndex ?: -1
+                )
+            }
+        }
+    }
+
+    fun broadcastSongIfHost(
+        song: com.joel.gta.data.model.ParsedSong,
+        rawContent: String,
+        songId: Long? = null,
+        setlistIndex: Int? = null
+    ) {
         if (bandSyncState.value.role == BandSyncRole.HOST) {
             bandSyncManager.broadcast(
                 SyncMessage.SongSync(
@@ -1006,7 +1105,29 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                     rawContent = rawContent,
                     key = song.key,
                     capo = song.capo,
-                    songId = songId
+                    songId = songId,
+                    setlistIndex = setlistIndex
+                )
+            )
+        }
+    }
+
+    fun broadcastSongChangeIfHost(
+        songId: Long?,
+        setlistIndex: Int,
+        song: com.joel.gta.data.model.ParsedSong? = null,
+        rawContent: String? = null
+    ) {
+        if (bandSyncState.value.role == BandSyncRole.HOST) {
+            bandSyncManager.broadcast(
+                SyncMessage.SongChange(
+                    songId = songId,
+                    setlistIndex = setlistIndex,
+                    title = song?.title ?: "",
+                    artist = song?.artist,
+                    rawContent = rawContent ?: "",
+                    key = song?.key,
+                    capo = song?.capo
                 )
             )
         }

@@ -245,7 +245,7 @@ fun SongViewerScreen(
     }
 
     // When switching songs in setlist, smoothly reset scroll to top
-    LaunchedEffect(song.title) {
+    LaunchedEffect(song.title, songEntityId, currentSetlistIndex) {
         verticalScrollState.scrollTo(0)
     }
 
@@ -259,9 +259,13 @@ fun SongViewerScreen(
 
     // Band Sync: Member follows host scroll position
     LaunchedEffect(bandScrollOffset) {
-        if (!bandSyncState.isHost && bandScrollOffset != null && verticalScrollState.maxValue > 0) {
-            val target = (bandScrollOffset * verticalScrollState.maxValue).toInt()
-            verticalScrollState.animateScrollTo(target)
+        if (!bandSyncState.isHost && bandScrollOffset != null) {
+            if (verticalScrollState.maxValue > 0) {
+                val target = (bandScrollOffset * verticalScrollState.maxValue).toInt()
+                verticalScrollState.animateScrollTo(target)
+            } else if (bandScrollOffset == 0f) {
+                verticalScrollState.scrollTo(0)
+            }
         }
     }
 
@@ -900,14 +904,14 @@ fun SongViewerScreen(
                         pageCount = { setlistSongs.size }
                     )
 
-                    // Sync pager swipe to ViewModel
-                    LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
-                        if (!pagerState.isScrollInProgress && pagerState.currentPage != currentSetlistIndex) {
+                    // Sync pager swipe to ViewModel & connected Band Members
+                    LaunchedEffect(pagerState.currentPage) {
+                        if (pagerState.currentPage != currentSetlistIndex && pagerState.currentPage in setlistSongs.indices) {
                             onSelectSetlistIndex?.invoke(pagerState.currentPage)
                         }
                     }
 
-                    // Sync external index changes to pager
+                    // Sync external index changes to pager (Host broadcast or next/prev navigation)
                     LaunchedEffect(currentSetlistIndex) {
                         if (pagerState.currentPage != currentSetlistIndex && currentSetlistIndex in setlistSongs.indices) {
                             pagerState.animateScrollToPage(currentSetlistIndex)

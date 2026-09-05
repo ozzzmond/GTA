@@ -243,6 +243,28 @@ class WebScraperEngineTest {
         val parsedScroll = com.joel.gta.data.sync.SyncMessage.deserialize(scrollJson)
         assertTrue(parsedScroll is com.joel.gta.data.sync.SyncMessage.ScrollSync)
         assertEquals(0.45f, (parsedScroll as com.joel.gta.data.sync.SyncMessage.ScrollSync).scrollFraction, 0.001f)
+
+        // Test SongChange (Setlist navigation broadcast)
+        val changeMsg = com.joel.gta.data.sync.SyncMessage.SongChange(
+            songId = 101L,
+            setlistIndex = 3,
+            title = "With A Smile",
+            artist = "Eraserheads",
+            rawContent = "[G]Lift your head[Am7], baby don't be scared",
+            key = "G",
+            capo = "None"
+        )
+        val changeJson = com.joel.gta.data.sync.SyncMessage.serialize(changeMsg)
+        assertTrue(changeJson.contains("\"type\":\"SONG_CHANGE\""))
+        assertTrue(changeJson.contains("\"setlistIndex\":3"))
+        val parsedChange = com.joel.gta.data.sync.SyncMessage.deserialize(changeJson)
+        assertTrue(parsedChange is com.joel.gta.data.sync.SyncMessage.SongChange)
+        val castedChange = parsedChange as com.joel.gta.data.sync.SyncMessage.SongChange
+        assertEquals(101L, castedChange.songId)
+        assertEquals(3, castedChange.setlistIndex)
+        assertEquals("With A Smile", castedChange.title)
+        assertEquals("Eraserheads", castedChange.artist)
+        assertEquals("G", castedChange.key)
     }
 
     @Test
