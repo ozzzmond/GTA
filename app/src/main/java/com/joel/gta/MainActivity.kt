@@ -23,7 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.joel.gta.data.update.UpdateCheckResult
+import com.joel.gta.ui.components.SettingsDialog
 import com.joel.gta.ui.components.StageThemeDialog
+import com.joel.gta.ui.components.StageToolsDialog
 import com.joel.gta.ui.components.UpdateAvailableDialog
 import com.joel.gta.ui.screens.HomeScreen
 import com.joel.gta.ui.screens.SongViewerScreen
@@ -44,8 +46,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val customStageColors by viewModel.customStageColors.collectAsState()
+            val keepScreenOn by viewModel.keepScreenOn.collectAsState()
             var showStageThemeDialog by remember { mutableStateOf(false) }
-
+            var showSettingsDialog by remember { mutableStateOf(false) }
+            var showStageToolsDialogFromSettings by remember { mutableStateOf(false) }
             val updateCheckResult by viewModel.updateCheckResult.collectAsState()
             val isCheckingUpdates by viewModel.isCheckingUpdates.collectAsState()
 
@@ -221,6 +225,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             },
+                            onOpenSettings = { showSettingsDialog = true },
                             isCheckingUpdates = isCheckingUpdates
                         )
                     }
@@ -291,7 +296,9 @@ class MainActivity : ComponentActivity() {
                             tags = state.tags,
                             onUpdateSongDetails = { id, title, artist, tags, rawContent, key, capo ->
                                 viewModel.updateSongDetails(id, title, artist, tags, rawContent, key, capo)
-                            }
+                            },
+                            keepScreenOn = keepScreenOn,
+                            onOpenSettings = { showSettingsDialog = true }
                         )
                     }
 
@@ -343,6 +350,33 @@ class MainActivity : ComponentActivity() {
                         onSelectPresetMode = { mode -> viewModel.setThemeMode(mode) },
                         onApplyCustomColors = { colors -> viewModel.setCustomStageColors(colors) },
                         onResetDefaults = { viewModel.resetCustomStageColors() }
+                    )
+                }
+
+                if (showSettingsDialog) {
+                    SettingsDialog(
+                        keepScreenOn = keepScreenOn,
+                        onToggleKeepScreenOn = { enabled -> viewModel.setKeepScreenOn(enabled) },
+                        onOpenThemeDialog = {
+                            showSettingsDialog = false
+                            showStageThemeDialog = true
+                        },
+                        onOpenStageTools = {
+                            showSettingsDialog = false
+                            showStageToolsDialogFromSettings = true
+                        },
+                        onDismissRequest = { showSettingsDialog = false }
+                    )
+                }
+
+                if (showStageToolsDialogFromSettings) {
+                    StageToolsDialog(
+                        onDismissRequest = { showStageToolsDialogFromSettings = false },
+                        bandSyncState = bandSyncState,
+                        onStartBandHost = { viewModel.startBandHost() },
+                        onStartBandClient = { viewModel.startBandClient() },
+                        onConnectBandHost = { hostAddress -> viewModel.connectToBandHost(hostAddress) },
+                        onStopBandSync = { viewModel.stopBandSync() }
                     )
                 }
 

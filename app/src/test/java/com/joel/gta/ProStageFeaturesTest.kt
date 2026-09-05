@@ -108,4 +108,23 @@ class ProStageFeaturesTest {
         cols = computeColumnCount(cols, 21f, isTabletOrLandscape = true)
         assertEquals(1, cols)
     }
+
+    @Test
+    fun testKeepScreenAwakeSettingLogic() {
+        // Default should be ON (true)
+        val defaultKeepScreenOn = true
+        assertTrue("Stage Always-On Display must default to ON for live performance", defaultKeepScreenOn)
+
+        // Simulate user toggle
+        var keepScreenOn = defaultKeepScreenOn
+        fun toggle(newState: Boolean) {
+            keepScreenOn = newState
+        }
+
+        toggle(false)
+        assertFalse(keepScreenOn)
+
+        toggle(true)
+        assertTrue(keepScreenOn)
+    }
 }

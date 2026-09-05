@@ -112,6 +112,7 @@ fun HomeScreen(
     onExportBackupShare: () -> Unit = {},
     onExportBackupSaf: (Uri) -> Unit = {},
     onRestoreBackup: (Uri) -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     showOnlyFavorites: Boolean = false,
@@ -344,6 +345,21 @@ fun HomeScreen(
                                 onDismissRequest = { showBackupRestoreMenu = false },
                                 containerColor = customColors.surfaceBackground
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("Stage Settings") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        onOpenSettings()
+                                    }
+                                )
+                                HorizontalDivider(color = customColors.divider)
                                 DropdownMenuItem(
                                     text = { Text("Check for Updates") },
                                     leadingIcon = {

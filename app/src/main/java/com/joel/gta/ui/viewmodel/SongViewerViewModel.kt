@@ -202,6 +202,13 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         getApplication<Application>().getSharedPreferences("gta_stage_theme_prefs", Context.MODE_PRIVATE)
     }
 
+    private val stageSettingsPrefs: SharedPreferences by lazy {
+        getApplication<Application>().getSharedPreferences("gta_stage_settings_prefs", Context.MODE_PRIVATE)
+    }
+
+    private val _keepScreenOn: MutableStateFlow<Boolean>
+    val keepScreenOn: StateFlow<Boolean>
+
     private val _themeMode: MutableStateFlow<AppThemeMode>
     val themeMode: StateFlow<AppThemeMode>
 
@@ -213,6 +220,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     val bandScrollOffset = MutableSharedFlow<Float>(extraBufferCapacity = 1)
 
     init {
+        val savedKeepScreenOn = stageSettingsPrefs.getBoolean("pref_keep_screen_on", true)
+        _keepScreenOn = MutableStateFlow(savedKeepScreenOn)
+        keepScreenOn = _keepScreenOn.asStateFlow()
         val savedModeName = themePrefs.getString("pref_theme_mode", AppThemeMode.AMOLED_DARK.name)
         val loadedMode = try {
             AppThemeMode.valueOf(savedModeName ?: AppThemeMode.AMOLED_DARK.name)
@@ -665,6 +675,11 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             AppThemeMode.CUSTOM_STAGE -> AppThemeMode.AMOLED_DARK
         }
         setThemeMode(nextMode)
+    }
+
+    fun setKeepScreenOn(enabled: Boolean) {
+        _keepScreenOn.value = enabled
+        stageSettingsPrefs.edit().putBoolean("pref_keep_screen_on", enabled).apply()
     }
 
     fun clearSong() {

@@ -119,6 +119,8 @@ fun SongViewerScreen(
     rawContent: String = "",
     tags: String = "",
     onUpdateSongDetails: (id: Long, title: String, artist: String?, tags: String, rawContent: String, key: String?, capo: String?) -> Unit = { _, _, _, _, _, _, _ -> },
+    keepScreenOn: Boolean = true,
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -126,6 +128,30 @@ fun SongViewerScreen(
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
+
+    // Pro Stage Keep-Screen-Awake Engine
+    val context = LocalContext.current
+    DisposableEffect(keepScreenOn) {
+        val window = (context as? android.app.Activity)?.window
+            ?: (context as? android.content.ContextWrapper)?.let {
+                var ctx: android.content.Context = it
+                while (ctx is android.content.ContextWrapper) {
+                    if (ctx is android.app.Activity) return@let ctx.window
+                    ctx = ctx.baseContext
+                }
+                null
+            }
+
+        if (keepScreenOn) {
+            window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
+        onDispose {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     val configuration = LocalConfiguration.current
     val isTabletOrLandscape = configuration.screenWidthDp >= 600 ||
@@ -167,7 +193,6 @@ fun SongViewerScreen(
     var isCreatingSetlist by remember { mutableStateOf(false) }
     var isFocusMode by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
     var selectedChordVoicing by remember { mutableStateOf<ChordVoicing?>(null) }
     val onChordClick: (String) -> Unit = remember(context) {
         { chordName ->
@@ -574,6 +599,15 @@ fun SongViewerScreen(
                                 imageVector = Icons.Default.Palette,
                                 contentDescription = "Switch Theme ($currentThemeName)",
                                 tint = customColors.chordAccent
+                            )
+                        }
+
+                        // Stage Settings
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Stage Settings",
+                                tint = customColors.textSecondary
                             )
                         }
                     },
