@@ -501,8 +501,50 @@ private fun RawTextEditorField(
         }
     }
 
+    fun markSelectionAsSection() {
+        val currentText = textFieldValue.text
+        val selection = textFieldValue.selection
+
+        if (!selection.collapsed) {
+            val min = selection.min
+            val max = selection.max
+            val selected = currentText.substring(min, max).trim()
+            val wrapped = if (selected.startsWith("[") && selected.endsWith("]")) {
+                selected
+            } else {
+                "[$selected]"
+            }
+            val newText = currentText.replaceRange(min, max, wrapped)
+            val newSelection = TextRange(min, min + wrapped.length)
+            textFieldValue = TextFieldValue(text = newText, selection = newSelection)
+            onTextChanged(newText)
+        } else {
+            val cursor = selection.start
+            // Find start and end of current line
+            val lineStart = currentText.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)).let { if (it == -1) 0 else it + 1 }
+            val lineEnd = currentText.indexOf('\n', cursor).let { if (it == -1) currentText.length else it }
+            val lineContent = currentText.substring(lineStart, lineEnd).trim()
+
+            if (lineContent.isNotEmpty() && !lineContent.startsWith("[") && !lineContent.endsWith("]")) {
+                // Wrap the whole line into a section header
+                val wrapped = "[$lineContent]"
+                val newText = currentText.substring(0, lineStart) + wrapped + currentText.substring(lineEnd)
+                val newSelection = TextRange(lineStart, lineStart + wrapped.length)
+                textFieldValue = TextFieldValue(text = newText, selection = newSelection)
+                onTextChanged(newText)
+            } else {
+                // Insert [Section] with "Section" selected so user can directly type custom tag name
+                val placeholder = "[Section]"
+                val newText = currentText.substring(0, cursor) + placeholder + currentText.substring(cursor)
+                val newSelection = TextRange(cursor + 1, cursor + 8)
+                textFieldValue = TextFieldValue(text = newText, selection = newSelection)
+                onTextChanged(newText)
+            }
+        }
+    }
+
     Column(modifier = modifier) {
-        // Quick Action Text Editing Bar ([Chords], Paste, Copy All, Clear)
+        // Quick Action Text Editing Bar ([Chords], [Section], Paste, Copy All, Clear)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -534,6 +576,27 @@ private fun RawTextEditorField(
                         Text(
                             "[Chords]",
                             color = customColors.chordAccent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
+
+                    TextButton(
+                        onClick = { markSelectionAsSection() },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Bookmark,
+                            contentDescription = "Mark Selection as Section Header",
+                            modifier = Modifier.size(15.dp),
+                            tint = customColors.sectionHeader
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "[Section]",
+                            color = customColors.sectionHeader,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )

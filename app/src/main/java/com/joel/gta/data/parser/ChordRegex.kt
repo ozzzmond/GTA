@@ -39,9 +39,9 @@ object ChordRegex {
 
     val BRACKETED_CHORD_REGEX = CHORDPRO_INLINE_REGEX
 
-    /** Matches section headers like [Verse 1], <Verse 1>, [Chorus], <Chorus>, [Bridge], [Intro], [Solo] */
+    /** Matches section headers like [Verse 03], [Chorus], [Repeat Chorus], [To Transposed], [Transposed Chorus], [Refrain], [Solo], etc. */
     val SECTION_HEADER_REGEX = Regex(
-        "^[\\[<]?(Intro|Verse|Chorus|Bridge|Pre-Chorus|Outro|Solo|Interlude|Hook|Tab|Ending|Riff|Instrumental)(?:\\s+[0-9A-Za-z]+)?[\\]>]?:?$",
+        "^[\\[<]?(?:(?:Repeat|To|Lead|Guitar)\\s+)?(Intro|Verse|Chorus|Bridge|Pre-Chorus|Post-Chorus|Outro|Solo|Interlude|Hook|Tab|Ending|Riff|Instrumental|Refrain|Transposed(?:\\s+Chorus)?|Adlib|Breakdown|Coda|Part|Stanza|Tag)(?:\\s+[0-9A-Za-z\\-_/]+)*[\\]>]?:?$",
         RegexOption.IGNORE_CASE
     )
 

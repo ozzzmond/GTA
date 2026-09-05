@@ -179,7 +179,7 @@ fun GTATheme(
                 textPrimary = SlateTextPrimary,
                 textSecondary = SlateTextSecondary,
                 chordAccent = AgElectricBlue,
-                sectionHeader = SectionHeaderColor,
+                sectionHeader = Color(0xFF38BDF8),
                 tabLineColor = TabLineColor,
                 divider = SlateDivider
             )

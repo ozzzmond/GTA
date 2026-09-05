@@ -54,12 +54,18 @@ object SongParser {
                 continue
             }
 
-            // 4a. Check for combined section header and chord progression on same line: e.g. "[Intro] G - D/F# - Em7" or "Intro: G - D/F# - Em7"
-            val combinedHeaderMatch = Regex("^([\\[<]?(?:Intro|Verse|Chorus|Bridge|Pre-Chorus|Outro|Solo|Interlude|Hook|Ending|Riff|Instrumental)(?:\\s+[0-9A-Za-z]+)?[\\]>]?:?)\\s+(.*)$", RegexOption.IGNORE_CASE).matchEntire(trimmed)
+            // 4a. Check for combined section header and chord progression on same line: e.g. "[Intro] G - D/F# - Em7" or "[Transposed Chorus] A - E/G# - F#m7"
+            val combinedHeaderMatch = Regex(
+                "^([\\[<][^\\]>]+[\\]>]:?|(?:(?:Intro|Verse|Chorus|Bridge|Pre-Chorus|Post-Chorus|Outro|Solo|Interlude|Hook|Ending|Riff|Instrumental|Refrain|Transposed|Repeat|Adlib|Breakdown|Coda)[0-9A-Za-z\\s\\-_/]*:?))\\s+(.+)$",
+                RegexOption.IGNORE_CASE
+            ).matchEntire(trimmed)
             if (combinedHeaderMatch != null) {
-                val headerPart = combinedHeaderMatch.groupValues[1].trim('[', ']', '<', '>', ':').trim()
+                val headerRaw = combinedHeaderMatch.groupValues[1]
+                val headerPart = headerRaw.trim('[', ']', '<', '>', ':').trim()
                 val restPart = combinedHeaderMatch.groupValues[2].trim()
-                if (isChordLine(restPart)) {
+
+                // Ensure headerPart is not a single chord (e.g. "[G] Em C D")
+                if (!ChordRegex.CHORD_TOKEN_REGEX.matches(headerPart) && isChordLine(restPart)) {
                     parsedLines.add(SongLine.SectionHeader(headerPart))
                     parsedLines.add(SongLine.ChordLine(restPart))
                     twoLineChordCount++
@@ -67,8 +73,8 @@ object SongParser {
                 }
             }
 
-            // 4b. Standalone section headers like [Verse 1], <Verse 1>, [Chorus], <Chorus>, [Intro], [Solo]
-            if (ChordRegex.SECTION_HEADER_REGEX.matches(trimmed) && trimmed.length < 40) {
+            // 4b. Standalone section headers like [Verse 03], [Repeat Chorus], [To Transposed], [Transposed Chorus], [Chorus], [Intro], [Solo]
+            if (isSectionHeader(trimmed)) {
                 val cleanTitle = trimmed.trim('[', ']', '<', '>', ':').trim()
                 parsedLines.add(SongLine.SectionHeader(cleanTitle))
                 continue
@@ -214,6 +220,50 @@ object SongParser {
         }
 
         return result.toString()
+    }
+
+    /**
+     * Inspects a line to determine if it is a section header (e.g. [Verse 03], [Repeat Chorus],
+     * [To Transposed], [Transposed Chorus], [Intro - Acoustic], [Solo], Chorus:, Verse 1:).
+     * Distinguishes section headers from bracketed chords like [G], [Am7], [D/F#].
+     */
+    fun isSectionHeader(line: String): Boolean {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.length > 50) return false
+
+        // Do not treat guitar tablature lines as headers
+        if (ChordRegex.TAB_LINE_REGEX.matches(trimmed)) return false
+
+        // Check bracketed lines: e.g. [Verse 03], [Repeat Chorus], [To Transposed], [Transposed Chorus], <Solo>
+        val isSquareBracketed = trimmed.startsWith("[") && trimmed.endsWith("]")
+        val isAngleBracketed = trimmed.startsWith("<") && trimmed.endsWith(">")
+
+        if (isSquareBracketed || isAngleBracketed) {
+            val inner = trimmed.substring(1, trimmed.length - 1).trim()
+            if (inner.isEmpty()) return false
+
+            // Reject if inner contains multiple brackets (e.g. "[G] [C]" or "[Verse 1] [Chorus]")
+            if (inner.contains("[") || inner.contains("]") || inner.contains("<") || inner.contains(">")) {
+                return false
+            }
+
+            // CRITICAL: A single bracketed chord like "[G]", "[Am7]", "[D/F#]", "[N.C.]" is a chord line, NOT a section header!
+            if (ChordRegex.CHORD_TOKEN_REGEX.matches(inner)) {
+                return false
+            }
+
+            // Reject if inner is a chord progression (e.g. "[G - D/F# - Em7]")
+            if (isChordLine(inner)) {
+                return false
+            }
+
+            // Any other bracketed line of <= 50 characters is a section header!
+            return true
+        }
+
+        // Check unbracketed section headers like "Verse 1:", "Chorus:", "Repeat Chorus:", "Transposed Chorus:", "Intro:"
+        // or standalone keywords "Verse 1", "Chorus", "Intro", "Outro", "Pre-Chorus", "Refrain", "Interlude", "Instrumental", "Solo"
+        return ChordRegex.SECTION_HEADER_REGEX.matches(trimmed)
     }
 
     /**

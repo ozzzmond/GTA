@@ -264,5 +264,61 @@ class SongParserTest {
         val tabLine = "e|---0-1-3---|"
         assertFalse("Tab line should not be detected as chord line", SongParser.isChordLine(tabLine))
     }
+
+    @Test
+    fun testCustomSectionHeadersRecognition() {
+        val raw = """
+            [Verse 03]
+            Ang mga alaala ay sariwa pa
+            
+            [Repeat Chorus]
+            G            D/F#
+            I heard that you're settled down
+            
+            [To Transposed]
+            A
+            
+            [Transposed Chorus]
+            A            E/G#
+            Never mind I will find someone like you
+            
+            [Solo]
+            F#m7 - D - E
+            
+            [Intro - Acoustic]
+            D   A   G
+        """.trimIndent()
+
+        val parsed = SongParser.parse(raw, "Custom Section Test")
+        val sectionHeaders = parsed.lines.filterIsInstance<SongLine.SectionHeader>().map { it.title }
+
+        assertTrue("Should contain Verse 03", sectionHeaders.contains("Verse 03"))
+        assertTrue("Should contain Repeat Chorus", sectionHeaders.contains("Repeat Chorus"))
+        assertTrue("Should contain To Transposed", sectionHeaders.contains("To Transposed"))
+        assertTrue("Should contain Transposed Chorus", sectionHeaders.contains("Transposed Chorus"))
+        assertTrue("Should contain Solo", sectionHeaders.contains("Solo"))
+        assertTrue("Should contain Intro - Acoustic", sectionHeaders.contains("Intro - Acoustic"))
+    }
+
+    @Test
+    fun testBracketedChordsNotTreatedAsSectionHeaders() {
+        // [G] is a chord, not a section header
+        assertFalse(SongParser.isSectionHeader("[G]"))
+        assertFalse(SongParser.isSectionHeader("[Am7]"))
+        assertFalse(SongParser.isSectionHeader("[D/F#]"))
+        assertFalse(SongParser.isSectionHeader("[Cmaj7(#11)]"))
+        assertFalse(SongParser.isSectionHeader("[G] [C]"))
+
+        // While custom labels ARE section headers
+        assertTrue(SongParser.isSectionHeader("[Verse 03]"))
+        assertTrue(SongParser.isSectionHeader("[Repeat Chorus]"))
+        assertTrue(SongParser.isSectionHeader("[To Transposed]"))
+        assertTrue(SongParser.isSectionHeader("[Transposed Chorus]"))
+        assertTrue(SongParser.isSectionHeader("[Refrain]"))
+        assertTrue(SongParser.isSectionHeader("[Solo]"))
+        assertTrue(SongParser.isSectionHeader("Chorus:"))
+        assertTrue(SongParser.isSectionHeader("Repeat Chorus:"))
+    }
 }
+
 
