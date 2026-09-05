@@ -155,7 +155,7 @@ git commit -m "%CUSTOM_MSG%"
 echo [INFO] Pushing to remote branch %CYAN%origin/%GIT_BRANCH%%RESET%...
 git push origin %GIT_BRANCH%
 if %ERRORLEVEL% EQU 0 (
-    echo %GREEN%%BOLD%[SYNCED TO GITHUB]%RESET% Matagumpay na nai-push sa GitHub (%GIT_BRANCH%).
+    echo %GREEN%%BOLD%[SYNCED TO GITHUB]%RESET% Matagumpay na nai-push sa GitHub: %GIT_BRANCH%
 ) else (
     echo %RED%%BOLD%[GIT PUSH ERROR]%RESET% Hindi nai-push sa remote repository. Pakisuri ang network o credentials.
 )
