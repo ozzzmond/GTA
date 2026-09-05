@@ -89,31 +89,55 @@ object TransposeEngine {
                     i++
                 }
                 val rawToken = chordLine.substring(start, i)
-                val cleanToken = rawToken.trim('(', ')', '[', ']', '<', '>', ',', '|')
+                val cleanToken = rawToken.trim('(', ')', '[', ']', '<', '>', ',', '|', '-', '–', '—', ':', ';', '~')
 
-                if (ChordRegex.CHORD_TOKEN_REGEX.matches(cleanToken)) {
-                    val prefix = rawToken.takeWhile { it in "([<,|" }
-                    val suffix = rawToken.takeLastWhile { it in ")]>|,|" }
+                if (cleanToken.isNotEmpty() && ChordRegex.CHORD_TOKEN_REGEX.matches(cleanToken)) {
+                    val prefix = rawToken.takeWhile { it in "([<,|-–—:;~" }
+                    val suffix = rawToken.takeLastWhile { it in ")]>|,|-–—:;~" }
                     val transposed = transposeChord(cleanToken, semitones, preferFlats)
                     val replacement = "$prefix$transposed$suffix"
 
                     result.append(replacement)
 
-                    // Spacing compensation to keep columns aligned
+                    // Spacing compensation to keep columns aligned (preserving single delimiter spaces)
                     val diff = replacement.length - rawToken.length
                     if (diff > 0) {
-                        // Consumed extra character: consume trailing spaces if available
-                        var spacesToConsume = diff
-                        while (spacesToConsume > 0 && i < chordLine.length && chordLine[i] == ' ') {
-                            i++
-                            spacesToConsume--
+                        var spaceCount = 0
+                        var checkIdx = i
+                        while (checkIdx < chordLine.length && chordLine[checkIdx] == ' ') {
+                            spaceCount++
+                            checkIdx++
                         }
+                        val maxConsumable = (spaceCount - 1).coerceAtLeast(0)
+                        val spacesToConsume = minOf(diff, maxConsumable)
+                        i += spacesToConsume
                     } else if (diff < 0) {
-                        // Shorter chord: add spaces to preserve spacing for next chords
-                        repeat(-diff) {
-                            result.append(' ')
+                        var spaceCount = 0
+                        var checkIdx = i
+                        while (checkIdx < chordLine.length && chordLine[checkIdx] == ' ') {
+                            spaceCount++
+                            checkIdx++
+                        }
+                        if (spaceCount > 1) {
+                            repeat(-diff) {
+                                result.append(' ')
+                            }
                         }
                     }
+                } else if (cleanToken.contains('-') || cleanToken.contains('–') || cleanToken.contains('—') || cleanToken.contains('|')) {
+                    // Handle hyphen/pipe connected progressions without spaces (e.g. G-D/F# or |G|D|)
+                    val parts = rawToken.split(Regex("(?<=[-|–—])|(?=[-|–—])"))
+                    val transposedParts = parts.joinToString("") { part ->
+                        val subClean = part.trim('(', ')', '[', ']', '<', '>', ',', '|', '-', '–', '—', ':', ';', '~')
+                        if (subClean.isNotEmpty() && ChordRegex.CHORD_TOKEN_REGEX.matches(subClean)) {
+                            val subPrefix = part.takeWhile { it in "([<,|-–—:;~" }
+                            val subSuffix = part.takeLastWhile { it in ")]>|,|-–—:;~" }
+                            "$subPrefix${transposeChord(subClean, semitones, preferFlats)}$subSuffix"
+                        } else {
+                            part
+                        }
+                    }
+                    result.append(transposedParts)
                 } else {
                     result.append(rawToken)
                 }

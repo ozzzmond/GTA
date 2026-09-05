@@ -51,6 +51,7 @@ import com.joel.gta.data.engine.TransposeEngine
 import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.model.ParsedSong
 import com.joel.gta.data.model.SongLine
+import com.joel.gta.data.parser.ChordRegex
 import com.joel.gta.data.parser.SongParser
 import com.joel.gta.data.scraper.ScrapedSong
 import com.joel.gta.ui.components.PreSaveSongReviewDialog
@@ -1650,37 +1651,36 @@ private fun RenderSongLine(
 
 private fun extractChordAtOffset(text: String, offset: Int): String? {
     if (text.isBlank() || offset !in text.indices) {
-        if (offset > 0 && offset - 1 in text.indices && !text[offset - 1].isWhitespace()) {
-            return extractChordAtOffset(text, offset - 1)
-        }
-        if (offset + 1 in text.indices && !text[offset + 1].isWhitespace()) {
-            return extractChordAtOffset(text, offset + 1)
-        }
         return null
     }
 
-    if (text[offset].isWhitespace()) {
-        if (offset > 0 && !text[offset - 1].isWhitespace()) {
+    val isDelim = { c: Char -> c.isWhitespace() || c in "-–—|,:;()[]{}" }
+
+    if (isDelim(text[offset])) {
+        if (offset > 0 && !isDelim(text[offset - 1])) {
             return extractChordAtOffset(text, offset - 1)
         }
-        if (offset + 1 in text.indices && !text[offset + 1].isWhitespace()) {
+        if (offset + 1 in text.indices && !isDelim(text[offset + 1])) {
             return extractChordAtOffset(text, offset + 1)
         }
         return null
     }
 
     var start = offset
-    while (start > 0 && !text[start - 1].isWhitespace()) {
+    while (start > 0 && !isDelim(text[start - 1])) {
         start--
     }
 
     var end = offset
-    while (end < text.length && !text[end].isWhitespace()) {
+    while (end < text.length && !isDelim(text[end])) {
         end++
     }
 
-    val word = text.substring(start, end).trim('[', ']', '(', ')', ',', ';', ':')
-    return word.ifBlank { null }
+    val word = text.substring(start, end).trim('[', ']', '(', ')', '{', '}', ',', ';', ':', '-', '–', '—', '|')
+    if (word.isBlank() || !ChordRegex.CHORD_TOKEN_REGEX.matches(word)) {
+        return null
+    }
+    return word
 }
 
 @Composable

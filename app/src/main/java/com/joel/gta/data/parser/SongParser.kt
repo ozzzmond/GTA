@@ -201,28 +201,89 @@ object SongParser {
     }
 
     /**
-     * Inspects line tokens to determine if it is a standalone chord row in 2-line tabs format.
+     * Inspects line tokens to determine if it is a standalone chord row.
+     * Supports standard spaced chords, hyphen-separated progressions (e.g. G - D/F# - Em7 - C - D),
+     * bar notation (e.g. | G | D/F# | Em7 | C |), and slash/pipe/dash musical separators.
      */
     fun isChordLine(line: String): Boolean {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) return false
 
+        // Do not treat guitar tablature lines as chord lines
+        if (ChordRegex.TAB_LINE_REGEX.matches(trimmed) || trimmed.contains("---") || trimmed.contains("---|")) {
+            return false
+        }
+
         // Split by whitespace
-        val tokens = trimmed.split(Regex("\\s+")).filter { it.isNotEmpty() }
-        if (tokens.isEmpty()) return false
+        val rawTokens = trimmed.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (rawTokens.isEmpty()) return false
 
         var chordCount = 0
-        for (token in tokens) {
-            // Strip common punctuation around chords like (G), [G], <G>, G-D, |G|
-            val cleanToken = token.trim('(', ')', '[', ']', '<', '>', ',', '|', '{', '}', '/')
-            if (ChordRegex.CHORD_TOKEN_REGEX.matches(cleanToken)) {
-                chordCount++
+        var lyricWordCount = 0
+
+        // Sub-split tokens if they are connected by hyphens or pipes without spaces (e.g. "G-D/F#-Em7" or "|G|D|")
+        val processedTokens = mutableListOf<String>()
+        for (token in rawTokens) {
+            val clean = token.trim('(', ')', '[', ']', '<', '>', '{', '}', ',', ';', ':')
+            // If the token matches a chord directly, keep it
+            if (ChordRegex.CHORD_TOKEN_REGEX.matches(clean)) {
+                processedTokens.add(clean)
+            } else if (clean.contains('-') || clean.contains('|') || clean.contains('–') || clean.contains('—')) {
+                // Split by dash/pipe while respecting slash chords (do not split on '/')
+                val parts = clean.split(Regex("[-|–—]")).map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.isNotEmpty()) {
+                    processedTokens.addAll(parts)
+                } else {
+                    processedTokens.add(token)
+                }
+            } else {
+                processedTokens.add(token)
             }
         }
 
-        // If >= 65% of words look like valid chords, treat as a chord row
-        val ratio = chordCount.toFloat() / tokens.size
-        return ratio >= 0.65f
+        for (token in processedTokens) {
+            // Check if token is a musical delimiter/separator
+            if (isDelimiterToken(token)) {
+                continue // Musical separators like '-', '|', '/', '...', 'x2' do not count as lyrics
+            }
+
+            val cleanToken = token.trim('(', ')', '[', ']', '<', '>', ',', '|', '{', '}', '/', '-', '–', '—', ':', ';', '.')
+            if (cleanToken.isEmpty()) {
+                continue
+            }
+
+            if (ChordRegex.CHORD_TOKEN_REGEX.matches(cleanToken)) {
+                chordCount++
+            } else {
+                lyricWordCount++
+            }
+        }
+
+        if (chordCount == 0) return false
+
+        // If the line consists only of valid chords and musical delimiters/annotations with 0 lyric words:
+        if (lyricWordCount == 0) return true
+
+        // If there are words, check if chord ratio >= 65%
+        val totalMeaningful = chordCount + lyricWordCount
+        return (chordCount.toFloat() / totalMeaningful) >= 0.65f
+    }
+
+    private fun isDelimiterToken(token: String): Boolean {
+        // Pure punctuation / musical delimiter characters
+        if (token.all { it in "-–—|/\\:;,.·~()[]{}%*+^'\"" }) return true
+
+        // Repeat indicators or musical timing (e.g. "x2", "2x", "x4", "4x", "4/4", "3/4", "6/8")
+        if (token.matches(Regex("^x?\\d+x?$", RegexOption.IGNORE_CASE))) return true
+        if (token.matches(Regex("^\\d+/\\d+$"))) return true
+
+        // Common stage/chord sheet annotations like "(x2)", "(hold)", "(break)", "(stop)", "(fade)", "N.C."
+        val stripped = token.trim('(', ')', '[', ']', '<', '>')
+        if (stripped.matches(Regex("^(?:x?\\d+x?|hold|break|stop|fade|riff|nc|n\\.c\\.)$", RegexOption.IGNORE_CASE))) {
+            return true
+        }
+
+        return false
     }
 
     /**

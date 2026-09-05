@@ -35,6 +35,50 @@ class SongParserTest {
     }
 
     @Test
+    fun testIsChordLineWithDelimiters() {
+        // Hyphen separated chord progression (The Intro bug case)
+        assertTrue("Hyphen-separated chord progression should be recognized as chord line",
+            SongParser.isChordLine("G - D/F# - Em7 - C - D"))
+        assertTrue(SongParser.isChordLine("G – D/F# – Em7 – C – D")) // En-dash
+        assertTrue(SongParser.isChordLine("G—D/F#—Em7—C—D")) // Em-dash
+        assertTrue(SongParser.isChordLine("G-D/F#-Em7-C-D")) // Connected hyphens
+
+        // Pipe bar chord progressions
+        assertTrue(SongParser.isChordLine("| G | D/F# | Em7 | C |"))
+        assertTrue(SongParser.isChordLine("|: G | D | Em | C :|"))
+
+        // Chords with repeat or timing indicators
+        assertTrue(SongParser.isChordLine("G - D/F# - Em7 - C (x2)"))
+        assertTrue(SongParser.isChordLine("G - D - Em - C (hold)"))
+
+        // Slash beat indicators
+        assertTrue(SongParser.isChordLine("G / / / | C / / /"))
+
+        // Tab lines must NOT be treated as chord line
+        assertFalse(SongParser.isChordLine("e|---0-2-3---|"))
+        assertFalse(SongParser.isChordLine("B|---1-0-----|"))
+        assertFalse(SongParser.isChordLine("|---3h5---|"))
+    }
+
+    @Test
+    fun testIntroWithHyphenSeparatedChordsParsing() {
+        val raw = """
+            [Intro]
+            G - D/F# - Em7 - C - D
+
+            [Verse 1]
+            G            D/F#
+            I heard that you're settled down
+        """.trimIndent()
+
+        val parsed = SongParser.parse(raw, "Test Intro Song")
+        assertEquals(SongLine.SectionHeader("Intro"), parsed.lines[0])
+        assertTrue("Line under [Intro] should be SongLine.ChordLine", parsed.lines[1] is SongLine.ChordLine)
+        val chordLine = parsed.lines[1] as SongLine.ChordLine
+        assertEquals("G - D/F# - Em7 - C - D", chordLine.chords)
+    }
+
+    @Test
     fun testParseTwoLineSampleSong() {
         val song = SongParser.parse(SongParser.SAMPLE_SONG_TWO_LINE)
         assertEquals("Ang Huling El Bimbo", song.title)

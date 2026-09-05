@@ -67,4 +67,19 @@ class TransposeEngineTest {
         assertTrue(transposed.contains("<F#m>"))
         assertTrue(transposed.contains("<D>"))
     }
+
+    @Test
+    fun testTransposeHyphenAndPipeProgression() {
+        val introProgression = "G - D/F# - Em7 - C - D"
+        val transposed = TransposeEngine.transposeChordLine(introProgression, 2)
+        assertEquals("A - E/G# - F#m7 - D - E", transposed)
+
+        val pipeProgression = "| G | D/F# | Em7 | C |"
+        val transposedPipe = TransposeEngine.transposeChordLine(pipeProgression, 2)
+        assertEquals("| A | E/G# | F#m7 | D |", transposedPipe)
+
+        val unspacedHyphens = "G-D/F#-Em7-C-D"
+        val transposedUnspaced = TransposeEngine.transposeChordLine(unspacedHyphens, 2)
+        assertEquals("A-E/G#-F#m7-D-E", transposedUnspaced)
+    }
 }
