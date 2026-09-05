@@ -123,4 +123,26 @@ class CustomThemeTest {
         assertEquals(darkTeal, darkTealTheme.canvasBackground)
         assertEquals(Color(0xFF94A3B8), darkTealTheme.textSecondary)
     }
+
+    @Test
+    fun testAgDarkSlateAndSoftAmberGoldPresets() {
+        val darkSlate = CustomStageColors.parseColorOrNull("#131418")
+        assertNotNull(darkSlate)
+        assertTrue("AG Dark Slate should be recognized as dark", CustomStageColors.isColorDark(darkSlate!!))
+
+        val deepCharcoal = CustomStageColors.parseColorOrNull("#1A1B22")
+        assertNotNull(deepCharcoal)
+        assertTrue("AG Deep Charcoal should be recognized as dark", CustomStageColors.isColorDark(deepCharcoal!!))
+
+        val agTheme = CustomStageColors(
+            canvasBackgroundHex = "#131418",
+            chordAccentHex = "#E5B866",
+            textPrimaryHex = "#F1F5F9",
+            sectionHeaderHex = "#6C8EEF"
+        ).toGtaCustomColors()
+
+        assertEquals(darkSlate, agTheme.canvasBackground)
+        assertEquals(Color(0xFF22242D), agTheme.surfaceBackground)
+        assertEquals(CustomStageColors.parseColorOrNull("#E5B866"), agTheme.chordAccent)
+    }
 }

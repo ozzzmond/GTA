@@ -17,30 +17,30 @@ enum class AppThemeMode {
 }
 
 data class CustomStageColors(
-    val canvasBackgroundHex: String = "#000000",
-    val chordAccentHex: String = "#FFC107",
+    val canvasBackgroundHex: String = "#131418",
+    val chordAccentHex: String = "#E5B866",
     val textPrimaryHex: String = "#F1F5F9",
     val sectionHeaderHex: String = "#818CF8"
 ) {
     fun toGtaCustomColors(): GtaCustomColors {
-        val bg = parseColorOrNull(canvasBackgroundHex) ?: AmoledCanvas
-        val chord = parseColorOrNull(chordAccentHex) ?: ElectricAmber
-        val text = parseColorOrNull(textPrimaryHex) ?: AmoledTextPrimary
+        val bg = parseColorOrNull(canvasBackgroundHex) ?: SlateCanvas
+        val chord = parseColorOrNull(chordAccentHex) ?: SoftAmberGold
+        val text = parseColorOrNull(textPrimaryHex) ?: SlateTextPrimary
         val header = parseColorOrNull(sectionHeaderHex) ?: SectionHeaderColor
 
         val isDark = isColorDark(bg)
         val surface = if (isDark) {
-            darkenOrLighten(bg, 0.07f)
+            if (bg == SlateCanvas) SlateSurface else darkenOrLighten(bg, 0.07f)
         } else {
             darkenOrLighten(bg, -0.05f)
         }
         val textSecondary = if (isDark) {
-            Color(0xFF94A3B8)
+            SlateTextSecondary
         } else {
             Color(0xFF64748B)
         }
         val divider = if (isDark) {
-            Color(0xFF27272A)
+            SlateDivider
         } else {
             Color(0xFFDFD7C7)
         }
@@ -107,29 +107,29 @@ data class GtaCustomColors(
 
 val LocalGtaColors = compositionLocalOf {
     GtaCustomColors(
-        canvasBackground = AmoledCanvas,
-        surfaceBackground = AmoledSurface,
-        textPrimary = AmoledTextPrimary,
-        textSecondary = AmoledTextSecondary,
-        chordAccent = ElectricAmber,
+        canvasBackground = SlateCanvas,
+        surfaceBackground = SlateSurface,
+        textPrimary = SlateTextPrimary,
+        textSecondary = SlateTextSecondary,
+        chordAccent = SoftAmberGold,
         sectionHeader = SectionHeaderColor,
         tabLineColor = TabLineColor,
-        divider = AmoledDivider
+        divider = SlateDivider
     )
 }
 
 private val AmoledDarkColorScheme = darkColorScheme(
-    primary = ElectricAmber,
+    primary = SoftAmberGold,
     onPrimary = Color.Black,
-    secondary = NeonCyan,
-    background = AmoledCanvas,
-    surface = AmoledSurface,
-    onBackground = AmoledTextPrimary,
-    onSurface = AmoledTextPrimary
+    secondary = AgElectricBlue,
+    background = SlateCanvas,
+    surface = SlateSurface,
+    onBackground = SlateTextPrimary,
+    onSurface = SlateTextPrimary
 )
 
 private val PaperLightColorScheme = lightColorScheme(
-    primary = ElectricAmberLight,
+    primary = Color(0xFFD97706),
     onPrimary = Color.White,
     secondary = DirectiveBadgeColor,
     background = PaperCanvas,
@@ -147,14 +147,14 @@ fun GTATheme(
     val (colorScheme, customColors) = when (themeMode) {
         AppThemeMode.AMOLED_DARK -> {
             AmoledDarkColorScheme to GtaCustomColors(
-                canvasBackground = AmoledCanvas,
-                surfaceBackground = AmoledSurface,
-                textPrimary = AmoledTextPrimary,
-                textSecondary = AmoledTextSecondary,
-                chordAccent = ElectricAmber,
+                canvasBackground = SlateCanvas,
+                surfaceBackground = SlateSurface,
+                textPrimary = SlateTextPrimary,
+                textSecondary = SlateTextSecondary,
+                chordAccent = SoftAmberGold,
                 sectionHeader = SectionHeaderColor,
                 tabLineColor = TabLineColor,
-                divider = AmoledDivider
+                divider = SlateDivider
             )
         }
         AppThemeMode.PAPER_LIGHT -> {
@@ -163,22 +163,22 @@ fun GTATheme(
                 surfaceBackground = PaperSurface,
                 textPrimary = PaperTextPrimary,
                 textSecondary = PaperTextSecondary,
-                chordAccent = ElectricAmberLight,
+                chordAccent = Color(0xFFD97706),
                 sectionHeader = Color(0xFF6366F1),
                 tabLineColor = Color(0xFF0284C7),
                 divider = PaperDivider
             )
         }
         AppThemeMode.AMOLED_CYAN -> {
-            AmoledDarkColorScheme.copy(primary = NeonCyan) to GtaCustomColors(
-                canvasBackground = AmoledCanvas,
-                surfaceBackground = AmoledSurface,
-                textPrimary = AmoledTextPrimary,
-                textSecondary = AmoledTextSecondary,
-                chordAccent = NeonCyan,
+            AmoledDarkColorScheme.copy(primary = AgElectricBlue) to GtaCustomColors(
+                canvasBackground = SlateCanvas,
+                surfaceBackground = SlateSurface,
+                textPrimary = SlateTextPrimary,
+                textSecondary = SlateTextSecondary,
+                chordAccent = AgElectricBlue,
                 sectionHeader = SectionHeaderColor,
                 tabLineColor = TabLineColor,
-                divider = AmoledDivider
+                divider = SlateDivider
             )
         }
         AppThemeMode.CUSTOM_STAGE -> {

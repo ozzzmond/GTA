@@ -38,20 +38,20 @@ import com.joel.gta.ui.theme.LocalGtaColors
 private data class ColorPreset(val name: String, val hex: String)
 
 private val BackgroundPresets = listOf(
+    ColorPreset("AG Dark Slate", "#131418"),
+    ColorPreset("AG Deep Charcoal", "#1A1B22"),
+    ColorPreset("Muted Slate", "#22242D"),
     ColorPreset("Dark Teal", "#0E2226"),
-    ColorPreset("Slate", "#1E1F22"),
     ColorPreset("Pure AMOLED", "#000000"),
-    ColorPreset("Deep Slate", "#121212"),
     ColorPreset("Sepia", "#FBF0D9"),
-    ColorPreset("Soft Gray", "#262626"),
     ColorPreset("Dark Navy", "#0B132B")
 )
 
 private val ChordPresets = listOf(
+    ColorPreset("Soft Amber Gold", "#E5B866"),
+    ColorPreset("AG Electric Blue", "#6C8EEF"),
     ColorPreset("Stage Amber", "#FFC107"),
-    ColorPreset("Neon Green", "#00E676"),
     ColorPreset("Sky Blue", "#38BDF8"),
-    ColorPreset("Electric Gold", "#F59E0B"),
     ColorPreset("Hot Coral", "#F43F5E")
 )
 

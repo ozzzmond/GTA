@@ -58,6 +58,11 @@ import com.joel.gta.ui.components.StageToolsDialog
 import com.joel.gta.ui.theme.ChordMonospaceStyle
 import com.joel.gta.ui.theme.LocalGtaColors
 import com.joel.gta.ui.theme.LyricMonospaceStyle
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextLayoutResult
+import com.joel.gta.data.chord.ChordDictionary
+import com.joel.gta.data.model.ChordVoicing
+import com.joel.gta.ui.components.FretboardDiagramDialog
 import com.joel.gta.ui.viewmodel.FootswitchAction
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.isActive
@@ -159,6 +164,17 @@ fun SongViewerScreen(
     var newSetlistName by remember { mutableStateOf("") }
     var isCreatingSetlist by remember { mutableStateOf(false) }
     var isFocusMode by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    var selectedChordVoicing by remember { mutableStateOf<ChordVoicing?>(null) }
+    val onChordClick: (String) -> Unit = remember(context) {
+        { chordName ->
+            val clean = chordName.trim()
+            if (clean.isNotBlank()) {
+                selectedChordVoicing = ChordDictionary.getVoicing(clean, context)
+            }
+        }
+    }
 
     // Request focus on screen to catch Bluetooth pedals / HID events
     LaunchedEffect(Unit) {
@@ -910,7 +926,9 @@ fun SongViewerScreen(
                             fontSizeSp = fontSizeSp,
                             scrollState = if (pageIndex == currentSetlistIndex) verticalScrollState else rememberScrollState(),
                             columnCount = columnCount,
-                            activeCapo = currentCapo
+                            activeCapo = currentCapo,
+                            isFocusMode = isFocusMode,
+                            onChordClick = onChordClick
                         )
                     }
                 } else {
@@ -919,7 +937,9 @@ fun SongViewerScreen(
                         fontSizeSp = fontSizeSp,
                         scrollState = verticalScrollState,
                         columnCount = columnCount,
-                        activeCapo = currentCapo
+                        activeCapo = currentCapo,
+                        isFocusMode = isFocusMode,
+                        onChordClick = onChordClick
                     )
                 }
 
@@ -993,14 +1013,14 @@ fun SongViewerScreen(
                     }
                 }
 
-                // Stage Focus Mode Fullscreen Exit Hint Pill
+                // Stage Focus Mode Fullscreen Exit Hint Pill (Upper Left)
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isFocusMode,
                     enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
                     exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it },
                     modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 16.dp)
+                        .align(Alignment.TopStart)
+                        .padding(top = 16.dp, start = 16.dp)
                 ) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
@@ -1030,14 +1050,14 @@ fun SongViewerScreen(
                     }
                 }
 
-                // Stage Focus Mode: Clickable Transpose Badge (Upper Left)
+                // Stage Focus Mode: Clickable Transpose Badge (Upper Right)
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isFocusMode,
                     enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
                     exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it },
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(top = 16.dp, start = 16.dp)
+                        .align(Alignment.TopEnd)
+                        .padding(top = 16.dp, end = 16.dp)
                 ) {
                     val offsetStr = when {
                         transposeOffset > 0 -> "+$transposeOffset"
@@ -1453,6 +1473,14 @@ fun SongViewerScreen(
             }
         )
     }
+
+    // 100% Offline Interactive Chord Voicing Popup Dialog
+    selectedChordVoicing?.let { voicing ->
+        FretboardDiagramDialog(
+            voicing = voicing,
+            onDismissRequest = { selectedChordVoicing = null }
+        )
+    }
 }
 
 @Composable
@@ -1490,7 +1518,8 @@ private fun splitSongLinesForColumns(lines: List<SongLine>): Pair<List<SongLine>
 @Composable
 private fun RenderSongLine(
     line: SongLine,
-    fontSizeSp: Float
+    fontSizeSp: Float,
+    onChordClick: (String) -> Unit = {}
 ) {
     val customColors = LocalGtaColors.current
     when (line) {
@@ -1507,13 +1536,27 @@ private fun RenderSongLine(
         }
 
         is SongLine.ChordLine -> {
+            var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
             Text(
                 text = line.chords,
                 style = ChordMonospaceStyle.copy(
                     fontSize = fontSizeSp.sp,
                     color = customColors.chordAccent
                 ),
-                modifier = Modifier.padding(vertical = 1.dp)
+                onTextLayout = { layoutResult = it },
+                modifier = Modifier
+                    .padding(vertical = 1.dp)
+                    .pointerInput(line.chords) {
+                        detectTapGestures { tapOffset ->
+                            layoutResult?.let { layout ->
+                                val offset = layout.getOffsetForPosition(tapOffset)
+                                val chord = extractChordAtOffset(line.chords, offset)
+                                if (chord != null) {
+                                    onChordClick(chord)
+                                }
+                            }
+                        }
+                    }
             )
         }
 
@@ -1529,9 +1572,11 @@ private fun RenderSongLine(
         }
 
         is SongLine.ChordProLine -> {
+            var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
             val annotatedText = buildAnnotatedString {
                 for (segment in line.segments) {
                     if (segment.chord != null) {
+                        pushStringAnnotation(tag = "CHORD", annotation = segment.chord)
                         withStyle(
                             style = SpanStyle(
                                 color = customColors.chordAccent,
@@ -1540,6 +1585,7 @@ private fun RenderSongLine(
                         ) {
                             append("[${segment.chord}]")
                         }
+                        pop()
                     }
                     withStyle(
                         style = SpanStyle(
@@ -1555,7 +1601,33 @@ private fun RenderSongLine(
                 text = annotatedText,
                 fontFamily = FontFamily.Monospace,
                 fontSize = fontSizeSp.sp,
-                modifier = Modifier.padding(vertical = 2.dp)
+                onTextLayout = { layoutResult = it },
+                modifier = Modifier
+                    .padding(vertical = 2.dp)
+                    .pointerInput(annotatedText) {
+                        detectTapGestures { tapOffset ->
+                            layoutResult?.let { layout ->
+                                val offset = layout.getOffsetForPosition(tapOffset)
+                                val clickedChord = annotatedText
+                                    .getStringAnnotations(tag = "CHORD", start = offset, end = offset)
+                                    .firstOrNull()?.item
+                                    ?: if (offset > 0) {
+                                        annotatedText
+                                            .getStringAnnotations(tag = "CHORD", start = offset - 1, end = offset - 1)
+                                            .firstOrNull()?.item
+                                    } else null
+                                    ?: if (offset < annotatedText.length - 1) {
+                                        annotatedText
+                                            .getStringAnnotations(tag = "CHORD", start = offset + 1, end = offset + 1)
+                                            .firstOrNull()?.item
+                                    } else null
+
+                                if (clickedChord != null) {
+                                    onChordClick(clickedChord)
+                                }
+                            }
+                        }
+                    }
             )
         }
 
@@ -1576,6 +1648,41 @@ private fun RenderSongLine(
     }
 }
 
+private fun extractChordAtOffset(text: String, offset: Int): String? {
+    if (text.isBlank() || offset !in text.indices) {
+        if (offset > 0 && offset - 1 in text.indices && !text[offset - 1].isWhitespace()) {
+            return extractChordAtOffset(text, offset - 1)
+        }
+        if (offset + 1 in text.indices && !text[offset + 1].isWhitespace()) {
+            return extractChordAtOffset(text, offset + 1)
+        }
+        return null
+    }
+
+    if (text[offset].isWhitespace()) {
+        if (offset > 0 && !text[offset - 1].isWhitespace()) {
+            return extractChordAtOffset(text, offset - 1)
+        }
+        if (offset + 1 in text.indices && !text[offset + 1].isWhitespace()) {
+            return extractChordAtOffset(text, offset + 1)
+        }
+        return null
+    }
+
+    var start = offset
+    while (start > 0 && !text[start - 1].isWhitespace()) {
+        start--
+    }
+
+    var end = offset
+    while (end < text.length && !text[end].isWhitespace()) {
+        end++
+    }
+
+    val word = text.substring(start, end).trim('[', ']', '(', ')', ',', ';', ':')
+    return word.ifBlank { null }
+}
+
 @Composable
 private fun SongLinesColumn(
     song: ParsedSong,
@@ -1583,6 +1690,8 @@ private fun SongLinesColumn(
     scrollState: androidx.compose.foundation.ScrollState,
     columnCount: Int = 1,
     activeCapo: String = "No Capo",
+    isFocusMode: Boolean = false,
+    onChordClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -1590,7 +1699,12 @@ private fun SongLinesColumn(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = if (isFocusMode) 60.dp else 12.dp,
+                bottom = 12.dp
+            )
     ) {
         // Metadata header badges (Key, Capo, Format, Column badge)
         Row(
@@ -1629,7 +1743,7 @@ private fun SongLinesColumn(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     col1Lines.forEach { line ->
-                        RenderSongLine(line, fontSizeSp)
+                        RenderSongLine(line, fontSizeSp, onChordClick)
                     }
                 }
                 VerticalDivider(
@@ -1639,13 +1753,13 @@ private fun SongLinesColumn(
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     col2Lines.forEach { line ->
-                        RenderSongLine(line, fontSizeSp)
+                        RenderSongLine(line, fontSizeSp, onChordClick)
                     }
                 }
             }
         } else {
             song.lines.forEach { line ->
-                RenderSongLine(line, fontSizeSp)
+                RenderSongLine(line, fontSizeSp, onChordClick)
             }
         }
 
