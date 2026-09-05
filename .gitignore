@@ -60,3 +60,6 @@ Thumbs.db
 
 # Kotlin compilation cache
 .kotlin/
+
+*.jks
+keystore_base64.txt

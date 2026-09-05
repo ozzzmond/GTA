@@ -13,14 +13,43 @@ android {
         applicationId = "com.joel.gta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 32
-        versionName = "1.0.31"
+        versionCode = 33
+        versionName = "1.0.32"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+
+    val releaseStoreFilePath = System.getenv("KEYSTORE_PATH")
+        ?: System.getenv("RELEASE_STORE_FILE")
+        ?: (project.findProperty("KEYSTORE_PATH") as? String)
+    val releaseStorePassword = System.getenv("KEY_STORE_PASSWORD")
+        ?: (project.findProperty("KEY_STORE_PASSWORD") as? String)
+    val releaseKeyAlias = System.getenv("ALIAS")
+        ?: System.getenv("KEY_ALIAS")
+        ?: (project.findProperty("ALIAS") as? String)
+        ?: (project.findProperty("KEY_ALIAS") as? String)
+    val releaseKeyPassword = System.getenv("KEY_PASSWORD")
+        ?: (project.findProperty("KEY_PASSWORD") as? String)
+
+    val isReleaseSigningConfigured = !releaseStoreFilePath.isNullOrBlank()
+        && file(releaseStoreFilePath).exists()
+        && !releaseStorePassword.isNullOrBlank()
+        && !releaseKeyAlias.isNullOrBlank()
+        && !releaseKeyPassword.isNullOrBlank()
+
+    signingConfigs {
+        create("release") {
+            if (isReleaseSigningConfigured) {
+                storeFile = file(releaseStoreFilePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -30,6 +59,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = if (isReleaseSigningConfigured) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {
