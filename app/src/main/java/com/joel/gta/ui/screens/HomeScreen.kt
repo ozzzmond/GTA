@@ -133,6 +133,8 @@ fun HomeScreen(
     trashScrollIndex: Int = 0,
     trashScrollOffset: Int = 0,
     onUpdateTrashScroll: (Int, Int) -> Unit = { _, _ -> },
+    onCheckForUpdates: () -> Unit = {},
+    isCheckingUpdates: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -227,7 +229,11 @@ fun HomeScreen(
     Scaffold(
         containerColor = customColors.canvasBackground,
         topBar = {
-            Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -252,17 +258,30 @@ fun HomeScreen(
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
                                     color = customColors.surfaceBackground,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                                    modifier = Modifier.clickable { onCheckForUpdates() }
                                 ) {
-                                    Text(
-                                        text = "v${BuildConfig.VERSION_NAME}",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = customColors.textSecondary,
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
+                                    ) {
+                                        if (isCheckingUpdates) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(10.dp),
+                                                strokeWidth = 1.5.dp,
+                                                color = customColors.chordAccent
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                        }
+                                        Text(
+                                            text = "v${BuildConfig.VERSION_NAME}",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = customColors.textSecondary
+                                        )
+                                    }
                                 }
                             }
                             Text(
@@ -291,6 +310,30 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
+                        // Check for Updates Action
+                        IconButton(
+                            onClick = onCheckForUpdates,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(customColors.surfaceBackground)
+                        ) {
+                            if (isCheckingUpdates) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = customColors.chordAccent
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = "Check for Updates",
+                                    tint = customColors.chordAccent
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
                         // Theme Mode Switcher
                         IconButton(
                             onClick = onToggleTheme,
@@ -312,12 +355,12 @@ fun HomeScreen(
                             IconButton(
                                 onClick = { showBackupRestoreMenu = true },
                                 modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(customColors.surfaceBackground)
+                                .clip(CircleShape)
+                                .background(customColors.surfaceBackground)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "Backup & Restore Options",
+                                    contentDescription = "Options & Updates",
                                     tint = customColors.chordAccent
                                 )
                             }
@@ -327,6 +370,21 @@ fun HomeScreen(
                                 onDismissRequest = { showBackupRestoreMenu = false },
                                 containerColor = customColors.surfaceBackground
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("Check for Updates") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.SystemUpdate,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        onCheckForUpdates()
+                                    }
+                                )
+                                HorizontalDivider(color = customColors.divider)
                                 DropdownMenuItem(
                                     text = { Text("Export Backup (Share / Google Drive)") },
                                     leadingIcon = {

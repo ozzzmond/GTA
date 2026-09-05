@@ -21,9 +21,11 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -437,8 +439,70 @@ private fun RawTextEditorField(
         )
     }
 
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(text = text, selection = TextRange(text.length)))
+    }
+
+    LaunchedEffect(text) {
+        if (textFieldValue.text != text) {
+            textFieldValue = textFieldValue.copy(text = text)
+        }
+    }
+
+    fun markSelectionAsChord() {
+        val currentText = textFieldValue.text
+        val selection = textFieldValue.selection
+
+        if (!selection.collapsed) {
+            // Wrap the selected range in brackets [selected]
+            val min = selection.min
+            val max = selection.max
+            val selected = currentText.substring(min, max).trim()
+            val wrapped = if (selected.startsWith("[") && selected.endsWith("]")) {
+                selected
+            } else {
+                "[$selected]"
+            }
+            val newText = currentText.replaceRange(min, max, wrapped)
+            val newSelection = TextRange(min, min + wrapped.length)
+            textFieldValue = TextFieldValue(text = newText, selection = newSelection)
+            onTextChanged(newText)
+        } else {
+            val cursor = selection.start
+            if (currentText.isEmpty()) {
+                val newText = "[]"
+                textFieldValue = TextFieldValue(text = newText, selection = TextRange(1))
+                onTextChanged(newText)
+                return
+            }
+
+            // Find word boundaries around cursor
+            var start = cursor
+            while (start > 0 && !currentText[start - 1].isWhitespace() && currentText[start - 1] !in "[]\n") {
+                start--
+            }
+            var end = cursor
+            while (end < currentText.length && !currentText[end].isWhitespace() && currentText[end] !in "[]\n") {
+                end++
+            }
+
+            if (start < end) {
+                val word = currentText.substring(start, end)
+                val wrapped = if (word.startsWith("[") && word.endsWith("]")) word else "[$word]"
+                val newText = currentText.replaceRange(start, end, wrapped)
+                val newSelection = TextRange(start + wrapped.length)
+                textFieldValue = TextFieldValue(text = newText, selection = newSelection)
+                onTextChanged(newText)
+            } else {
+                val newText = currentText.substring(0, cursor) + "[]" + currentText.substring(cursor)
+                textFieldValue = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
+                onTextChanged(newText)
+            }
+        }
+    }
+
     Column(modifier = modifier) {
-        // Quick Action Text Editing Bar (Paste, Copy All, Clear)
+        // Quick Action Text Editing Bar ([Chords], Paste, Copy All, Clear)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -456,6 +520,27 @@ private fun RawTextEditorField(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    TextButton(
+                        onClick = { markSelectionAsChord() },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.LibraryMusic,
+                            contentDescription = "Mark Selection as Chord",
+                            modifier = Modifier.size(15.dp),
+                            tint = customColors.chordAccent
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "[Chords]",
+                            color = customColors.chordAccent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
+
                     TextButton(
                         onClick = {
                             val clip = clipboardManager.getText()?.text
@@ -502,8 +587,13 @@ private fun RawTextEditorField(
         CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
             SelectionContainer(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 OutlinedTextField(
-                    value = text,
-                    onValueChange = onTextChanged,
+                    value = textFieldValue,
+                    onValueChange = { newValue ->
+                        textFieldValue = newValue
+                        if (newValue.text != text) {
+                            onTextChanged(newValue.text)
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
                     textStyle = androidx.compose.ui.text.TextStyle(
                         fontFamily = FontFamily.Monospace,

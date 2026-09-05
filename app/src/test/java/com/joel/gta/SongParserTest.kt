@@ -246,4 +246,23 @@ class SongParserTest {
         assertFalse(normalized.contains("<"))
         assertFalse(normalized.contains(">"))
     }
+
+    @Test
+    fun testDashedChordsLineClassification() {
+        val line1 = "C   G   -------  G#"
+        assertTrue("C G ------- G# should be detected as chord line", SongParser.isChordLine(line1))
+
+        val line2 = "G - D/F# - Em7"
+        assertTrue("G - D/F# - Em7 should be detected as chord line", SongParser.isChordLine(line2))
+
+        val line3 = "G-D/F#-Em7"
+        assertTrue("G-D/F#-Em7 should be detected as chord line", SongParser.isChordLine(line3))
+
+        val line4 = "| C | G | ------- | G# |"
+        assertTrue("Bar and dashed chords should be detected as chord line", SongParser.isChordLine(line4))
+
+        val tabLine = "e|---0-1-3---|"
+        assertFalse("Tab line should not be detected as chord line", SongParser.isChordLine(tabLine))
+    }
 }
+

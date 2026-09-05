@@ -23,6 +23,9 @@ import com.joel.gta.ui.screens.SetlistSortOrder
 import com.joel.gta.BuildConfig
 import com.joel.gta.data.backup.BackupManager
 import com.joel.gta.data.backup.RestoreSummary
+import com.joel.gta.data.update.ReleaseInfo
+import com.joel.gta.data.update.UpdateCheckResult
+import com.joel.gta.data.update.UpdateManager
 import com.joel.gta.ui.theme.AppThemeMode
 import com.joel.gta.ui.theme.CustomStageColors
 import kotlinx.coroutines.Dispatchers
@@ -1068,6 +1071,45 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 onError("Restore error: ${e.localizedMessage ?: "Invalid JSON backup"}")
             }
         }
+    }
+
+    private val _updateCheckResult = MutableStateFlow<UpdateCheckResult?>(null)
+    val updateCheckResult: StateFlow<UpdateCheckResult?> = _updateCheckResult.asStateFlow()
+
+    private val _isCheckingUpdates = MutableStateFlow(false)
+    val isCheckingUpdates: StateFlow<Boolean> = _isCheckingUpdates.asStateFlow()
+
+    fun checkForUpdates(
+        onUpToDate: (String) -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        if (_isCheckingUpdates.value) return
+        viewModelScope.launch {
+            _isCheckingUpdates.value = true
+            try {
+                val result = UpdateManager.checkForUpdates(BuildConfig.VERSION_NAME)
+                _updateCheckResult.value = result
+                when (result) {
+                    is UpdateCheckResult.UpToDate -> {
+                        onUpToDate("GTA is up to date (v${BuildConfig.VERSION_NAME})!")
+                    }
+                    is UpdateCheckResult.Error -> {
+                        onError(result.message)
+                    }
+                    is UpdateCheckResult.UpdateAvailable -> {
+                        // Will show dialog via updateCheckResult state
+                    }
+                }
+            } catch (e: Exception) {
+                onError("Unable to check updates. Check your connection.")
+            } finally {
+                _isCheckingUpdates.value = false
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _updateCheckResult.value = null
     }
 
     override fun onCleared() {

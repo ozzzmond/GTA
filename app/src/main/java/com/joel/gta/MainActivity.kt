@@ -6,7 +6,9 @@ import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -20,7 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.joel.gta.data.update.UpdateCheckResult
 import com.joel.gta.ui.components.StageThemeDialog
+import com.joel.gta.ui.components.UpdateAvailableDialog
 import com.joel.gta.ui.screens.HomeScreen
 import com.joel.gta.ui.screens.SongViewerScreen
 import com.joel.gta.ui.theme.GTATheme
@@ -34,11 +38,16 @@ class MainActivity : ComponentActivity() {
     private val viewModel: SongViewerViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val customStageColors by viewModel.customStageColors.collectAsState()
             var showStageThemeDialog by remember { mutableStateOf(false) }
+
+            val updateCheckResult by viewModel.updateCheckResult.collectAsState()
+            val isCheckingUpdates by viewModel.isCheckingUpdates.collectAsState()
 
             val uiState by viewModel.uiState.collectAsState()
             val isAutoScrolling by viewModel.isAutoScrolling.collectAsState()
@@ -200,7 +209,19 @@ class MainActivity : ComponentActivity() {
                                         Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                                     }
                                 )
-                            }
+                            },
+                            onCheckForUpdates = {
+                                Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
+                                viewModel.checkForUpdates(
+                                    onUpToDate = { msg ->
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    },
+                                    onError = { err ->
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            },
+                            isCheckingUpdates = isCheckingUpdates
                         )
                     }
 
@@ -322,6 +343,14 @@ class MainActivity : ComponentActivity() {
                         onSelectPresetMode = { mode -> viewModel.setThemeMode(mode) },
                         onApplyCustomColors = { colors -> viewModel.setCustomStageColors(colors) },
                         onResetDefaults = { viewModel.resetCustomStageColors() }
+                    )
+                }
+
+                val currentUpdate = updateCheckResult
+                if (currentUpdate is UpdateCheckResult.UpdateAvailable) {
+                    UpdateAvailableDialog(
+                        releaseInfo = currentUpdate.info,
+                        onDismiss = { viewModel.dismissUpdateDialog() }
                     )
                 }
             }

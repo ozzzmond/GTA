@@ -2,4 +2,9 @@
 <paths>
     <cache-path name="backup_cache" path="backups/" />
     <cache-path name="shared_cache" path="." />
+    <external-files-path name="external_download_files" path="Download/" />
+    <external-files-path name="external_all_files" path="." />
+    <external-cache-path name="external_cache" path="." />
+    <external-path name="external_storage" path="." />
+    <files-path name="internal_files" path="." />
 </paths>

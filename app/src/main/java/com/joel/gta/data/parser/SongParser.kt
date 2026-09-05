@@ -225,8 +225,8 @@ object SongParser {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) return false
 
-        // Do not treat guitar tablature lines as chord lines
-        if (ChordRegex.TAB_LINE_REGEX.matches(trimmed) || trimmed.contains("---") || trimmed.contains("---|")) {
+        // Do not treat guitar tablature lines as chord lines (e.g. e|---0-1-3---| or |--2--4--)
+        if (ChordRegex.TAB_LINE_REGEX.matches(trimmed) || (trimmed.startsWith("|") && trimmed.contains("-|") && !trimmed.contains(" "))) {
             return false
         }
 
