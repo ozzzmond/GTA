@@ -40,7 +40,7 @@ private enum class ReviewMode {
 fun PreSaveSongReviewDialog(
     scrapedSong: ScrapedSong,
     onDismiss: () -> Unit,
-    onSave: (title: String, artist: String?, rawContent: String, key: String?, capo: String?) -> Unit
+    onSave: (title: String, artist: String?, rawContent: String, key: String?, capo: String?, tags: String) -> Unit
 ) {
     val customColors = LocalGtaColors.current
     val configuration = LocalConfiguration.current
@@ -51,8 +51,10 @@ fun PreSaveSongReviewDialog(
     var songArtist by remember(scrapedSong) { mutableStateOf(scrapedSong.artist ?: "") }
     var songKey by remember(scrapedSong) { mutableStateOf(scrapedSong.key ?: "") }
     var songCapo by remember(scrapedSong) { mutableStateOf(scrapedSong.capo ?: "") }
+    var songTags by remember(scrapedSong) { mutableStateOf("") }
     var rawText by remember(scrapedSong) { mutableStateOf(scrapedSong.rawContent) }
     var activeMode by remember { mutableStateOf(ReviewMode.EDIT_RAW) }
+
 
     // Real-time live parsed song
     val parsedLiveSong: ParsedSong = remember(rawText, songTitle) {
@@ -128,7 +130,8 @@ fun PreSaveSongReviewDialog(
                                 songArtist.trim().takeIf { it.isNotBlank() },
                                 rawText.trim(),
                                 songKey.trim().takeIf { it.isNotBlank() },
-                                songCapo.trim().takeIf { it.isNotBlank() }
+                                songCapo.trim().takeIf { it.isNotBlank() },
+                                songTags.trim()
                             )
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -218,6 +221,65 @@ fun PreSaveSongReviewDialog(
                         )
                     )
                 }
+
+                // Tags Input & Quick Chips Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = songTags,
+                        onValueChange = { songTags = it },
+                        label = { Text("Tags (e.g. OPM, Acoustic, Rock)") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = customColors.chordAccent,
+                            unfocusedBorderColor = customColors.divider,
+                            focusedTextColor = customColors.textPrimary,
+                            unfocusedTextColor = customColors.textPrimary
+                        ),
+                        leadingIcon = {
+                            Icon(Icons.Default.Label, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(18.dp))
+                        }
+                    )
+
+                    // Quick tag suggestions
+                    val quickTags = listOf("OPM", "Acoustic", "Rock", "Slow Rock", "Pop", "Encore")
+                    androidx.compose.foundation.lazy.LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1.2f)
+                    ) {
+                        items(quickTags.size) { idx ->
+                            val tag = quickTags[idx]
+                            val isSelected = songTags.split(",").any { it.trim().equals(tag, ignoreCase = true) }
+                            SuggestionChip(
+                                onClick = {
+                                    val currentList = songTags.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                                    if (isSelected) {
+                                        currentList.removeAll { it.equals(tag, ignoreCase = true) }
+                                    } else {
+                                        currentList.add(tag)
+                                    }
+                                    songTags = currentList.joinToString(", ")
+                                },
+                                label = { Text(tag, fontSize = 11.sp) },
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = if (isSelected) customColors.chordAccent.copy(alpha = 0.25f) else customColors.canvasBackground,
+                                    labelColor = if (isSelected) customColors.chordAccent else customColors.textSecondary
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSelected) customColors.chordAccent else customColors.divider
+                                )
+                            )
+                        }
+                    }
+                }
+
 
                 // Mode Selector Bar (Only needed if not side-by-side wide screen)
                 if (!isWideScreen) {

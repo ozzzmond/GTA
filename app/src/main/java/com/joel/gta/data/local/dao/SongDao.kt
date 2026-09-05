@@ -34,6 +34,10 @@ interface SongDao {
     @Query("UPDATE songs SET transposeOffset = :transposeOffset WHERE id = :id")
     suspend fun updateTransposeOffset(id: Long, transposeOffset: Int)
 
+    @Query("UPDATE songs SET tags = :tags WHERE id = :id")
+    suspend fun updateTags(id: Long, tags: String)
+
+
     @Query("UPDATE songs SET lastOpenedAt = :timestamp WHERE id = :id")
     suspend fun updateLastOpened(id: Long, timestamp: Long = System.currentTimeMillis())
 

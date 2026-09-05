@@ -193,4 +193,74 @@ class WebScraperEngineTest {
         assertFalse(song.rawContent.contains("tracker"))
         assertTrue(song.rawContent.contains("Mama, take this badge off of me"))
     }
+
+    @Test
+    fun testSearchSongsFromHtml() {
+        val html = """
+            <!DOCTYPE html>
+            <html>
+            <body>
+              <div class="js-store" data-content="{&quot;store&quot;:{&quot;page&quot;:{&quot;data&quot;:{&quot;results&quot;:[{&quot;id&quot;:101,&quot;song_name&quot;:&quot;Ang Huling El Bimbo&quot;,&quot;artist_name&quot;:&quot;Eraserheads&quot;,&quot;type&quot;:&quot;Chords&quot;,&quot;version&quot;:1,&quot;votes&quot;:250,&quot;rating&quot;:4.95,&quot;tab_url&quot;:&quot;https://tabs.ultimate-guitar.com/tab/eraserheads/ang-huling-el-bimbo-chords-101&quot;,&quot;tonality_name&quot;:&quot;G&quot;},{&quot;id&quot;:102,&quot;song_name&quot;:&quot;Ang Huling El Bimbo&quot;,&quot;artist_name&quot;:&quot;Eraserheads&quot;,&quot;type&quot;:&quot;Chords&quot;,&quot;version&quot;:2,&quot;votes&quot;:80,&quot;rating&quot;:4.8,&quot;tab_url&quot;:&quot;https://tabs.ultimate-guitar.com/tab/eraserheads/ang-huling-el-bimbo-chords-102&quot;,&quot;tonality_name&quot;:&quot;A&quot;}]}}}}"></div>
+            </body>
+            </html>
+        """.trimIndent()
+
+        val results = WebScraperEngine.searchSongsFromHtml(html)
+        assertEquals(2, results.size)
+        assertEquals("Ang Huling El Bimbo", results[0].songName)
+        assertEquals("Eraserheads", results[0].artistName)
+        assertEquals("Chords", results[0].type)
+        assertEquals(1, results[0].version)
+        assertEquals(250, results[0].votes)
+        assertTrue(kotlin.math.abs(results[0].rating - 4.95) < 0.01)
+        assertEquals("G", results[0].tonality)
+
+        assertEquals(2, results[1].version)
+        assertEquals("A", results[1].tonality)
+    }
+
+    @Test
+    fun testBandSyncProtocolSerialization() {
+        val songMsg = com.joel.gta.data.sync.SyncMessage.SongSync(
+            songId = 42L,
+            title = "Torete",
+            artist = "Moonstar88",
+            key = "D",
+            capo = "Fret 2",
+            rawContent = "[D]Kakayanin ba ang sarili"
+        )
+        val json = com.joel.gta.data.sync.SyncMessage.serialize(songMsg)
+        val parsed = com.joel.gta.data.sync.SyncMessage.deserialize(json)
+        assertTrue(parsed is com.joel.gta.data.sync.SyncMessage.SongSync)
+        val casted = parsed as com.joel.gta.data.sync.SyncMessage.SongSync
+        assertEquals(42L, casted.songId)
+        assertEquals("Torete", casted.title)
+        assertEquals("Moonstar88", casted.artist)
+        assertEquals("Fret 2", casted.capo)
+
+        val scrollMsg = com.joel.gta.data.sync.SyncMessage.ScrollSync(scrollFraction = 0.45f)
+        val scrollJson = com.joel.gta.data.sync.SyncMessage.serialize(scrollMsg)
+        val parsedScroll = com.joel.gta.data.sync.SyncMessage.deserialize(scrollJson)
+        assertTrue(parsedScroll is com.joel.gta.data.sync.SyncMessage.ScrollSync)
+        assertEquals(0.45f, (parsedScroll as com.joel.gta.data.sync.SyncMessage.ScrollSync).scrollFraction, 0.001f)
+    }
+
+    @Test
+    fun testSongEntityTagsParsing() {
+        val song = com.joel.gta.data.local.entity.SongEntity(
+            title = "Alapaap",
+            artist = "Eraserheads",
+            rawContent = "A   E   F#m   D",
+            tags = "OPM, 90s Rock, Pinoy"
+        )
+        val tags = song.getTagsList()
+        assertEquals(3, tags.size)
+        assertEquals("OPM", tags[0])
+        assertEquals("90s Rock", tags[1])
+        assertEquals("Pinoy", tags[2])
+
+        assertTrue(song.hasTag("opm"))
+        assertTrue(song.hasTag("90s rock"))
+        assertFalse(song.hasTag("Acoustic"))
+    }
 }

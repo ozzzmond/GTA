@@ -27,7 +27,12 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 import com.joel.gta.data.scraper.ScrapedSong
+import com.joel.gta.data.scraper.WebSearchResult
 import com.joel.gta.data.scraper.WebScraperEngine
+import com.joel.gta.data.sync.BandSyncManager
+import com.joel.gta.data.sync.BandSyncRole
+import com.joel.gta.data.sync.BandSyncState
+import com.joel.gta.data.sync.SyncMessage
 
 enum class FootswitchAction {
     NEXT_SONG_OR_PAGE_DOWN,
@@ -49,8 +54,13 @@ data class BulkImportState(
 data class WebImportUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
-    val pendingSong: ScrapedSong? = null
+    val pendingSong: ScrapedSong? = null,
+    val searchQuery: String = "",
+    val searchResults: List<WebSearchResult> = emptyList(),
+    val isSearching: Boolean = false,
+    val searchError: String? = null
 )
+
 
 class SongViewerViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -107,6 +117,10 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     private val _customStageColors: MutableStateFlow<CustomStageColors>
     val customStageColors: StateFlow<CustomStageColors>
 
+    val bandSyncManager = BandSyncManager(application)
+    val bandSyncState: StateFlow<BandSyncState> = bandSyncManager.syncState
+    val bandScrollOffset = MutableSharedFlow<Float>(extraBufferCapacity = 1)
+
     init {
         val savedModeName = themePrefs.getString("pref_theme_mode", AppThemeMode.AMOLED_DARK.name)
         val loadedMode = try {
@@ -125,7 +139,14 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         )
         _customStageColors = MutableStateFlow(loadedColors)
         customStageColors = _customStageColors.asStateFlow()
+
+        viewModelScope.launch {
+            bandSyncManager.incomingMessages.collect { msg ->
+                handleIncomingSyncMessage(msg)
+            }
+        }
     }
+
 
     /**
      * Loads a song from Storage Access Framework (SAF) URI and
@@ -201,6 +222,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 isFavorite = entity.isFavorite,
                 transposeOffset = entity.transposeOffset
             )
+            broadcastSongIfHost(transposed, entity.rawContent, entity.id)
         }
     }
 
@@ -238,8 +260,10 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 setlistSongs = songs,
                 currentSetlistIndex = index
             )
+            broadcastSongIfHost(transposed, entity.rawContent, entity.id)
         }
     }
+
 
     /**
      * Gig Mode: Switch to any specific song index in the active setlist (for HorizontalPager swipes or direct navigation).
@@ -653,10 +677,67 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
+     * Web Import Suite: Searches for chord versions across the web.
+     */
+    fun searchWebSongs(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
+            _webImportState.value = _webImportState.value.copy(
+                searchQuery = "",
+                searchResults = emptyList(),
+                isSearching = false,
+                searchError = null
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            _webImportState.value = _webImportState.value.copy(
+                searchQuery = trimmed,
+                isSearching = true,
+                searchError = null
+            )
+            val result = WebScraperEngine.searchSongs(trimmed)
+            result.fold(
+                onSuccess = { list ->
+                    _webImportState.value = _webImportState.value.copy(
+                        isSearching = false,
+                        searchResults = list,
+                        searchError = if (list.isEmpty()) "No chord versions found for \"$trimmed\"." else null
+                    )
+                },
+                onFailure = { err ->
+                    _webImportState.value = _webImportState.value.copy(
+                        isSearching = false,
+                        searchResults = emptyList(),
+                        searchError = err.localizedMessage ?: "Failed to search web."
+                    )
+                }
+            )
+        }
+    }
+
+    /**
+     * Web Import Suite: Selects an online search result version and fetches the chord content.
+     */
+    fun selectSearchResult(result: WebSearchResult) {
+        fetchSongFromUrl(result.tabUrl)
+    }
+
+    /**
+     * Updates custom tags for a song in Room DB.
+     */
+    fun updateSongTags(songId: Long, tags: String) {
+        viewModelScope.launch {
+            repository.updateSongTags(songId, tags)
+        }
+    }
+
+    /**
      * Closes the Pre-Save Review Dialog and clears pending import state.
      */
     fun dismissWebImportReview() {
-        _webImportState.value = WebImportUiState()
+        _webImportState.value = _webImportState.value.copy(pendingSong = null, isLoading = false, error = null)
     }
 
     /**
@@ -668,6 +749,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         rawContent: String,
         key: String?,
         capo: String?,
+        tags: String = "",
         openAfterSave: Boolean = true
     ) {
         viewModelScope.launch {
@@ -682,10 +764,10 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             }
 
             val entityId = withContext(Dispatchers.IO) {
-                repository.saveOrUpdateSong(parsed, rawContent, transposeOffset = 0)
+                repository.saveOrUpdateSong(parsed, rawContent, transposeOffset = 0, tags = tags)
             }
 
-            _webImportState.value = WebImportUiState()
+            _webImportState.value = _webImportState.value.copy(pendingSong = null, isLoading = false, error = null)
 
             if (openAfterSave) {
                 val savedEntity = repository.getSongById(entityId)
@@ -698,7 +780,87 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                     isFavorite = savedEntity?.isFavorite ?: false,
                     transposeOffset = 0
                 )
+                broadcastSongIfHost(parsed, rawContent, entityId)
             }
         }
     }
+
+    // --- Band Sync (Play Together) Handlers ---
+
+    private fun handleIncomingSyncMessage(msg: SyncMessage) {
+        when (msg) {
+            is SyncMessage.SongSync -> {
+                // Band Member mode: Auto-load the song broadcast by Host
+                val defaultTitle = msg.title.ifBlank { "Synced Song" }
+                val parsed = SongParser.parse(msg.rawContent, defaultTitle = defaultTitle).let { base ->
+                    base.copy(
+                        title = defaultTitle,
+                        artist = msg.artist ?: base.artist,
+                        key = msg.key ?: base.key,
+                        capo = msg.capo ?: base.capo
+                    )
+                }
+                _isAutoScrolling.value = false
+                _uiState.value = SongViewerState.Loaded(
+                    song = parsed,
+                    originalSong = parsed,
+                    fileName = defaultTitle,
+                    songEntityId = msg.songId ?: 0L,
+                    isFavorite = false,
+                    transposeOffset = 0
+                )
+            }
+            is SyncMessage.ScrollSync -> {
+                // Band Member mode: Auto-scroll according to Leader's position
+                bandScrollOffset.tryEmit(msg.scrollFraction)
+            }
+            is SyncMessage.TempoSync -> {
+                // Tempo sync
+            }
+            else -> {}
+        }
+    }
+
+    fun broadcastSongIfHost(song: com.joel.gta.data.model.ParsedSong, rawContent: String, songId: Long? = null) {
+        if (bandSyncState.value.role == BandSyncRole.HOST) {
+            bandSyncManager.broadcast(
+                SyncMessage.SongSync(
+                    title = song.title,
+                    artist = song.artist,
+                    rawContent = rawContent,
+                    key = song.key,
+                    capo = song.capo,
+                    songId = songId
+                )
+            )
+        }
+    }
+
+    fun broadcastScrollIfHost(scrollFraction: Float) {
+        if (bandSyncState.value.role == BandSyncRole.HOST) {
+            bandSyncManager.broadcast(SyncMessage.ScrollSync(scrollFraction))
+        }
+    }
+
+    fun startBandHost(port: Int = 8765) {
+        bandSyncManager.startHost(port)
+    }
+
+    fun startBandClient() {
+        bandSyncManager.startClient()
+    }
+
+    fun connectToBandHost(ip: String, port: Int = 8765) {
+        bandSyncManager.connectToHost(ip, port)
+    }
+
+    fun stopBandSync() {
+        bandSyncManager.stopAll()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        bandSyncManager.stopAll()
+    }
 }
+

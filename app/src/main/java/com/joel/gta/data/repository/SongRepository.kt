@@ -43,7 +43,8 @@ class SongRepository(private val database: GtaDatabase) {
     suspend fun saveOrUpdateSong(
         song: ParsedSong,
         rawContent: String,
-        transposeOffset: Int = 0
+        transposeOffset: Int = 0,
+        tags: String = ""
     ): Long = withContext(Dispatchers.IO) {
         val existing = songDao.getSongByTitle(song.title)
         if (existing != null) {
@@ -54,6 +55,7 @@ class SongRepository(private val database: GtaDatabase) {
                 rawContent = rawContent,
                 format = song.format.name,
                 transposeOffset = transposeOffset,
+                tags = if (tags.isNotBlank()) tags else existing.tags,
                 lastOpenedAt = System.currentTimeMillis()
             )
             songDao.updateSong(updated)
@@ -67,6 +69,7 @@ class SongRepository(private val database: GtaDatabase) {
                 rawContent = rawContent,
                 format = song.format.name,
                 transposeOffset = transposeOffset,
+                tags = tags,
                 lastOpenedAt = System.currentTimeMillis()
             )
             songDao.insertSong(entity)
@@ -75,6 +78,10 @@ class SongRepository(private val database: GtaDatabase) {
 
     suspend fun insertSongsBatch(entities: List<SongEntity>) = withContext(Dispatchers.IO) {
         songDao.insertSongs(entities)
+    }
+
+    suspend fun updateSongTags(id: Long, tags: String) = withContext(Dispatchers.IO) {
+        songDao.updateTags(id, tags)
     }
 
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) = withContext(Dispatchers.IO) {
@@ -88,6 +95,7 @@ class SongRepository(private val database: GtaDatabase) {
     suspend fun updateLastOpened(id: Long) = withContext(Dispatchers.IO) {
         songDao.updateLastOpened(id, System.currentTimeMillis())
     }
+
 
     suspend fun deleteSong(song: SongEntity) = withContext(Dispatchers.IO) {
         songDao.deleteSong(song)

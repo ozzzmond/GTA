@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,23 +38,32 @@ import androidx.core.content.ContextCompat
 import com.joel.gta.data.audio.MetronomeEngine
 import com.joel.gta.data.audio.MetronomeSoundProfile
 import com.joel.gta.data.audio.PitchDetector
+import com.joel.gta.data.sync.BandSyncRole
+import com.joel.gta.data.sync.BandSyncState
 import com.joel.gta.ui.theme.LocalGtaColors
 import kotlin.math.abs
 import kotlin.math.ceil
 
 enum class StageToolTab {
     METRONOME,
-    GUITAR_TUNER
+    GUITAR_TUNER,
+    BAND_SYNC
 }
 
 @Composable
 fun StageToolsDialog(
     onDismissRequest: () -> Unit,
-    initialTab: StageToolTab = StageToolTab.METRONOME
+    initialTab: StageToolTab = StageToolTab.METRONOME,
+    bandSyncState: BandSyncState = BandSyncState(),
+    onStartBandHost: () -> Unit = {},
+    onStartBandClient: () -> Unit = {},
+    onConnectBandHost: (String) -> Unit = {},
+    onStopBandSync: () -> Unit = {}
 ) {
     val customColors = LocalGtaColors.current
     var selectedTab by remember { mutableStateOf(initialTab) }
     val scope = rememberCoroutineScope()
+
 
     Dialog(
         onDismissRequest = {
@@ -150,6 +160,20 @@ fun StageToolsDialog(
                             }
                         }
                     )
+                    Tab(
+                        selected = selectedTab == StageToolTab.BAND_SYNC,
+                        onClick = {
+                            selectedTab = StageToolTab.BAND_SYNC
+                            PitchDetector.stopListening()
+                        },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.WifiTethering, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Band Sync", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -159,8 +183,16 @@ fun StageToolsDialog(
                     when (selectedTab) {
                         StageToolTab.METRONOME -> MetronomePanel()
                         StageToolTab.GUITAR_TUNER -> GuitarTunerPanel()
+                        StageToolTab.BAND_SYNC -> BandSyncPanel(
+                            bandSyncState = bandSyncState,
+                            onStartHost = onStartBandHost,
+                            onStartClient = onStartBandClient,
+                            onConnectHost = onConnectBandHost,
+                            onStopSync = onStopBandSync
+                        )
                     }
                 }
+
             }
         }
     }
@@ -987,3 +1019,357 @@ private fun GuitarTunerPanel() {
         }
     }
 }
+
+@Composable
+private fun BandSyncPanel(
+    bandSyncState: BandSyncState,
+    onStartHost: () -> Unit,
+    onStartClient: () -> Unit,
+    onConnectHost: (String) -> Unit,
+    onStopSync: () -> Unit
+) {
+    val customColors = LocalGtaColors.current
+    var manualIpInput by remember { mutableStateOf("192.168.43.1") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Mode Selector Pills
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilledTonalButton(
+                onClick = onStopSync,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = if (bandSyncState.role == BandSyncRole.OFF) customColors.chordAccent.copy(alpha = 0.2f) else customColors.canvasBackground,
+                    contentColor = if (bandSyncState.role == BandSyncRole.OFF) customColors.chordAccent else customColors.textSecondary
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (bandSyncState.role == BandSyncRole.OFF) customColors.chordAccent else customColors.divider)
+            ) {
+                Text("Off", fontWeight = FontWeight.Bold)
+            }
+
+            FilledTonalButton(
+                onClick = onStartHost,
+                modifier = Modifier.weight(1.3f),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = if (bandSyncState.role == BandSyncRole.HOST) customColors.chordAccent else customColors.canvasBackground,
+                    contentColor = if (bandSyncState.role == BandSyncRole.HOST) Color.Black else customColors.textSecondary
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (bandSyncState.role == BandSyncRole.HOST) customColors.chordAccent else customColors.divider)
+            ) {
+                Icon(Icons.Default.Podcasts, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Band Leader", fontWeight = FontWeight.Bold)
+            }
+
+            FilledTonalButton(
+                onClick = onStartClient,
+                modifier = Modifier.weight(1.3f),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = if (bandSyncState.role == BandSyncRole.CLIENT) customColors.chordAccent else customColors.canvasBackground,
+                    contentColor = if (bandSyncState.role == BandSyncRole.CLIENT) Color.Black else customColors.textSecondary
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (bandSyncState.role == BandSyncRole.CLIENT) customColors.chordAccent else customColors.divider)
+            ) {
+                Icon(Icons.Default.Groups, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Band Member", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        when (bandSyncState.role) {
+            BandSyncRole.OFF -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = customColors.canvasBackground),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.WifiTethering,
+                            contentDescription = null,
+                            tint = customColors.chordAccent,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Play Together (Local Network Sync)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = customColors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Zero-latency song and scroll syncing for your whole band over Wi-Fi or Tablet Hotspot without internet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = customColors.textSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = onStartHost,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black)
+                            ) {
+                                Text("Host as Leader", fontWeight = FontWeight.Bold)
+                            }
+                            OutlinedButton(
+                                onClick = onStartClient,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = customColors.chordAccent)
+                            ) {
+                                Text("Join Member", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            BandSyncRole.HOST -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = customColors.canvasBackground),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent)
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22C55E))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "BAND LEADER MODE ACTIVE",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF22C55E)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = "Broadcasting on Port: ${bandSyncState.hostPort}${if (bandSyncState.hostIp != null) " • IP: ${bandSyncState.hostIp}" else ""}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = customColors.textPrimary
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "Connected Members: ${bandSyncState.connectedClientsCount}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = customColors.chordAccent,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        if (bandSyncState.connectedClientNames.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            androidx.compose.foundation.lazy.LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                items(bandSyncState.connectedClientNames.size) { idx ->
+                                    val name = bandSyncState.connectedClientNames[idx]
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = customColors.chordAccent.copy(alpha = 0.2f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent)
+                                    ) {
+                                        Text(
+                                            text = "🎸 $name",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = customColors.chordAccent,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "Whenever you select a song or scroll your stage viewer, all connected band members will synchronously follow your screen with zero latency.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = customColors.textSecondary
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = onStopSync,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444), contentColor = Color.White),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Stop Band Host", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            BandSyncRole.CLIENT -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = customColors.canvasBackground),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (bandSyncState.isConnectedToHost) Color(0xFF22C55E) else customColors.chordAccent)
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(if (bandSyncState.isConnectedToHost) Color(0xFF22C55E) else Color(0xFFEAB308))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (bandSyncState.isConnectedToHost) "CONNECTED TO LEADER" else "SEARCHING FOR LEADER",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Black,
+                                color = if (bandSyncState.isConnectedToHost) Color(0xFF22C55E) else Color(0xFFEAB308)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = bandSyncState.statusMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = customColors.textSecondary
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        if (bandSyncState.isConnectedToHost) {
+                            Text(
+                                text = "Synced with Band Leader (${bandSyncState.currentHostName}). Your screen will automatically follow song changes and scrolling.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = customColors.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            OutlinedButton(
+                                onClick = onStopSync,
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Disconnect", fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            // Discovered Leaders via NSD
+                            if (bandSyncState.discoveredHosts.isNotEmpty()) {
+                                Text(
+                                    text = "DISCOVERED LEADERS ON LOCAL WI-FI:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textSecondary
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                bandSyncState.discoveredHosts.forEach { host ->
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = customColors.surfaceBackground,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(text = host.name, fontWeight = FontWeight.Bold, color = customColors.textPrimary)
+                                                Text(text = "${host.hostAddress}:${host.port}", style = MaterialTheme.typography.labelSmall, color = customColors.textSecondary)
+                                            }
+                                            Button(
+                                                onClick = { onConnectHost(host.hostAddress) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("Connect", fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+
+                            // Manual IP Input (for Hotspot or Direct IP)
+                            Text(
+                                text = "CONNECT VIA IP (TABLET HOTSPOT):",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = customColors.textSecondary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = manualIpInput,
+                                    onValueChange = { manualIpInput = it },
+                                    label = { Text("Leader IP Address") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = customColors.chordAccent,
+                                        unfocusedBorderColor = customColors.divider,
+                                        focusedTextColor = customColors.textPrimary,
+                                        unfocusedTextColor = customColors.textPrimary
+                                    )
+                                )
+                                Button(
+                                    onClick = {
+                                        if (manualIpInput.isNotBlank()) {
+                                            onConnectHost(manualIpInput.trim())
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black),
+                                    modifier = Modifier.height(54.dp)
+                                ) {
+                                    Text("Connect", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

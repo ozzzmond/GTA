@@ -24,6 +24,19 @@ data class SongEntity(
     val format: String = "TWO_LINE",
     val isFavorite: Boolean = false,
     val transposeOffset: Int = 0,
+    val tags: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val lastOpenedAt: Long = System.currentTimeMillis()
-)
+) {
+    fun getTagsList(): List<String> {
+        if (tags.isBlank()) return emptyList()
+        return tags.split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
+
+    fun hasTag(tag: String): Boolean {
+        return getTagsList().any { it.equals(tag.trim(), ignoreCase = true) }
+    }
+}
+

@@ -99,6 +99,13 @@ fun SongViewerScreen(
     onCreateSetlist: (String) -> Unit,
     onBack: () -> Unit,
     footswitchActionFlow: SharedFlow<FootswitchAction>? = null,
+    bandSyncState: com.joel.gta.data.sync.BandSyncState = com.joel.gta.data.sync.BandSyncState(),
+    bandScrollOffset: Float? = null,
+    onScrollFractionChanged: (Float) -> Unit = {},
+    onStartBandHost: () -> Unit = {},
+    onStartBandClient: () -> Unit = {},
+    onConnectBandHost: (String) -> Unit = {},
+    onStopBandSync: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -206,6 +213,22 @@ fun SongViewerScreen(
     // When switching songs in setlist, smoothly reset scroll to top
     LaunchedEffect(song.title) {
         verticalScrollState.scrollTo(0)
+    }
+
+    // Band Sync: Broadcast scroll fraction when host scrolls
+    LaunchedEffect(verticalScrollState.value) {
+        if (verticalScrollState.maxValue > 0 && bandSyncState.isHost) {
+            val fraction = verticalScrollState.value.toFloat() / verticalScrollState.maxValue.toFloat()
+            onScrollFractionChanged(fraction)
+        }
+    }
+
+    // Band Sync: Member follows host scroll position
+    LaunchedEffect(bandScrollOffset) {
+        if (!bandSyncState.isHost && bandScrollOffset != null && verticalScrollState.maxValue > 0) {
+            val target = (bandScrollOffset * verticalScrollState.maxValue).toInt()
+            verticalScrollState.animateScrollTo(target)
+        }
     }
 
     // Smooth Coroutine Auto-Scroll Engine with Mutex Lock and Clean Boundary Detection
@@ -1350,10 +1373,15 @@ fun SongViewerScreen(
         )
     }
 
-    // Stage Tools Modal Dialog (Metronome & Chromatic Guitar Tuner)
+    // Stage Tools Modal Dialog (Metronome, Guitar Tuner & Band Sync)
     if (showStageToolsDialog) {
         StageToolsDialog(
-            onDismissRequest = { showStageToolsDialog = false }
+            onDismissRequest = { showStageToolsDialog = false },
+            bandSyncState = bandSyncState,
+            onStartBandHost = onStartBandHost,
+            onStartBandClient = onStartBandClient,
+            onConnectBandHost = onConnectBandHost,
+            onStopBandSync = onStopBandSync
         )
     }
 }

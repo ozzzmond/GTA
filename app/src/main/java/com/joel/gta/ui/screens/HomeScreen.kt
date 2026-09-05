@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.joel.gta.ui.screens
 
 import android.net.Uri
@@ -57,7 +59,7 @@ enum class SetlistSortOrder(val label: String) {
     SONG_COUNT("Most Songs")
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     savedSongs: List<SongEntity>,
@@ -84,13 +86,23 @@ fun HomeScreen(
     webImportState: WebImportUiState = WebImportUiState(),
     onFetchUrl: (String) -> Unit = {},
     onPasteClipboard: (String) -> Unit = {},
+    onSearchWeb: (String) -> Unit = {},
+    onSelectSearchResult: (com.joel.gta.data.scraper.WebSearchResult) -> Unit = {},
     onDismissWebReview: () -> Unit = {},
-    onSaveWebReviewSong: (title: String, artist: String?, rawContent: String, key: String?, capo: String?) -> Unit = { _, _, _, _, _ -> },
+    onSaveWebReviewSong: (title: String, artist: String?, rawContent: String, key: String?, capo: String?, tags: String) -> Unit = { _, _, _, _, _, _ -> },
+    onUpdateSongTags: (Long, String) -> Unit = { _, _ -> },
+    bandSyncState: com.joel.gta.data.sync.BandSyncState = com.joel.gta.data.sync.BandSyncState(),
+    onStartBandHost: () -> Unit = {},
+    onStartBandClient: () -> Unit = {},
+    onConnectBandHost: (String) -> Unit = {},
+    onStopBandSync: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
     var searchQuery by remember { mutableStateOf("") }
     var showOnlyFavorites by remember { mutableStateOf(false) }
+    var selectedTag by remember { mutableStateOf<String?>(null) }
+    var editingSongForTags by remember { mutableStateOf<SongEntity?>(null) }
 
     var songSortOrder by remember { mutableStateOf(SongSortOrder.TITLE_ASC) }
     var showSongSortMenu by remember { mutableStateOf(false) }
@@ -101,6 +113,7 @@ fun HomeScreen(
     var showCreateSetlistDialog by remember { mutableStateOf(false) }
     var newSetlistName by remember { mutableStateOf("") }
     var showStageToolsDialog by remember { mutableStateOf(false) }
+
 
     // SAF Document Picker launcher - accepts .txt, .chordtxt, or all text formats
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -248,9 +261,20 @@ fun HomeScreen(
             when (selectedTab) {
                 HomeTab.SONGBOOK -> {
                     val listToShow = if (showOnlyFavorites) favoriteSongs else savedSongs
-                    val filteredSongs = listToShow.filter {
-                        it.title.contains(searchQuery, ignoreCase = true) ||
-                                (it.artist?.contains(searchQuery, ignoreCase = true) == true)
+
+                    val allDistinctTags = remember(savedSongs) {
+                        val set = linkedSetOf("OPM", "Acoustic", "Rock", "Slow Rock", "Pop", "Encore")
+                        savedSongs.forEach { s ->
+                            set.addAll(s.getTagsList())
+                        }
+                        set.toList()
+                    }
+
+                    val filteredSongs = listToShow.filter { song ->
+                        val matchesSearch = song.title.contains(searchQuery, ignoreCase = true) ||
+                                (song.artist?.contains(searchQuery, ignoreCase = true) == true)
+                        val matchesTag = selectedTag == null || song.hasTag(selectedTag!!)
+                        matchesSearch && matchesTag
                     }
                     val sortedSongs = remember(filteredSongs, songSortOrder) {
                         when (songSortOrder) {
@@ -271,7 +295,7 @@ fun HomeScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 12.dp),
+                                .padding(bottom = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedTextField(
@@ -292,7 +316,10 @@ fun HomeScreen(
 
                             FilterChip(
                                 selected = showOnlyFavorites,
-                                onClick = { showOnlyFavorites = !showOnlyFavorites },
+                                onClick = {
+                                    showOnlyFavorites = !showOnlyFavorites
+                                    if (showOnlyFavorites) selectedTag = null
+                                },
                                 label = { Text("★") },
                                 leadingIcon = {
                                     Icon(
@@ -374,6 +401,49 @@ fun HomeScreen(
                             }
                         }
 
+                        // Horizontal Tag Filter Chips Row
+                        androidx.compose.foundation.lazy.LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            item {
+                                FilterChip(
+                                    selected = selectedTag == null && !showOnlyFavorites,
+                                    onClick = {
+                                        selectedTag = null
+                                        showOnlyFavorites = false
+                                    },
+                                    label = { Text("All (${savedSongs.size})") },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = customColors.chordAccent.copy(alpha = 0.2f),
+                                        selectedLabelColor = customColors.chordAccent
+                                    )
+                                )
+                            }
+
+                            items(allDistinctTags.size) { idx ->
+                                val tag = allDistinctTags[idx]
+                                val count = savedSongs.count { it.hasTag(tag) }
+                                FilterChip(
+                                    selected = selectedTag == tag,
+                                    onClick = {
+                                        selectedTag = if (selectedTag == tag) null else tag
+                                        showOnlyFavorites = false
+                                    },
+                                    label = { Text(if (count > 0) "$tag ($count)" else tag) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = customColors.chordAccent.copy(alpha = 0.2f),
+                                        selectedLabelColor = customColors.chordAccent
+                                    )
+                                )
+                            }
+                        }
+
                         if (sortedSongs.isEmpty()) {
                             Box(
                                 modifier = Modifier
@@ -390,7 +460,7 @@ fun HomeScreen(
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Text(
-                                        text = if (showOnlyFavorites) "No favorite songs yet." else "No songs in library.",
+                                        text = if (showOnlyFavorites) "No favorite songs yet." else if (selectedTag != null) "No songs tagged \"$selectedTag\"." else "No songs in library.",
                                         style = MaterialTheme.typography.titleMedium,
                                         color = customColors.textPrimary
                                     )
@@ -419,13 +489,15 @@ fun HomeScreen(
                                         entity = entity,
                                         onSelect = { onSelectSongEntity(entity) },
                                         onToggleFavorite = { onToggleFavoriteSong(entity.id, entity.isFavorite) },
-                                        onDelete = { onDeleteSong(entity) }
+                                        onDelete = { onDeleteSong(entity) },
+                                        onEditTags = { editingSongForTags = entity }
                                     )
                                 }
                             }
                         }
                     }
                 }
+
 
                 HomeTab.SETLISTS -> {
                     val sortedSetlists = remember(setlists, setlistSortOrder) {
@@ -592,7 +664,9 @@ fun HomeScreen(
 
                 HomeTab.IMPORT -> {
                     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                    var webSearchInput by remember { mutableStateOf(webImportState.searchQuery) }
                     var urlInput by remember { mutableStateOf("") }
+                    var showDirectUrlSection by remember { mutableStateOf(false) }
 
                     Column(
                         modifier = Modifier
@@ -601,9 +675,9 @@ fun HomeScreen(
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                        // 1. Web & Clipboard Ingest Suite Card
+                        // 1. Online Song & Chord Search Card
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
@@ -622,7 +696,7 @@ fun HomeScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Language,
+                                            imageVector = Icons.Default.TravelExplore,
                                             contentDescription = null,
                                             tint = customColors.chordAccent,
                                             modifier = Modifier.size(24.dp)
@@ -631,13 +705,13 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
                                         Text(
-                                            text = "Web & Clipboard Ingest",
+                                            text = "Song & Chords Web Search",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = customColors.textPrimary
                                         )
                                         Text(
-                                            text = "Ultimate Guitar, Chordie, E-Chords, Songsterr, or raw text",
+                                            text = "Type Title or Artist to fetch versions & chords online",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = customColors.textSecondary
                                         )
@@ -646,36 +720,38 @@ fun HomeScreen(
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
-                                // URL input field with clear button
+                                // Search Bar with clear and search actions
                                 OutlinedTextField(
-                                    value = urlInput,
-                                    onValueChange = { urlInput = it },
+                                    value = webSearchInput,
+                                    onValueChange = { webSearchInput = it },
                                     modifier = Modifier.fillMaxWidth(),
                                     placeholder = {
-                                        Text(
-                                            "Enter chord URL (e.g. https://tabs.ultimate-guitar.com/...)",
-                                            fontSize = 13.sp
-                                        )
+                                        Text("Search song title or artist (e.g. Hotel California)...", fontSize = 13.sp)
                                     },
                                     singleLine = true,
                                     leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Link,
-                                            contentDescription = null,
-                                            tint = customColors.chordAccent
-                                        )
+                                        Icon(Icons.Default.Search, contentDescription = null, tint = customColors.chordAccent)
                                     },
                                     trailingIcon = {
-                                        if (urlInput.isNotBlank()) {
-                                            IconButton(onClick = { urlInput = "" }) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Clear,
-                                                    contentDescription = "Clear",
-                                                    tint = customColors.textSecondary
-                                                )
+                                        if (webSearchInput.isNotBlank()) {
+                                            IconButton(onClick = {
+                                                webSearchInput = ""
+                                                onSearchWeb("")
+                                            }) {
+                                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = customColors.textSecondary)
                                             }
                                         }
                                     },
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                        imeAction = androidx.compose.ui.text.input.ImeAction.Search
+                                    ),
+                                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                        onSearch = {
+                                            if (webSearchInput.isNotBlank()) {
+                                                onSearchWeb(webSearchInput)
+                                            }
+                                        }
+                                    ),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = customColors.chordAccent,
                                         unfocusedBorderColor = customColors.divider,
@@ -687,83 +763,57 @@ fun HomeScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                Button(
+                                    onClick = {
+                                        if (webSearchInput.isNotBlank()) {
+                                            onSearchWeb(webSearchInput)
+                                        }
+                                    },
+                                    enabled = webSearchInput.isNotBlank() && !webImportState.isSearching,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black)
                                 ) {
-                                    // Fetch from URL button
-                                    Button(
-                                        onClick = {
-                                            if (urlInput.isNotBlank()) {
-                                                onFetchUrl(urlInput.trim())
-                                            }
-                                        },
-                                        enabled = urlInput.isNotBlank() && !webImportState.isLoading,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp),
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = customColors.chordAccent,
-                                            contentColor = Color.Black
-                                        )
-                                    ) {
-                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Import URL", fontWeight = FontWeight.Bold)
-                                    }
+                                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Find Online Versions", fontWeight = FontWeight.Bold)
+                                }
 
-                                    // Paste from clipboard button
-                                    OutlinedButton(
-                                        onClick = {
-                                            val clip = clipboardManager.getText()?.text ?: ""
-                                            if (clip.isNotBlank()) {
-                                                if (clip.startsWith("http://", ignoreCase = true) || clip.startsWith("https://", ignoreCase = true)) {
-                                                    urlInput = clip.trim()
-                                                }
-                                                onPasteClipboard(clip)
-                                            }
-                                        },
-                                        enabled = !webImportState.isLoading,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp),
-                                        shape = RoundedCornerShape(10.dp),
-                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
-                                        colors = ButtonDefaults.outlinedButtonColors(
-                                            contentColor = customColors.chordAccent
+                                // Quick suggestion chips
+                                Spacer(modifier = Modifier.height(10.dp))
+                                val sampleQueries = listOf("Hotel California", "Ang Huling El Bimbo", "Torete", "Creep", "With or Without You")
+                                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(sampleQueries.size) { idx ->
+                                        val sample = sampleQueries[idx]
+                                        SuggestionChip(
+                                            onClick = {
+                                                webSearchInput = sample
+                                                onSearchWeb(sample)
+                                            },
+                                            label = { Text(sample, fontSize = 11.sp) },
+                                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                                containerColor = customColors.canvasBackground,
+                                                labelColor = customColors.textSecondary
+                                            ),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
                                         )
-                                    ) {
-                                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Paste Clipboard", fontWeight = FontWeight.Bold)
                                     }
                                 }
 
-                                // Loading state indicator
-                                if (webImportState.isLoading) {
-                                    Spacer(modifier = Modifier.height(14.dp))
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 4.dp)
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(18.dp),
-                                            color = customColors.chordAccent,
-                                            strokeWidth = 2.dp
-                                        )
+                                // Searching progress indicator
+                                if (webImportState.isSearching) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = customColors.chordAccent, strokeWidth = 2.dp)
                                         Spacer(modifier = Modifier.width(10.dp))
-                                        Text(
-                                            text = "Scraping chords and cleaning web ads...",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = customColors.chordAccent,
-                                            fontWeight = FontWeight.Medium
-                                        )
+                                        Text("Searching online databases for chord versions...", style = MaterialTheme.typography.bodySmall, color = customColors.chordAccent)
                                     }
                                 }
 
-                                // Error banner
-                                if (webImportState.error != null) {
+                                // Search error banner
+                                if (webImportState.searchError != null) {
                                     Spacer(modifier = Modifier.height(14.dp))
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
@@ -771,27 +821,240 @@ fun HomeScreen(
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ErrorOutline,
-                                                contentDescription = null,
-                                                tint = Color(0xFFEF4444),
-                                                modifier = Modifier.size(18.dp)
-                                            )
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                            Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = webImportState.error,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFFEF4444)
-                                            )
+                                            Text(text = webImportState.searchError, style = MaterialTheme.typography.bodySmall, color = Color(0xFFEF4444))
+                                        }
+                                    }
+                                }
+
+                                // Search Results List
+                                if (webImportState.searchResults.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = "CHORD VERSIONS (${webImportState.searchResults.size}):",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = customColors.textSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    webImportState.searchResults.forEach { item ->
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = customColors.canvasBackground,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(text = item.songName, fontWeight = FontWeight.Bold, color = customColors.textPrimary)
+                                                    Text(text = item.artistName, style = MaterialTheme.typography.bodySmall, color = customColors.textSecondary)
+
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = customColors.chordAccent.copy(alpha = 0.2f)
+                                                        ) {
+                                                            Text(
+                                                                text = "Ver ${item.version}",
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = customColors.chordAccent,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = customColors.surfaceBackground
+                                                        ) {
+                                                            Text(
+                                                                text = item.type,
+                                                                fontSize = 10.sp,
+                                                                color = customColors.textSecondary,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+
+                                                        if (item.votes > 0) {
+                                                            val votesStr = if (item.votes >= 1000) "${item.votes / 1000}k" else "${item.votes}"
+                                                            Text(
+                                                                text = "★ ${"%.1f".format(item.rating)} ($votesStr)",
+                                                                fontSize = 10.sp,
+                                                                color = Color(0xFFFBBF24),
+                                                                fontWeight = FontWeight.SemiBold
+                                                            )
+                                                        }
+
+                                                        if (item.tonality != null) {
+                                                            Text(
+                                                                text = "Key: ${item.tonality}",
+                                                                fontSize = 10.sp,
+                                                                color = customColors.textSecondary
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.width(10.dp))
+
+                                                Button(
+                                                    onClick = { onSelectSearchResult(item) },
+                                                    enabled = !webImportState.isLoading,
+                                                    colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Import", fontWeight = FontWeight.Bold)
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // 2. Collapsible Direct Link or Clipboard Ingest Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
+                            shape = RoundedCornerShape(16.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { showDirectUrlSection = !showDirectUrlSection }
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Link, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = "Direct URL or Clipboard Ingest",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = customColors.textPrimary
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = if (showDirectUrlSection) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = customColors.textSecondary
+                                    )
+                                }
+
+                                if (showDirectUrlSection) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    OutlinedTextField(
+                                        value = urlInput,
+                                        onValueChange = { urlInput = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        placeholder = { Text("Enter chord URL (e.g. tabs.ultimate-guitar.com/...)", fontSize = 13.sp) },
+                                        singleLine = true,
+                                        trailingIcon = {
+                                            if (urlInput.isNotBlank()) {
+                                                IconButton(onClick = { urlInput = "" }) {
+                                                    Icon(Icons.Default.Clear, contentDescription = "Clear", tint = customColors.textSecondary)
+                                                }
+                                            }
+                                        },
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = customColors.chordAccent,
+                                            unfocusedBorderColor = customColors.divider,
+                                            focusedTextColor = customColors.textPrimary,
+                                            unfocusedTextColor = customColors.textPrimary
+                                        ),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                if (urlInput.isNotBlank()) {
+                                                    onFetchUrl(urlInput.trim())
+                                                }
+                                            },
+                                            enabled = urlInput.isNotBlank() && !webImportState.isLoading,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(44.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black)
+                                        ) {
+                                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Import URL", fontWeight = FontWeight.Bold)
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                val clip = clipboardManager.getText()?.text ?: ""
+                                                if (clip.isNotBlank()) {
+                                                    if (clip.startsWith("http://", ignoreCase = true) || clip.startsWith("https://", ignoreCase = true)) {
+                                                        urlInput = clip.trim()
+                                                    }
+                                                    onPasteClipboard(clip)
+                                                }
+                                            },
+                                            enabled = !webImportState.isLoading,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(44.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = customColors.chordAccent)
+                                        ) {
+                                            Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Paste Clipboard", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    if (webImportState.isLoading) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = customColors.chordAccent, strokeWidth = 2.dp)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Scraping chords and cleaning web ads...", style = MaterialTheme.typography.bodySmall, color = customColors.chordAccent)
+                                        }
+                                    }
+
+                                    if (webImportState.error != null) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Text(text = webImportState.error, style = MaterialTheme.typography.bodySmall, color = Color(0xFFEF4444))
+                                    }
+                                }
+                            }
+                        }
+
 
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -989,10 +1252,96 @@ fun HomeScreen(
         )
     }
 
-    // Stage Tools Modal Dialog (Metronome & Guitar Tuner)
+    // Stage Tools Modal Dialog (Metronome & Guitar Tuner & Band Sync)
     if (showStageToolsDialog) {
         StageToolsDialog(
-            onDismissRequest = { showStageToolsDialog = false }
+            onDismissRequest = { showStageToolsDialog = false },
+            bandSyncState = bandSyncState,
+            onStartBandHost = onStartBandHost,
+            onStartBandClient = onStartBandClient,
+            onConnectBandHost = onConnectBandHost,
+            onStopBandSync = onStopBandSync
+        )
+    }
+
+    // Edit Tags Dialog
+    editingSongForTags?.let { song ->
+        var currentTagsInput by remember(song.id) { mutableStateOf(song.tags) }
+        val quickTags = listOf("OPM", "Acoustic", "Rock", "Slow Rock", "Pop", "Encore")
+
+        AlertDialog(
+            onDismissRequest = { editingSongForTags = null },
+            title = {
+                Text(
+                    text = "Edit Tags: ${song.title}",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Separate tags with commas (e.g. OPM, Acoustic):",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = currentTagsInput,
+                        onValueChange = { currentTagsInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("e.g. OPM, Acoustic") }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Quick Add:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = customColors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        quickTags.forEach { quickTag ->
+                            val currentList = currentTagsInput.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            val isAdded = currentList.any { it.equals(quickTag, ignoreCase = true) }
+                            FilterChip(
+                                selected = isAdded,
+                                onClick = {
+                                    if (isAdded) {
+                                        currentTagsInput = currentList.filterNot { it.equals(quickTag, ignoreCase = true) }.joinToString(", ")
+                                    } else {
+                                        currentTagsInput = if (currentTagsInput.isBlank()) quickTag else "$currentTagsInput, $quickTag"
+                                    }
+                                },
+                                label = { Text(quickTag, style = MaterialTheme.typography.bodySmall) },
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onUpdateSongTags(song.id, currentTagsInput.trim())
+                        editingSongForTags = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent)
+                ) {
+                    Text("Save Tags", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingSongForTags = null }) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = customColors.surfaceBackground,
+            shape = RoundedCornerShape(16.dp)
         )
     }
 
@@ -1042,7 +1391,8 @@ private fun SongCard(
     entity: SongEntity,
     onSelect: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEditTags: () -> Unit
 ) {
     val customColors = LocalGtaColors.current
 
@@ -1080,6 +1430,41 @@ private fun SongCard(
                         color = customColors.textSecondary
                     )
                 }
+
+                // Tag Chips Row if any tags present
+                val tagsList = entity.getTagsList()
+                if (tagsList.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        tagsList.forEach { tag ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = customColors.chordAccent.copy(alpha = 0.12f),
+                                border = androidx.compose.foundation.BorderStroke(0.5.dp, customColors.chordAccent.copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = tag,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = customColors.chordAccent,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Edit Tags button
+            IconButton(onClick = onEditTags) {
+                Icon(
+                    imageVector = Icons.Default.Label,
+                    contentDescription = "Edit Tags",
+                    tint = if (entity.tags.isNotBlank()) customColors.chordAccent else customColors.textSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
             // Favorite button

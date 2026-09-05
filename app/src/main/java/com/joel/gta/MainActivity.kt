@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
             val activeHomeTab by viewModel.activeHomeTab.collectAsState()
             val bulkImportState by viewModel.bulkImportState.collectAsState()
             val webImportState by viewModel.webImportState.collectAsState()
+            val bandSyncState by viewModel.bandSyncState.collectAsState()
+            val bandScrollOffset by viewModel.bandScrollOffset.collectAsState(initial = null)
             val context = LocalContext.current
 
             GTATheme(themeMode = themeMode, customStageColors = customStageColors) {
@@ -84,10 +86,20 @@ class MainActivity : ComponentActivity() {
                             webImportState = webImportState,
                             onFetchUrl = { url -> viewModel.fetchSongFromUrl(url) },
                             onPasteClipboard = { text -> viewModel.prepareSongFromClipboard(text) },
+                            onSearchWeb = { query -> viewModel.searchWebSongs(query) },
+                            onSelectSearchResult = { result -> viewModel.selectSearchResult(result) },
                             onDismissWebReview = { viewModel.dismissWebImportReview() },
-                            onSaveWebReviewSong = { title, artist, raw, key, capo ->
-                                viewModel.saveSongFromReview(title, artist, raw, key, capo)
+                            onSaveWebReviewSong = { title, artist, raw, key, capo, tags ->
+                                viewModel.saveSongFromReview(title, artist, raw, key, capo, tags)
                             },
+                            onUpdateSongTags = { songId, tags ->
+                                viewModel.updateSongTags(songId, tags)
+                            },
+                            bandSyncState = bandSyncState,
+                            onStartBandHost = { viewModel.startBandHost() },
+                            onStartBandClient = { viewModel.startBandClient() },
+                            onConnectBandHost = { hostAddress -> viewModel.connectToBandHost(hostAddress) },
+                            onStopBandSync = { viewModel.stopBandSync() },
                             onOpenSampleTwoLine = {
                                 viewModel.loadSampleSong(useChordPro = false)
                             },
@@ -169,7 +181,14 @@ class MainActivity : ComponentActivity() {
                                 viewModel.createSetlist(name)
                             },
                             onBack = { viewModel.clearSong() },
-                            footswitchActionFlow = viewModel.footswitchAction
+                            footswitchActionFlow = viewModel.footswitchAction,
+                            bandSyncState = bandSyncState,
+                            bandScrollOffset = bandScrollOffset,
+                            onScrollFractionChanged = { fraction -> viewModel.broadcastScrollIfHost(fraction) },
+                            onStartBandHost = { viewModel.startBandHost() },
+                            onStartBandClient = { viewModel.startBandClient() },
+                            onConnectBandHost = { hostAddress -> viewModel.connectToBandHost(hostAddress) },
+                            onStopBandSync = { viewModel.stopBandSync() }
                         )
                     }
 

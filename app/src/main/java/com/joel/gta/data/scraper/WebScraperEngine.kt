@@ -15,6 +15,19 @@ data class ScrapedSong(
     val sourceUrl: String = ""
 )
 
+data class WebSearchResult(
+    val id: Long,
+    val songName: String,
+    val artistName: String,
+    val type: String,
+    val version: Int,
+    val votes: Int,
+    val rating: Float,
+    val tabUrl: String,
+    val tonality: String? = null
+)
+
+
 object WebScraperEngine {
 
     private const val USER_AGENT =
@@ -393,4 +406,107 @@ object WebScraperEngine {
         val cleanTitle = trimmed.replace(Regex("""(?i)\s*Chords$"""), "").trim()
         return cleanTitle.ifBlank { "Imported Song" } to null
     }
+
+    /**
+     * Searches for chord versions on the web by song title and/or artist.
+     */
+    suspend fun searchSongs(query: String): Result<List<WebSearchResult>> = withContext(Dispatchers.IO) {
+        try {
+            val trimmed = query.trim()
+            if (trimmed.isBlank()) return@withContext Result.success(emptyList())
+
+            val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
+            val searchUrl = "https://www.ultimate-guitar.com/search.php?search_type=title&value=$encoded"
+
+            val doc = Jsoup.connect(searchUrl)
+                .userAgent(USER_AGENT)
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .timeout(15_000)
+                .get()
+
+            val results = searchSongsFromDoc(doc)
+            Result.success(results)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Parses search results from Jsoup Document.
+     */
+    internal fun searchSongsFromDoc(doc: Document): List<WebSearchResult> {
+        val jsStore = doc.selectFirst(".js-store")
+        val dataContent = jsStore?.attr("data-content")
+        if (!dataContent.isNullOrBlank()) {
+            return parseSearchResultsJson(dataContent)
+        }
+        return emptyList()
+    }
+
+    /**
+     * Parses search results from raw HTML string.
+     */
+    internal fun searchSongsFromHtml(html: String): List<WebSearchResult> {
+        val doc = Jsoup.parse(html)
+        return searchSongsFromDoc(doc)
+    }
+
+    /**
+     * Extracts and sorts structured search results from JSON store content.
+     */
+    internal fun parseSearchResultsJson(jsonStr: String): List<WebSearchResult> {
+        val results = mutableListOf<WebSearchResult>()
+        try {
+            val jsonObj = org.json.JSONObject(jsonStr)
+            val store = jsonObj.optJSONObject("store") ?: jsonObj
+            val page = store.optJSONObject("page") ?: store
+            val data = page.optJSONObject("data") ?: page
+            val resultsArray = data.optJSONArray("results") ?: org.json.JSONArray()
+
+            for (i in 0 until resultsArray.length()) {
+                val item = resultsArray.optJSONObject(i) ?: continue
+                val songName = item.optString("song_name", "").trim()
+                val artistName = item.optString("artist_name", "").trim()
+                val tabUrl = item.optString("tab_url", "").trim()
+                val type = item.optString("type", "").trim()
+
+                if (songName.isNotBlank() && tabUrl.isNotBlank()) {
+                    val isChord = type.equals("Chords", ignoreCase = true) ||
+                            tabUrl.contains("-chords-") ||
+                            type.equals("Tab", ignoreCase = true)
+
+                    if (isChord) {
+                        val id = item.optLong("id", (i + 1).toLong())
+                        val version = item.optInt("version", 1).coerceAtLeast(1)
+                        val votes = item.optInt("votes", 0)
+                        val rating = item.optDouble("rating", 0.0).toFloat()
+                        val tonality = item.optString("tonality_name", "").takeIf { it.isNotBlank() }
+
+                        results.add(
+                            WebSearchResult(
+                                id = id,
+                                songName = songName,
+                                artistName = artistName,
+                                type = if (type.isNotBlank()) type else "Chords",
+                                version = version,
+                                votes = votes,
+                                rating = rating,
+                                tabUrl = tabUrl,
+                                tonality = tonality
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Silently recover partial results
+        }
+
+        // Sort by votes descending, then rating descending
+        return results.sortedWith(
+            compareByDescending<WebSearchResult> { it.votes }
+                .thenByDescending { it.rating }
+        )
+    }
 }
+

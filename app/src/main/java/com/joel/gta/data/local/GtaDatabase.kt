@@ -16,7 +16,7 @@ import com.joel.gta.data.local.entity.SongEntity
         SetlistEntity::class,
         SetlistSongCrossRef::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class GtaDatabase : RoomDatabase() {
@@ -28,6 +28,12 @@ abstract class GtaDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: GtaDatabase? = null
 
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE songs ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): GtaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -35,6 +41,7 @@ abstract class GtaDatabase : RoomDatabase() {
                     GtaDatabase::class.java,
                     "gta_database.db"
                 )
+                .addMigrations(MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
@@ -43,3 +50,4 @@ abstract class GtaDatabase : RoomDatabase() {
         }
     }
 }
+
