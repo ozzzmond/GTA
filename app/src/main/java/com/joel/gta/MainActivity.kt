@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
             val allSetlists by viewModel.allSetlists.collectAsState()
             val activeHomeTab by viewModel.activeHomeTab.collectAsState()
             val bulkImportState by viewModel.bulkImportState.collectAsState()
+            val webImportState by viewModel.webImportState.collectAsState()
             val context = LocalContext.current
 
             GTATheme(themeMode = themeMode, customStageColors = customStageColors) {
@@ -80,6 +81,13 @@ class MainActivity : ComponentActivity() {
                                 viewModel.dismissBulkImportDialog()
                             },
                             bulkImportState = bulkImportState,
+                            webImportState = webImportState,
+                            onFetchUrl = { url -> viewModel.fetchSongFromUrl(url) },
+                            onPasteClipboard = { text -> viewModel.prepareSongFromClipboard(text) },
+                            onDismissWebReview = { viewModel.dismissWebImportReview() },
+                            onSaveWebReviewSong = { title, artist, raw, key, capo ->
+                                viewModel.saveSongFromReview(title, artist, raw, key, capo)
+                            },
                             onOpenSampleTwoLine = {
                                 viewModel.loadSampleSong(useChordPro = false)
                             },

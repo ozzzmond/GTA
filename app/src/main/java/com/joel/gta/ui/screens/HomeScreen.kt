@@ -30,8 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.local.entity.SongEntity
+import com.joel.gta.ui.components.PreSaveSongReviewDialog
 import com.joel.gta.ui.components.StageToolsDialog
 import com.joel.gta.ui.theme.LocalGtaColors
+import com.joel.gta.ui.viewmodel.WebImportUiState
 
 enum class HomeTab {
     SONGBOOK,
@@ -79,6 +81,11 @@ fun HomeScreen(
     bulkImportState: com.joel.gta.ui.viewmodel.BulkImportState = com.joel.gta.ui.viewmodel.BulkImportState(),
     onFolderSelected: (Uri) -> Unit = {},
     onDismissBulkImport: () -> Unit = {},
+    webImportState: WebImportUiState = WebImportUiState(),
+    onFetchUrl: (String) -> Unit = {},
+    onPasteClipboard: (String) -> Unit = {},
+    onDismissWebReview: () -> Unit = {},
+    onSaveWebReviewSong: (title: String, artist: String?, rawContent: String, key: String?, capo: String?) -> Unit = { _, _, _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalGtaColors.current
@@ -584,6 +591,9 @@ fun HomeScreen(
                 }
 
                 HomeTab.IMPORT -> {
+                    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                    var urlInput by remember { mutableStateOf("") }
+
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -591,9 +601,201 @@ fun HomeScreen(
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // 1. Web & Clipboard Ingest Suite Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
+                            shape = RoundedCornerShape(20.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(20.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(customColors.chordAccent.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Language,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = "Web & Clipboard Ingest",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = customColors.textPrimary
+                                        )
+                                        Text(
+                                            text = "Ultimate Guitar, Chordie, E-Chords, Songsterr, or raw text",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = customColors.textSecondary
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // URL input field with clear button
+                                OutlinedTextField(
+                                    value = urlInput,
+                                    onValueChange = { urlInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = {
+                                        Text(
+                                            "Enter chord URL (e.g. https://tabs.ultimate-guitar.com/...)",
+                                            fontSize = 13.sp
+                                        )
+                                    },
+                                    singleLine = true,
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Link,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        if (urlInput.isNotBlank()) {
+                                            IconButton(onClick = { urlInput = "" }) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Clear,
+                                                    contentDescription = "Clear",
+                                                    tint = customColors.textSecondary
+                                                )
+                                            }
+                                        }
+                                    },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = customColors.chordAccent,
+                                        unfocusedBorderColor = customColors.divider,
+                                        focusedTextColor = customColors.textPrimary,
+                                        unfocusedTextColor = customColors.textPrimary
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    // Fetch from URL button
+                                    Button(
+                                        onClick = {
+                                            if (urlInput.isNotBlank()) {
+                                                onFetchUrl(urlInput.trim())
+                                            }
+                                        },
+                                        enabled = urlInput.isNotBlank() && !webImportState.isLoading,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = customColors.chordAccent,
+                                            contentColor = Color.Black
+                                        )
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Import URL", fontWeight = FontWeight.Bold)
+                                    }
+
+                                    // Paste from clipboard button
+                                    OutlinedButton(
+                                        onClick = {
+                                            val clip = clipboardManager.getText()?.text ?: ""
+                                            if (clip.isNotBlank()) {
+                                                if (clip.startsWith("http://", ignoreCase = true) || clip.startsWith("https://", ignoreCase = true)) {
+                                                    urlInput = clip.trim()
+                                                }
+                                                onPasteClipboard(clip)
+                                            }
+                                        },
+                                        enabled = !webImportState.isLoading,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = customColors.chordAccent
+                                        )
+                                    ) {
+                                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Paste Clipboard", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                // Loading state indicator
+                                if (webImportState.isLoading) {
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            color = customColors.chordAccent,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = "Scraping chords and cleaning web ads...",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = customColors.chordAccent,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+
+                                // Error banner
+                                if (webImportState.error != null) {
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFEF4444).copy(alpha = 0.15f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ErrorOutline,
+                                                contentDescription = null,
+                                                tint = Color(0xFFEF4444),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = webImportState.error,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFFEF4444)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Hero Card
+                        // 2. Local Storage Files Card
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
@@ -692,6 +894,15 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // Pre-Save Song Review Dialog
+    if (webImportState.pendingSong != null) {
+        PreSaveSongReviewDialog(
+            scrapedSong = webImportState.pendingSong,
+            onDismiss = onDismissWebReview,
+            onSave = onSaveWebReviewSong
+        )
     }
 
     // Bulk Import Progress Dialog

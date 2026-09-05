@@ -26,6 +26,9 @@ import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
+import com.joel.gta.data.scraper.ScrapedSong
+import com.joel.gta.data.scraper.WebScraperEngine
+
 enum class FootswitchAction {
     NEXT_SONG_OR_PAGE_DOWN,
     PREV_SONG_OR_PAGE_UP,
@@ -41,6 +44,12 @@ data class BulkImportState(
     val currentSongTitle: String = "",
     val finished: Boolean = false,
     val importedCount: Int = 0
+)
+
+data class WebImportUiState(
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val pendingSong: ScrapedSong? = null
 )
 
 class SongViewerViewModel(application: Application) : AndroidViewModel(application) {
@@ -84,6 +93,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _fontSizeSp = MutableStateFlow(15f)
     val fontSizeSp: StateFlow<Float> = _fontSizeSp.asStateFlow()
+
+    private val _webImportState = MutableStateFlow(WebImportUiState())
+    val webImportState: StateFlow<WebImportUiState> = _webImportState.asStateFlow()
 
     private val themePrefs: SharedPreferences by lazy {
         getApplication<Application>().getSharedPreferences("gta_stage_theme_prefs", Context.MODE_PRIVATE)
@@ -599,6 +611,94 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 total = totalFiles,
                 importedCount = processed
             )
+        }
+    }
+
+    /**
+     * Web Import Suite: Fetches and scrapes chords from a remote URL.
+     */
+    fun fetchSongFromUrl(url: String) {
+        if (url.isBlank()) return
+        viewModelScope.launch {
+            _webImportState.value = WebImportUiState(isLoading = true, error = null, pendingSong = null)
+            val result = WebScraperEngine.scrapeUrl(url)
+            result.fold(
+                onSuccess = { song ->
+                    _webImportState.value = WebImportUiState(isLoading = false, error = null, pendingSong = song)
+                },
+                onFailure = { err ->
+                    _webImportState.value = WebImportUiState(
+                        isLoading = false,
+                        error = err.localizedMessage ?: "Failed to import song from URL.",
+                        pendingSong = null
+                    )
+                }
+            )
+        }
+    }
+
+    /**
+     * Web Import Suite: Inspects clipboard text.
+     * If URL -> triggers scraper. If chord text -> prepares for review dialog.
+     */
+    fun prepareSongFromClipboard(rawText: String) {
+        if (rawText.isBlank()) return
+        val trimmed = rawText.trim()
+        if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+            fetchSongFromUrl(trimmed)
+        } else {
+            val song = WebScraperEngine.parseFromClipboard(trimmed)
+            _webImportState.value = WebImportUiState(isLoading = false, error = null, pendingSong = song)
+        }
+    }
+
+    /**
+     * Closes the Pre-Save Review Dialog and clears pending import state.
+     */
+    fun dismissWebImportReview() {
+        _webImportState.value = WebImportUiState()
+    }
+
+    /**
+     * Saves reviewed song into local Room DB and optionally loads into viewer.
+     */
+    fun saveSongFromReview(
+        title: String,
+        artist: String?,
+        rawContent: String,
+        key: String?,
+        capo: String?,
+        openAfterSave: Boolean = true
+    ) {
+        viewModelScope.launch {
+            val defaultTitle = title.ifBlank { "Untitled Song" }
+            val parsed = SongParser.parse(rawContent, defaultTitle = defaultTitle).let { base ->
+                base.copy(
+                    title = defaultTitle,
+                    artist = artist?.takeIf { it.isNotBlank() } ?: base.artist,
+                    key = key?.takeIf { it.isNotBlank() } ?: base.key,
+                    capo = capo?.takeIf { it.isNotBlank() } ?: base.capo
+                )
+            }
+
+            val entityId = withContext(Dispatchers.IO) {
+                repository.saveOrUpdateSong(parsed, rawContent, transposeOffset = 0)
+            }
+
+            _webImportState.value = WebImportUiState()
+
+            if (openAfterSave) {
+                val savedEntity = repository.getSongById(entityId)
+                _activeHomeTab.value = HomeTab.SONGBOOK
+                _uiState.value = SongViewerState.Loaded(
+                    song = parsed,
+                    originalSong = parsed,
+                    fileName = defaultTitle,
+                    songEntityId = entityId,
+                    isFavorite = savedEntity?.isFavorite ?: false,
+                    transposeOffset = 0
+                )
+            }
         }
     }
 }
