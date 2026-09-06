@@ -284,6 +284,21 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                         BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).readText()
                     } ?: throw IllegalStateException("Could not read file from storage.")
 
+                    // Check if file is a GTAR Setlist JSON import
+                    if (com.joel.gta.data.setlist.SetlistExportImportManager.isSetlistJson(content)) {
+                        val importResult = repository.importSetlist(content)
+                        withContext(Dispatchers.Main) {
+                            _activeHomeTab.value = HomeTab.SETLISTS
+                            _expandedSetlistIds.value = _expandedSetlistIds.value + importResult.setlistId
+                            android.widget.Toast.makeText(
+                                context,
+                                "Imported setlist '${importResult.setlistName}' (${importResult.songsImportedCount} songs)!",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        return@runCatching null
+                    }
+
                     val defaultTitle = fileName.substringBeforeLast(".")
                     val parsed = SongParser.parse(content, defaultTitle = defaultTitle)
 
@@ -305,7 +320,11 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             }
 
             result.fold(
-                onSuccess = { _uiState.value = it },
+                onSuccess = { loadedState ->
+                    if (loadedState != null) {
+                        _uiState.value = loadedState
+                    }
+                },
                 onFailure = { _uiState.value = SongViewerState.Error(it.localizedMessage ?: "Failed to open file.") }
             )
         }
@@ -1259,6 +1278,43 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 onResult(summary)
             } catch (e: Exception) {
                 onError("Restore error: ${e.localizedMessage ?: "Invalid JSON backup"}")
+            }
+        }
+    }
+
+    fun exportSetlistShare(
+        context: Context,
+        setlistWithSongs: com.joel.gta.data.local.entity.SetlistWithSongs,
+        onShareReady: (Intent) -> Unit
+    ) {
+        viewModelScope.launch {
+            val shareIntent = com.joel.gta.data.setlist.SetlistExportImportManager.createShareIntent(
+                context = context,
+                setlist = setlistWithSongs.setlist,
+                songs = setlistWithSongs.songs
+            )
+            onShareReady(shareIntent)
+        }
+    }
+
+    fun exportSetlistToSaf(
+        context: Context,
+        setlistWithSongs: com.joel.gta.data.local.entity.SetlistWithSongs,
+        destinationUri: Uri,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val jsonString = repository.createSetlistJson(setlistWithSongs.setlist, setlistWithSongs.songs)
+                val success = com.joel.gta.data.setlist.SetlistExportImportManager.writeToSafUri(context, destinationUri, jsonString)
+                if (success) {
+                    onSuccess("Setlist '${setlistWithSongs.setlist.name}' exported successfully!")
+                } else {
+                    onError("Failed to save setlist file.")
+                }
+            } catch (e: Exception) {
+                onError("Export error: ${e.localizedMessage ?: "Unknown error"}")
             }
         }
     }

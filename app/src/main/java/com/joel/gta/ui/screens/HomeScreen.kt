@@ -110,6 +110,8 @@ fun HomeScreen(
     onEmptyTrash: () -> Unit = {},
     onExportBackupShare: () -> Unit = {},
     onExportBackupSaf: (Uri) -> Unit = {},
+    onExportSetlistShare: (SetlistWithSongs) -> Unit = {},
+    onExportSetlistSaf: (SetlistWithSongs, Uri) -> Unit = { _, _ -> },
     onRestoreBackup: (Uri) -> Unit = {},
     onOpenSettings: () -> Unit = {},
     searchQuery: String = "",
@@ -227,6 +229,18 @@ fun HomeScreen(
         if (uri != null) {
             onExportBackupSaf(uri)
         }
+    }
+
+    // SAF Setlist Save launcher - creates .json file in user selected directory
+    var pendingExportSetlist by remember { mutableStateOf<SetlistWithSongs?>(null) }
+    val setlistExportSafLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        val target = pendingExportSetlist
+        if (uri != null && target != null) {
+            onExportSetlistSaf(target, uri)
+        }
+        pendingExportSetlist = null
     }
 
     Scaffold(
@@ -363,7 +377,7 @@ fun HomeScreen(
                                 )
                                 HorizontalDivider(color = customColors.divider)
                                 DropdownMenuItem(
-                                    text = { Text("Import Single File (.txt / .chordpro)") },
+                                    text = { Text("Import Single File (.txt / .chordpro / .json)") },
                                     leadingIcon = {
                                         Icon(
                                             imageVector = Icons.Default.FolderOpen,
@@ -377,6 +391,7 @@ fun HomeScreen(
                                             arrayOf(
                                                 "text/plain",
                                                 "text/*",
+                                                "application/json",
                                                 "application/octet-stream",
                                                 "*/*"
                                             )
@@ -1376,6 +1391,14 @@ fun HomeScreen(
                                         },
                                         onDeleteSetlist = {
                                             onDeleteSetlist(setlistWithSongs.setlist)
+                                        },
+                                        onShareDirect = {
+                                            onExportSetlistShare(setlistWithSongs)
+                                        },
+                                        onExportSaf = {
+                                            pendingExportSetlist = setlistWithSongs
+                                            val fileName = com.joel.gta.data.setlist.SetlistExportImportManager.generateSetlistFileName(setlistWithSongs.setlist.name)
+                                            setlistExportSafLauncher.launch(fileName)
                                         }
                                     )
                                 }
@@ -2061,9 +2084,12 @@ private fun SetlistCard(
     onOpenSong: (Int) -> Unit,
     onMoveSong: (Long, Boolean) -> Unit,
     onRemoveSong: (Long) -> Unit,
-    onDeleteSetlist: () -> Unit
+    onDeleteSetlist: () -> Unit,
+    onShareDirect: () -> Unit = {},
+    onExportSaf: () -> Unit = {}
 ) {
     val customColors = LocalGtaColors.current
+    var showExportMenu by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2140,6 +2166,56 @@ private fun SetlistCard(
                     }
                 }
 
+                // Export & Share Setlist Menu
+                Box {
+                    IconButton(
+                        onClick = { showExportMenu = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Export / Share Setlist",
+                            tint = customColors.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showExportMenu,
+                        onDismissRequest = { showExportMenu = false },
+                        containerColor = customColors.surfaceBackground
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Share Setlist", color = customColors.textPrimary) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = null,
+                                    tint = customColors.chordAccent
+                                )
+                            },
+                            onClick = {
+                                showExportMenu = false
+                                onShareDirect()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Export to Local (.json)", color = customColors.textPrimary) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    tint = customColors.chordAccent
+                                )
+                            },
+                            onClick = {
+                                showExportMenu = false
+                                onExportSaf()
+                            }
+                        )
+                    }
+                }
+
                 IconButton(onClick = onToggleExpand) {
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -2170,6 +2246,53 @@ private fun SetlistCard(
                     )
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Quick Action Buttons for Export & Share in Expanded View
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onShareDirect,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = customColors.chordAccent),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent.copy(alpha = 0.5f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = null,
+                                    tint = customColors.chordAccent,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Share Setlist",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = onExportSaf,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = customColors.textSecondary),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    tint = customColors.textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Export (.json)",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
                         setlistWithSongs.songs.forEachIndexed { index, song ->
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),

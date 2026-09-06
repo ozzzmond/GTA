@@ -199,6 +199,24 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             },
+                            onExportSetlistShare = { setlistWithSongs ->
+                                viewModel.exportSetlistShare(context, setlistWithSongs) { shareIntent ->
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share Setlist (${setlistWithSongs.setlist.name})"))
+                                }
+                            },
+                            onExportSetlistSaf = { setlistWithSongs, destUri ->
+                                viewModel.exportSetlistToSaf(
+                                    context = context,
+                                    setlistWithSongs = setlistWithSongs,
+                                    destinationUri = destUri,
+                                    onSuccess = { msg ->
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    },
+                                    onError = { err ->
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            },
                             onRestoreBackup = { srcUri ->
                                 viewModel.restoreBackupFromUri(
                                     context = context,
