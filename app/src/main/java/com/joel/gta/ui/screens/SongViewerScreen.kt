@@ -60,6 +60,7 @@ import com.joel.gta.ui.components.StageToolsDialog
 import com.joel.gta.ui.theme.ChordMonospaceStyle
 import com.joel.gta.ui.theme.LocalGtaColors
 import com.joel.gta.ui.theme.LyricMonospaceStyle
+import com.joel.gta.ui.theme.SongFontStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextLayoutResult
 import com.joel.gta.data.chord.ChordDictionary
@@ -120,6 +121,8 @@ fun SongViewerScreen(
     tags: String = "",
     onUpdateSongDetails: (id: Long, title: String, artist: String?, tags: String, rawContent: String, key: String?, capo: String?) -> Unit = { _, _, _, _, _, _, _ -> },
     keepScreenOn: Boolean = true,
+    songFontStyle: SongFontStyle = SongFontStyle.MONOSPACE,
+    onSelectSongFontStyle: (SongFontStyle) -> Unit = {},
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -481,6 +484,27 @@ fun SongViewerScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
+                        }
+
+                        // Quick Font Style Stepper/Cycle Button
+                        IconButton(
+                            onClick = {
+                                val allStyles = SongFontStyle.entries
+                                val nextStyle = allStyles[(allStyles.indexOf(songFontStyle) + 1) % allStyles.size]
+                                onSelectSongFontStyle(nextStyle)
+                                pedalFeedbackText = "FONT: ${nextStyle.displayName.uppercase()}"
+                            },
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(customColors.canvasBackground)
+                                .size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FontDownload,
+                                contentDescription = "Font Style: ${songFontStyle.displayName}",
+                                tint = if (songFontStyle == SongFontStyle.MONOSPACE) customColors.chordAccent else customColors.textPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
 
                         // Column Reflow Toggle (Tablet / Landscape Only)
@@ -973,6 +997,7 @@ fun SongViewerScreen(
                         SongLinesColumn(
                             song = pageSong,
                             fontSizeSp = fontSizeSp,
+                            songFontStyle = songFontStyle,
                             scrollState = if (pageIndex == currentSetlistIndex) verticalScrollState else rememberScrollState(),
                             columnCount = columnCount,
                             activeCapo = currentCapo,
@@ -984,6 +1009,7 @@ fun SongViewerScreen(
                     SongLinesColumn(
                         song = song,
                         fontSizeSp = fontSizeSp,
+                        songFontStyle = songFontStyle,
                         scrollState = verticalScrollState,
                         columnCount = columnCount,
                         activeCapo = currentCapo,
@@ -1568,6 +1594,7 @@ private fun splitSongLinesForColumns(lines: List<SongLine>): Pair<List<SongLine>
 private fun RenderSongLine(
     line: SongLine,
     fontSizeSp: Float,
+    songFontStyle: SongFontStyle = SongFontStyle.MONOSPACE,
     onChordClick: (String) -> Unit = {}
 ) {
     val customColors = LocalGtaColors.current
@@ -1576,11 +1603,11 @@ private fun RenderSongLine(
             Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = "[${line.title}]",
-                fontFamily = FontFamily.Monospace,
+                fontFamily = songFontStyle.fontFamily,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = (fontSizeSp + 1).sp,
                 lineHeight = ((fontSizeSp + 1) * 1.35f).sp,
-                letterSpacing = 0.8.sp,
+                letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
                 color = customColors.sectionHeader,
                 modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
             )
@@ -1591,8 +1618,11 @@ private fun RenderSongLine(
             Text(
                 text = line.chords,
                 style = ChordMonospaceStyle.copy(
+                    fontFamily = songFontStyle.fontFamily,
+                    fontWeight = songFontStyle.chordFontWeight,
                     fontSize = fontSizeSp.sp,
                     lineHeight = (fontSizeSp * 1.35f).sp,
+                    letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
                     color = customColors.chordAccent
                 ),
                 onTextLayout = { layoutResult = it },
@@ -1616,8 +1646,11 @@ private fun RenderSongLine(
             Text(
                 text = line.lyrics,
                 style = LyricMonospaceStyle.copy(
+                    fontFamily = songFontStyle.fontFamily,
+                    fontWeight = songFontStyle.lyricFontWeight,
                     fontSize = fontSizeSp.sp,
                     lineHeight = (fontSizeSp * 1.35f).sp,
+                    letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
                     color = customColors.textPrimary
                 ),
                 modifier = Modifier.padding(top = 1.dp, bottom = 5.dp)
@@ -1633,7 +1666,7 @@ private fun RenderSongLine(
                         withStyle(
                             style = SpanStyle(
                                 color = customColors.chordAccent,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = songFontStyle.chordFontWeight
                             )
                         ) {
                             append("[${segment.chord}]")
@@ -1643,7 +1676,7 @@ private fun RenderSongLine(
                     withStyle(
                         style = SpanStyle(
                             color = customColors.textPrimary,
-                            fontWeight = FontWeight.Normal
+                            fontWeight = songFontStyle.lyricFontWeight
                         )
                     ) {
                         append(segment.text)
@@ -1652,10 +1685,10 @@ private fun RenderSongLine(
             }
             Text(
                 text = annotatedText,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = songFontStyle.fontFamily,
                 fontSize = fontSizeSp.sp,
                 lineHeight = (fontSizeSp * 1.4f).sp,
-                letterSpacing = 0.8.sp,
+                letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
                 onTextLayout = { layoutResult = it },
                 modifier = Modifier
                     .padding(vertical = 3.dp)
@@ -1762,6 +1795,7 @@ private fun extractChordAtOffset(text: String, offset: Int): String? {
 private fun SongLinesColumn(
     song: ParsedSong,
     fontSizeSp: Float,
+    songFontStyle: SongFontStyle = SongFontStyle.MONOSPACE,
     scrollState: androidx.compose.foundation.ScrollState,
     columnCount: Int = 1,
     activeCapo: String = "No Capo",
@@ -1818,7 +1852,7 @@ private fun SongLinesColumn(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     col1Lines.forEach { line ->
-                        RenderSongLine(line, fontSizeSp, onChordClick)
+                        RenderSongLine(line, fontSizeSp, songFontStyle, onChordClick)
                     }
                 }
                 VerticalDivider(
@@ -1828,13 +1862,13 @@ private fun SongLinesColumn(
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     col2Lines.forEach { line ->
-                        RenderSongLine(line, fontSizeSp, onChordClick)
+                        RenderSongLine(line, fontSizeSp, songFontStyle, onChordClick)
                     }
                 }
             }
         } else {
             song.lines.forEach { line ->
-                RenderSongLine(line, fontSizeSp, onChordClick)
+                RenderSongLine(line, fontSizeSp, songFontStyle, onChordClick)
             }
         }
 

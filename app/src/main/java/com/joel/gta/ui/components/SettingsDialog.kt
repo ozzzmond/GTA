@@ -23,11 +23,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.joel.gta.BuildConfig
 import com.joel.gta.ui.theme.LocalGtaColors
+import com.joel.gta.ui.theme.SongFontStyle
 
 @Composable
 fun SettingsDialog(
     keepScreenOn: Boolean,
     onToggleKeepScreenOn: (Boolean) -> Unit,
+    songFontStyle: SongFontStyle = SongFontStyle.MONOSPACE,
+    onSelectSongFontStyle: (SongFontStyle) -> Unit = {},
     onOpenThemeDialog: () -> Unit,
     onOpenStageTools: () -> Unit,
     onDismissRequest: () -> Unit
@@ -191,6 +194,127 @@ fun SettingsDialog(
                                 uncheckedBorderColor = customColors.divider
                             )
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Font Style for Chords & Lyrics Card
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = customColors.canvasBackground),
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(customColors.chordAccent.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FontDownload,
+                                    contentDescription = null,
+                                    tint = customColors.chordAccent,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "Font Style (Chords & Lyrics)",
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp
+                                    ),
+                                    color = customColors.textPrimary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Pumili ng uri ng font para sa stage chord charts at lyrics.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                    color = customColors.textSecondary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Font Style Options
+                        SongFontStyle.entries.forEach { style ->
+                            val isSelected = style == songFontStyle
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) customColors.chordAccent.copy(alpha = 0.12f) else customColors.surfaceBackground,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSelected) customColors.chordAccent else customColors.divider.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable { onSelectSongFontStyle(style) }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = style.displayName,
+                                                fontFamily = style.fontFamily,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = if (isSelected) customColors.chordAccent else customColors.textPrimary
+                                            )
+                                            if (style == SongFontStyle.MONOSPACE) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = customColors.chordAccent.copy(alpha = 0.2f)
+                                                ) {
+                                                    Text(
+                                                        text = "RECOMMENDED",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = customColors.chordAccent,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = style.subtitle,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = customColors.textSecondary
+                                        )
+                                    }
+
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { onSelectSongFontStyle(style) },
+                                        colors = RadioButtonDefaults.colors(
+                                            selectedColor = customColors.chordAccent,
+                                            unselectedColor = customColors.textSecondary
+                                        )
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 

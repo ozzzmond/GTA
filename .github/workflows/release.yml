@@ -61,7 +61,7 @@ jobs:
           VERSION="${{ github.ref_name }}"
           if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
             TAG_FROM_GRADLE=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed 's/.*"\(.*\)".*/v\1/')
-            VERSION="${TAG_FROM_GRADLE:-v1.0.34}"
+            VERSION="${TAG_FROM_GRADLE:-v1.0.35}"
           fi
           echo "Packaging APK as GTA_${VERSION}.apk"
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then

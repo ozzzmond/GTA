@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsState()
             val customStageColors by viewModel.customStageColors.collectAsState()
             val keepScreenOn by viewModel.keepScreenOn.collectAsState()
+            val songFontStyle by viewModel.songFontStyle.collectAsState()
             var showStageThemeDialog by remember { mutableStateOf(false) }
             var showSettingsDialog by remember { mutableStateOf(false) }
             var showStageToolsDialogFromSettings by remember { mutableStateOf(false) }
@@ -298,6 +299,8 @@ class MainActivity : ComponentActivity() {
                                 viewModel.updateSongDetails(id, title, artist, tags, rawContent, key, capo)
                             },
                             keepScreenOn = keepScreenOn,
+                            songFontStyle = songFontStyle,
+                            onSelectSongFontStyle = { viewModel.setSongFontStyle(it) },
                             onOpenSettings = { showSettingsDialog = true }
                         )
                     }
@@ -357,6 +360,8 @@ class MainActivity : ComponentActivity() {
                     SettingsDialog(
                         keepScreenOn = keepScreenOn,
                         onToggleKeepScreenOn = { enabled -> viewModel.setKeepScreenOn(enabled) },
+                        songFontStyle = songFontStyle,
+                        onSelectSongFontStyle = { viewModel.setSongFontStyle(it) },
                         onOpenThemeDialog = {
                             showSettingsDialog = false
                             showStageThemeDialog = true

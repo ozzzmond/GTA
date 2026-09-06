@@ -58,3 +58,36 @@ val LyricMonospaceStyle = TextStyle(
     lineHeight = 22.sp,
     letterSpacing = 0.8.sp
 )
+
+/**
+ * Supported typography styles for song viewer chord sheets and lyrics.
+ */
+enum class SongFontStyle(
+    val displayName: String,
+    val subtitle: String,
+    val fontFamily: FontFamily,
+    val chordFontWeight: FontWeight = FontWeight.Bold,
+    val lyricFontWeight: FontWeight = FontWeight.Normal
+) {
+    MONOSPACE(
+        displayName = "Monospace",
+        subtitle = "Recommended for stage: chords align directly above lyrics",
+        fontFamily = FontFamily.Monospace,
+        chordFontWeight = FontWeight.Bold,
+        lyricFontWeight = FontWeight.Normal
+    ),
+    SANS_SERIF(
+        displayName = "Sans-Serif",
+        subtitle = "Clean / Modern system look",
+        fontFamily = FontFamily.SansSerif,
+        chordFontWeight = FontWeight.Bold,
+        lyricFontWeight = FontWeight.Normal
+    ),
+    SERIF(
+        displayName = "Serif / Bold",
+        subtitle = "High contrast editorial serif style for stage use",
+        fontFamily = FontFamily.Serif,
+        chordFontWeight = FontWeight.ExtraBold,
+        lyricFontWeight = FontWeight.Medium
+    )
+}

@@ -145,4 +145,30 @@ class CustomThemeTest {
         assertEquals(Color(0xFF22242D), agTheme.surfaceBackground)
         assertEquals(CustomStageColors.parseColorOrNull("#E5B866"), agTheme.chordAccent)
     }
+
+    @Test
+    fun testSongFontStyleEnumAndProperties() {
+        val styles = com.joel.gta.ui.theme.SongFontStyle.entries
+        assertEquals(3, styles.size)
+
+        val mono = com.joel.gta.ui.theme.SongFontStyle.MONOSPACE
+        assertEquals("Monospace", mono.displayName)
+        assertEquals(androidx.compose.ui.text.font.FontFamily.Monospace, mono.fontFamily)
+        assertEquals(androidx.compose.ui.text.font.FontWeight.Bold, mono.chordFontWeight)
+        assertEquals(androidx.compose.ui.text.font.FontWeight.Normal, mono.lyricFontWeight)
+
+        val sans = com.joel.gta.ui.theme.SongFontStyle.SANS_SERIF
+        assertEquals("Sans-Serif", sans.displayName)
+        assertEquals(androidx.compose.ui.text.font.FontFamily.SansSerif, sans.fontFamily)
+
+        val serif = com.joel.gta.ui.theme.SongFontStyle.SERIF
+        assertEquals("Serif / Bold", serif.displayName)
+        assertEquals(androidx.compose.ui.text.font.FontFamily.Serif, serif.fontFamily)
+        assertEquals(androidx.compose.ui.text.font.FontWeight.ExtraBold, serif.chordFontWeight)
+
+        // ValueOf roundtrip
+        assertEquals(mono, com.joel.gta.ui.theme.SongFontStyle.valueOf("MONOSPACE"))
+        assertEquals(sans, com.joel.gta.ui.theme.SongFontStyle.valueOf("SANS_SERIF"))
+        assertEquals(serif, com.joel.gta.ui.theme.SongFontStyle.valueOf("SERIF"))
+    }
 }

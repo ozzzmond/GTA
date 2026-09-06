@@ -28,6 +28,7 @@ import com.joel.gta.data.update.UpdateCheckResult
 import com.joel.gta.data.update.UpdateManager
 import com.joel.gta.ui.theme.AppThemeMode
 import com.joel.gta.ui.theme.CustomStageColors
+import com.joel.gta.ui.theme.SongFontStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -209,6 +210,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     private val _keepScreenOn: MutableStateFlow<Boolean>
     val keepScreenOn: StateFlow<Boolean>
 
+    private val _songFontStyle: MutableStateFlow<SongFontStyle>
+    val songFontStyle: StateFlow<SongFontStyle>
+
     private val _themeMode: MutableStateFlow<AppThemeMode>
     val themeMode: StateFlow<AppThemeMode>
 
@@ -223,6 +227,16 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         val savedKeepScreenOn = stageSettingsPrefs.getBoolean("pref_keep_screen_on", true)
         _keepScreenOn = MutableStateFlow(savedKeepScreenOn)
         keepScreenOn = _keepScreenOn.asStateFlow()
+
+        val savedFontName = stageSettingsPrefs.getString("pref_song_font_style", SongFontStyle.MONOSPACE.name)
+        val loadedFont = try {
+            SongFontStyle.valueOf(savedFontName ?: SongFontStyle.MONOSPACE.name)
+        } catch (_: Exception) {
+            SongFontStyle.MONOSPACE
+        }
+        _songFontStyle = MutableStateFlow(loadedFont)
+        songFontStyle = _songFontStyle.asStateFlow()
+
         val savedModeName = themePrefs.getString("pref_theme_mode", AppThemeMode.AMOLED_DARK.name)
         val loadedMode = try {
             AppThemeMode.valueOf(savedModeName ?: AppThemeMode.AMOLED_DARK.name)
@@ -705,6 +719,11 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     fun setKeepScreenOn(enabled: Boolean) {
         _keepScreenOn.value = enabled
         stageSettingsPrefs.edit().putBoolean("pref_keep_screen_on", enabled).apply()
+    }
+
+    fun setSongFontStyle(fontStyle: SongFontStyle) {
+        _songFontStyle.value = fontStyle
+        stageSettingsPrefs.edit().putString("pref_song_font_style", fontStyle.name).apply()
     }
 
     fun clearSong() {
