@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joel.gta.BuildConfig
 import com.joel.gta.data.backup.BackupManager
+import com.joel.gta.data.local.entity.SearchHistoryEntity
 import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.local.entity.SongEntity
 import com.joel.gta.ui.components.GtaBrandLogo
@@ -47,6 +48,7 @@ import com.joel.gta.ui.viewmodel.WebImportUiState
 enum class HomeTab {
     SONGBOOK,
     SETLISTS,
+    HISTORY,
     TRASH
 }
 
@@ -135,6 +137,9 @@ fun HomeScreen(
     trashScrollIndex: Int = 0,
     trashScrollOffset: Int = 0,
     onUpdateTrashScroll: (Int, Int) -> Unit = { _, _ -> },
+    searchHistory: List<SearchHistoryEntity> = emptyList(),
+    onDeleteSearchHistoryItem: (Long) -> Unit = {},
+    onClearSearchHistory: () -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
     isCheckingUpdates: Boolean = false,
     modifier: Modifier = Modifier
@@ -194,6 +199,7 @@ fun HomeScreen(
     var newSetlistName by remember { mutableStateOf("") }
     var showStageToolsDialog by remember { mutableStateOf(false) }
     var showBackupRestoreMenu by remember { mutableStateOf(false) }
+    var showClearHistoryTopBarDialog by remember { mutableStateOf(false) }
 
     // SAF Document Picker launcher - accepts .txt, .chordtxt, or all text formats
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -310,6 +316,23 @@ fun HomeScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Clear All Search History button when in History tab
+                        if (selectedTab == HomeTab.HISTORY && searchHistory.isNotEmpty()) {
+                            IconButton(
+                                onClick = { showClearHistoryTopBarDialog = true },
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFE53935).copy(alpha = 0.15f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteSweep,
+                                    contentDescription = "Clear all search history",
+                                    tint = Color(0xFFEF5350)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+
                         // Stage Tools (Metronome / Tuner)
                         FilledTonalIconButton(
                             onClick = { showStageToolsDialog = true },
@@ -510,7 +533,7 @@ fun HomeScreen(
                     }
                 }
 
-                // 3-Tab Segmented Switcher (Songbook, Setlists, Trash)
+                // 4-Tab Segmented Switcher (Songbook, Setlists, History, Trash)
                 TabRow(
                     selectedTabIndex = selectedTab.ordinal,
                     containerColor = customColors.surfaceBackground,
@@ -538,6 +561,17 @@ fun HomeScreen(
                             )
                         },
                         icon = { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    Tab(
+                        selected = selectedTab == HomeTab.HISTORY,
+                        onClick = { onTabSelected(HomeTab.HISTORY) },
+                        text = {
+                            Text(
+                                text = "History (${searchHistory.size})",
+                                fontWeight = if (selectedTab == HomeTab.HISTORY) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        icon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     )
                     Tab(
                         selected = selectedTab == HomeTab.TRASH,
@@ -1407,6 +1441,19 @@ fun HomeScreen(
                     }
                 }
 
+                HomeTab.HISTORY -> {
+                    HistoryTabContent(
+                        searchHistory = searchHistory,
+                        savedSongs = savedSongs,
+                        onSelectSongEntity = onSelectSongEntity,
+                        onSearchQueryChange = onSearchQueryChange,
+                        onSearchWeb = onSearchWeb,
+                        onTabSelected = onTabSelected,
+                        onDeleteItem = onDeleteSearchHistoryItem,
+                        onClearAll = onClearSearchHistory
+                    )
+                }
+
                 HomeTab.TRASH -> {
                     TrashTabContent(
                         deletedSongs = deletedSongs,
@@ -1869,6 +1916,46 @@ fun HomeScreen(
                     Text("Close", color = customColors.textSecondary)
                 }
             }
+        )
+    }
+
+    // Confirmation dialog for clearing Search History from Top Bar
+    if (showClearHistoryTopBarDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryTopBarDialog = false },
+            title = {
+                Text(
+                    text = "Clear all search history?",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete all search history records? This action cannot be undone.",
+                    color = customColors.textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearSearchHistory()
+                        showClearHistoryTopBarDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE53935),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Clear All", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryTopBarDialog = false }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            },
+            containerColor = customColors.surfaceBackground
         )
     }
 
@@ -2757,6 +2844,416 @@ private fun TrashTabContent(
                     Text("Cancel", color = customColors.textSecondary)
                 }
             }
+        )
+    }
+}
+
+/**
+ * Formats a timestamp in epoch milliseconds to human-friendly relative time string.
+ */
+fun formatRelativeTime(timestamp: Long, now: Long = System.currentTimeMillis()): String {
+    val diff = (now - timestamp).coerceAtLeast(0L)
+    val seconds = diff / 1000
+    val minutes = seconds / 60
+    val hours = minutes / 60
+    val days = hours / 24
+
+    return when {
+        minutes < 1 -> "Just now"
+        minutes < 60 -> if (minutes == 1L) "1 min ago" else "$minutes mins ago"
+        hours < 24 -> if (hours == 1L) "1 hour ago" else "$hours hours ago"
+        days == 1L -> "Yesterday"
+        days < 7 -> "$days days ago"
+        else -> {
+            val sdf = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+            sdf.format(java.util.Date(timestamp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HistoryTabContent(
+    searchHistory: List<SearchHistoryEntity>,
+    savedSongs: List<SongEntity>,
+    onSelectSongEntity: (SongEntity) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onSearchWeb: (String) -> Unit,
+    onTabSelected: (HomeTab) -> Unit,
+    onDeleteItem: (Long) -> Unit,
+    onClearAll: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val customColors = LocalGtaColors.current
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+    ) {
+        if (searchHistory.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(customColors.surfaceBackground),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = customColors.textSecondary.copy(alpha = 0.6f),
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "No Search History",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = customColors.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Searches for songs and online chord databases will appear here.\nTap any past query to quickly re-search or jump directly to imported songs.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            // Header with count and Clear All button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Search History",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = customColors.textPrimary
+                    )
+                    Text(
+                        text = "${searchHistory.size} past ${if (searchHistory.size == 1) "search" else "searches"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary
+                    )
+                }
+
+                Button(
+                    onClick = { showClearConfirmDialog = true },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE53935).copy(alpha = 0.15f),
+                        contentColor = Color(0xFFEF5350)
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteSweep,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Clear All",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(searchHistory, key = { it.id }) { item ->
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
+                                onDeleteItem(item.id)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFE53935).copy(alpha = 0.85f))
+                                    .padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Delete",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                        }
+                    ) {
+                        val importedSong = remember(item.importedSongId, savedSongs) {
+                            if (item.isImported && item.importedSongId != null) {
+                                savedSongs.firstOrNull { it.id == item.importedSongId }
+                            } else null
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (item.isImported && importedSong != null) {
+                                        onSelectSongEntity(importedSong)
+                                    } else {
+                                        onSearchQueryChange(item.query)
+                                        onTabSelected(HomeTab.SONGBOOK)
+                                        onSearchWeb(item.query)
+                                    }
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
+                            border = androidx.compose.foundation.BorderStroke(
+                                width = 1.dp,
+                                color = if (item.isImported) Color(0xFF10B981).copy(alpha = 0.35f) else customColors.divider
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (item.isImported) Color(0xFF10B981).copy(alpha = 0.15f)
+                                                else customColors.canvasBackground
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (item.isImported) Icons.Default.CheckCircle else Icons.Default.Search,
+                                            contentDescription = null,
+                                            tint = if (item.isImported) Color(0xFF10B981) else customColors.chordAccent,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.query,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = customColors.textPrimary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = formatRelativeTime(item.timestamp),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = customColors.textSecondary
+                                            )
+                                            if (item.isImported && importedSong != null) {
+                                                Text(
+                                                    text = "• In Songbook: ${importedSong.title}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color(0xFF10B981),
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    // Status Badge
+                                    if (item.isImported) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFF10B981).copy(alpha = 0.18f),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981)),
+                                            modifier = Modifier.clickable {
+                                                if (importedSong != null) {
+                                                    onSelectSongEntity(importedSong)
+                                                } else {
+                                                    onSearchQueryChange(item.query)
+                                                    onTabSelected(HomeTab.SONGBOOK)
+                                                    onSearchWeb(item.query)
+                                                }
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF10B981),
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Text(
+                                                    text = "Imported",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF10B981)
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = customColors.surfaceBackground,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                                            modifier = Modifier.clickable {
+                                                onSearchQueryChange(item.query)
+                                                onTabSelected(HomeTab.SONGBOOK)
+                                                onSearchWeb(item.query)
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.TravelExplore,
+                                                    contentDescription = null,
+                                                    tint = customColors.textSecondary,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Text(
+                                                    text = "Not Imported",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = customColors.textSecondary
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Quick Re-Search Action Button
+                                    IconButton(
+                                        onClick = {
+                                            onSearchQueryChange(item.query)
+                                            onTabSelected(HomeTab.SONGBOOK)
+                                            onSearchWeb(item.query)
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = "Search this query",
+                                            tint = customColors.chordAccent,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+
+                                    // Individual Delete Icon Button
+                                    IconButton(
+                                        onClick = { onDeleteItem(item.id) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Delete search record",
+                                            tint = customColors.textSecondary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Clear all search history?",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete all search history records? This action cannot be undone.",
+                    color = customColors.textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearAll()
+                        showClearConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE53935),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Clear All", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            },
+            containerColor = customColors.surfaceBackground
         )
     }
 }

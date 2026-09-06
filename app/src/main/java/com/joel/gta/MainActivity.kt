@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
             val setlistSortOrder by viewModel.setlistSortOrder.collectAsState()
             val expandedSetlistIds by viewModel.expandedSetlistIds.collectAsState()
             val deletedSongs by viewModel.deletedSongs.collectAsState()
+            val searchHistory by viewModel.searchHistory.collectAsState()
             val bulkImportState by viewModel.bulkImportState.collectAsState()
             val webImportState by viewModel.webImportState.collectAsState()
             val bandSyncState by viewModel.bandSyncState.collectAsState()
@@ -168,6 +169,13 @@ class MainActivity : ComponentActivity() {
                             },
                             onEmptyTrash = {
                                 viewModel.emptyTrash()
+                            },
+                            searchHistory = searchHistory,
+                            onDeleteSearchHistoryItem = { id ->
+                                viewModel.deleteSearchHistoryItem(id)
+                            },
+                            onClearSearchHistory = {
+                                viewModel.clearAllSearchHistory()
                             },
                             onCreateSetlist = { name ->
                                 viewModel.createSetlist(name)

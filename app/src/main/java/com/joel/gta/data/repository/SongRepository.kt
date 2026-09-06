@@ -1,6 +1,7 @@
 package com.joel.gta.data.repository
 
 import com.joel.gta.data.local.GtaDatabase
+import com.joel.gta.data.local.entity.SearchHistoryEntity
 import com.joel.gta.data.local.entity.SetlistEntity
 import com.joel.gta.data.local.entity.SetlistSongCrossRef
 import com.joel.gta.data.local.entity.SetlistWithSongs
@@ -16,10 +17,12 @@ class SongRepository(private val database: GtaDatabase) {
 
     private val songDao = database.songDao()
     private val setlistDao = database.setlistDao()
+    private val searchHistoryDao = database.searchHistoryDao()
 
     val allSongs: Flow<List<SongEntity>> = songDao.getAllSongs()
     val favoriteSongs: Flow<List<SongEntity>> = songDao.getFavoriteSongs()
     val deletedSongs: Flow<List<SongEntity>> = songDao.getDeletedSongs()
+    val searchHistory: Flow<List<SearchHistoryEntity>> = searchHistoryDao.getAllHistory()
     
     val allSetlists: Flow<List<SetlistWithSongs>> = setlistDao.getAllSetlistsWithSongs()
         .combine(setlistDao.getAllCrossRefs()) { setlists, crossRefs ->
@@ -180,5 +183,25 @@ class SongRepository(private val database: GtaDatabase) {
 
     suspend fun importSetlist(jsonString: String): com.joel.gta.data.setlist.SetlistImportResult = withContext(Dispatchers.IO) {
         com.joel.gta.data.setlist.SetlistExportImportManager.importSetlist(jsonString, songDao, setlistDao)
+    }
+
+    suspend fun insertSearch(query: String) = withContext(Dispatchers.IO) {
+        searchHistoryDao.insertSearch(query)
+    }
+
+    suspend fun markSearchAsImported(id: Long, songId: Long) = withContext(Dispatchers.IO) {
+        searchHistoryDao.markAsImportedById(id, songId)
+    }
+
+    suspend fun markSearchAsImported(query: String, songId: Long) = withContext(Dispatchers.IO) {
+        searchHistoryDao.markAsImportedByQuery(query, songId)
+    }
+
+    suspend fun deleteSearchHistoryItem(id: Long) = withContext(Dispatchers.IO) {
+        searchHistoryDao.deleteItem(id)
+    }
+
+    suspend fun clearAllSearchHistory() = withContext(Dispatchers.IO) {
+        searchHistoryDao.clearAllHistory()
     }
 }

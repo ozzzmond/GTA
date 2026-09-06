@@ -11,6 +11,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.joel.gta.data.engine.TransposeEngine
 import com.joel.gta.data.local.GtaDatabase
+import com.joel.gta.data.local.entity.SearchHistoryEntity
 import com.joel.gta.data.local.entity.SetlistEntity
 import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.local.entity.SongEntity
@@ -94,6 +95,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val deletedSongs: StateFlow<List<SongEntity>> = repository.deletedSongs
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val searchHistory: StateFlow<List<SearchHistoryEntity>> = repository.searchHistory
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     private val _activeHomeTab = MutableStateFlow(HomeTab.SONGBOOK)
@@ -959,6 +963,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 isSearching = true,
                 searchError = null
             )
+            repository.insertSearch(trimmed)
             val result = WebScraperEngine.searchSongs(trimmed)
             result.fold(
                 onSuccess = { list ->
@@ -1036,8 +1041,14 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 )
             }
 
+            val currentSearchQuery = _webImportState.value.searchQuery.trim()
+
             val entityId = withContext(Dispatchers.IO) {
                 repository.saveOrUpdateSong(parsed, rawContent, transposeOffset = 0, tags = tags)
+            }
+
+            if (currentSearchQuery.isNotBlank()) {
+                repository.markSearchAsImported(currentSearchQuery, entityId)
             }
 
             _webImportState.value = _webImportState.value.copy(pendingSong = null, isLoading = false, error = null)
@@ -1057,6 +1068,24 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 )
                 broadcastSongIfHost(parsed, rawContent, entityId)
             }
+        }
+    }
+
+    /**
+     * Deletes a single search history item by ID.
+     */
+    fun deleteSearchHistoryItem(id: Long) {
+        viewModelScope.launch {
+            repository.deleteSearchHistoryItem(id)
+        }
+    }
+
+    /**
+     * Clears all search history items.
+     */
+    fun clearAllSearchHistory() {
+        viewModelScope.launch {
+            repository.clearAllSearchHistory()
         }
     }
 
