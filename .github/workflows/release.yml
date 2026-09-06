@@ -54,39 +54,32 @@ jobs:
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           ALIAS: ${{ secrets.ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK to GTA Version Format
         run: |
           VERSION="${{ github.ref_name }}"
           if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
             TAG_FROM_GRADLE=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed 's/.*"\(.*\)".*/v\1/')
-            VERSION="${TAG_FROM_GRADLE:-v1.0.32}"
+            VERSION="${TAG_FROM_GRADLE:-v1.0.34}"
           fi
           echo "Packaging APK as GTA_${VERSION}.apk"
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-            cp app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/GTA_${VERSION}.apk"
-          fi
-          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-            cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/GTA_${VERSION}-debug.apk"
+            mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/GTA_${VERSION}.apk"
           fi
 
       - name: Upload APK Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: GTA-Stage-Suite-APK
-          path: |
-            app/build/outputs/apk/release/GTA_*.apk
-            app/build/outputs/apk/debug/GTA_*.apk
+          path: app/build/outputs/apk/release/*.apk
           retention-days: 14
 
       - name: Create GitHub Release & Attach APK
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            app/build/outputs/apk/release/GTA_*.apk
-            app/build/outputs/apk/debug/GTA_*.apk
+          files: app/build/outputs/apk/release/*.apk
           generate_release_notes: true
           draft: false
           prerelease: false

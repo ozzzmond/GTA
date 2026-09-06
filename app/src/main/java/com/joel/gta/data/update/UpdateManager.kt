@@ -70,14 +70,14 @@ object UpdateManager {
                 val releaseNotes = jsonObject.optString("body", "Bug fixes and stage enhancements.")
                 val htmlUrl = jsonObject.optString("html_url", "https://github.com/ozzzmond/GTA/releases")
 
-                // Look for .apk asset
+                // Look for .apk asset (never debug APKs)
                 var apkDownloadUrl: String? = null
                 val assetsArray = jsonObject.optJSONArray("assets")
                 if (assetsArray != null) {
                     for (i in 0 until assetsArray.length()) {
                         val asset = assetsArray.getJSONObject(i)
                         val assetName = asset.optString("name", "")
-                        if (assetName.endsWith(".apk", ignoreCase = true)) {
+                        if (isEligibleReleaseApk(assetName)) {
                             apkDownloadUrl = if (asset.has("browser_download_url")) asset.getString("browser_download_url") else null
                             break
                         }
@@ -155,6 +155,15 @@ object UpdateManager {
         } finally {
             tagsConnection?.disconnect()
         }
+    }
+
+    /**
+     * Verifies if an asset filename qualifies as a production release APK:
+     * Must end with ".apk" and NOT contain "debug" (case-insensitive).
+     */
+    fun isEligibleReleaseApk(assetName: String): Boolean {
+        return assetName.endsWith(".apk", ignoreCase = true) &&
+                !assetName.contains("debug", ignoreCase = true)
     }
 
     /**
