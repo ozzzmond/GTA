@@ -47,7 +47,6 @@ import com.joel.gta.ui.viewmodel.WebImportUiState
 enum class HomeTab {
     SONGBOOK,
     SETLISTS,
-    IMPORT,
     TRASH
 }
 
@@ -182,6 +181,9 @@ fun HomeScreen(
     var browserSourceName by remember { mutableStateOf("") }
     var showAddSourceDialog by remember { mutableStateOf(false) }
     var customSourceUrlInput by remember { mutableStateOf("") }
+    var showDirectImportDialog by remember { mutableStateOf(false) }
+    var showBrowseSourcesDialog by remember { mutableStateOf(false) }
+    var directUrlInput by remember { mutableStateOf("") }
 
     var showSongSortMenu by remember { mutableStateOf(false) }
     var showSetlistSortMenu by remember { mutableStateOf(false) }
@@ -361,6 +363,70 @@ fun HomeScreen(
                                 )
                                 HorizontalDivider(color = customColors.divider)
                                 DropdownMenuItem(
+                                    text = { Text("Import Single File (.txt / .chordpro)") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.FolderOpen,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        filePickerLauncher.launch(
+                                            arrayOf(
+                                                "text/plain",
+                                                "text/*",
+                                                "application/octet-stream",
+                                                "*/*"
+                                            )
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Import Song Folder (Batch)") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.DriveFolderUpload,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        folderPickerLauncher.launch(null)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Direct Link / Paste Clipboard") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Link,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        showDirectImportDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Browse External Chords") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Language,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        showBrowseSourcesDialog = true
+                                    }
+                                )
+                                HorizontalDivider(color = customColors.divider)
+                                DropdownMenuItem(
                                     text = { Text("Check for Updates") },
                                     leadingIcon = {
                                         Icon(
@@ -430,7 +496,7 @@ fun HomeScreen(
                     }
                 }
 
-                // 3-Tab Segmented Switcher
+                // 3-Tab Segmented Switcher (Songbook, Setlists, Trash)
                 TabRow(
                     selectedTabIndex = selectedTab.ordinal,
                     containerColor = customColors.surfaceBackground,
@@ -458,17 +524,6 @@ fun HomeScreen(
                             )
                         },
                         icon = { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    )
-                    Tab(
-                        selected = selectedTab == HomeTab.IMPORT,
-                        onClick = { onTabSelected(HomeTab.IMPORT) },
-                        text = {
-                            Text(
-                                text = "Import",
-                                fontWeight = if (selectedTab == HomeTab.IMPORT) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        icon = { Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     )
                     Tab(
                         selected = selectedTab == HomeTab.TRASH,
@@ -518,6 +573,14 @@ fun HomeScreen(
                         }
                     }
 
+                    LaunchedEffect(searchQuery) {
+                        val trimmed = searchQuery.trim()
+                        if (trimmed.length >= 2) {
+                            kotlinx.coroutines.delay(450)
+                            onSearchWeb(trimmed)
+                        }
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -533,7 +596,7 @@ fun HomeScreen(
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = onSearchQueryChange,
-                                placeholder = { Text("Search songs...") },
+                                placeholder = { Text("Search songs & chords online...") },
                                 leadingIcon = {
                                     Icon(Icons.Default.Search, contentDescription = null, tint = customColors.textSecondary)
                                 },
@@ -650,99 +713,505 @@ fun HomeScreen(
                             }
                         }
 
-                        // Horizontal Tag Filter Chips Row
-                        androidx.compose.foundation.lazy.LazyRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            item {
-                                FilterChip(
-                                    selected = selectedTag == null && !showOnlyFavorites,
-                                    onClick = {
-                                        onSelectTag(null)
-                                        onToggleShowOnlyFavorites(false)
-                                    },
-                                    label = { Text("All (${savedSongs.size})") },
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = customColors.chordAccent.copy(alpha = 0.2f),
-                                        selectedLabelColor = customColors.chordAccent
-                                    )
-                                )
-                            }
-
-                            items(allDistinctTags.size) { idx ->
-                                val tag = allDistinctTags[idx]
-                                val count = savedSongs.count { it.hasTag(tag) }
-                                FilterChip(
-                                    selected = selectedTag == tag,
-                                    onClick = {
-                                        val nextTag = if (selectedTag == tag) null else tag
-                                        onSelectTag(nextTag)
-                                        onToggleShowOnlyFavorites(false)
-                                    },
-                                    label = { Text(if (count > 0) "$tag ($count)" else tag) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = customColors.chordAccent.copy(alpha = 0.2f),
-                                        selectedLabelColor = customColors.chordAccent
-                                    )
-                                )
-                            }
-                        }
-
-                        if (sortedSongs.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
+                        if (searchQuery.isNotBlank()) {
+                            // UNIFIED SEARCH RESULTS VIEW
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        imageVector = Icons.Default.MusicOff,
-                                        contentDescription = null,
-                                        tint = customColors.textSecondary,
-                                        modifier = Modifier.size(48.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        text = if (showOnlyFavorites) "No favorite songs yet." else if (selectedTag != null) "No songs tagged \"$selectedTag\"." else "No songs in library.",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = customColors.textPrimary
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = "Import .txt / .chordtxt files or try instant samples!",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = customColors.textSecondary
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Button(
-                                        onClick = { onTabSelected(HomeTab.IMPORT) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent)
+                                // --- 1. LOCAL SONGBOOK SECTION (Offline) ---
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp, bottom = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("Go to Import", color = Color.Black)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.LibraryMusic,
+                                                contentDescription = null,
+                                                tint = customColors.chordAccent,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "LOCAL SONGBOOK (${sortedSongs.size})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = customColors.textPrimary
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = customColors.surfaceBackground,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                                        ) {
+                                            Text(
+                                                text = "OFFLINE",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = customColors.textSecondary,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (sortedSongs.isEmpty()) {
+                                    item {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = customColors.surfaceBackground.copy(alpha = 0.6f),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(14.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Info,
+                                                    contentDescription = null,
+                                                    tint = customColors.textSecondary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text(
+                                                    text = "No saved songs found in your local songbook.",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = customColors.textSecondary
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    items(sortedSongs, key = { "local_${it.id}" }) { entity ->
+                                        SongCard(
+                                            entity = entity,
+                                            onSelect = { onSelectSongEntity(entity) },
+                                            onToggleFavorite = { onToggleFavoriteSong(entity.id, entity.isFavorite) },
+                                            onDelete = { onDeleteSong(entity) },
+                                            onEditTags = { editingSongForTags = entity }
+                                        )
+                                    }
+                                }
+
+                                // --- SECTION DIVIDER ---
+                                item {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    HorizontalDivider(color = customColors.divider, thickness = 1.dp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+
+                                // --- 2. ONLINE RESULTS SECTION ---
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.TravelExplore,
+                                                contentDescription = null,
+                                                tint = customColors.chordAccent,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "ONLINE RESULTS (${webImportState.searchResults.size})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = customColors.textPrimary
+                                            )
+                                        }
+
+                                        if (!webImportState.isSearching) {
+                                            TextButton(
+                                                onClick = { onSearchWeb(searchQuery.trim()) },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Refresh,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = customColors.chordAccent
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Search Online",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = customColors.chordAccent
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (webImportState.isSearching) {
+                                    item {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 16.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                color = customColors.chordAccent,
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = "Searching online databases for chords...",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = customColors.chordAccent
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (webImportState.searchError != null && !webImportState.isSearching) {
+                                    item {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.ErrorOutline,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFEF4444),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = webImportState.searchError,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color(0xFFEF4444),
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                TextButton(onClick = { onSearchWeb(searchQuery.trim()) }) {
+                                                    Text("Retry", fontSize = 12.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (!webImportState.isSearching && webImportState.searchResults.isEmpty() && webImportState.searchError == null) {
+                                    item {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = customColors.surfaceBackground.copy(alpha = 0.6f),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = "Search online chord databases for \"$searchQuery\".",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = customColors.textSecondary,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                                Spacer(modifier = Modifier.height(10.dp))
+                                                Button(
+                                                    onClick = { onSearchWeb(searchQuery.trim()) },
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = customColors.chordAccent,
+                                                        contentColor = Color.Black
+                                                    ),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Search Online Chords", fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                items(webImportState.searchResults, key = { "web_${it.id}_${it.tabUrl}_${it.version}" }) { item ->
+                                    val localMatch = remember(item, savedSongs) {
+                                        savedSongs.firstOrNull { local ->
+                                            val cleanLocal = local.title.trim().lowercase()
+                                            val cleanItem = item.songName.trim().lowercase()
+                                            val titleMatch = cleanLocal == cleanItem ||
+                                                    cleanLocal.contains(cleanItem) ||
+                                                    cleanItem.contains(cleanLocal)
+                                            val artistMatch = local.artist.isNullOrBlank() || item.artistName.isBlank() ||
+                                                    local.artist.trim().equals(item.artistName.trim(), ignoreCase = true)
+                                            titleMatch && artistMatch
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = customColors.surfaceBackground,
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            width = if (localMatch != null) 1.5.dp else 1.dp,
+                                            color = if (localMatch != null) customColors.chordAccent else customColors.divider
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                if (localMatch != null) {
+                                                    onSelectSongEntity(localMatch)
+                                                } else {
+                                                    onSelectSearchResult(item)
+                                                }
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Text(
+                                                        text = item.songName,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = customColors.textPrimary,
+                                                        style = MaterialTheme.typography.bodyLarge
+                                                    )
+                                                    if (localMatch != null) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = customColors.chordAccent.copy(alpha = 0.2f),
+                                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent)
+                                                        ) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Check,
+                                                                    contentDescription = null,
+                                                                    tint = customColors.chordAccent,
+                                                                    modifier = Modifier.size(12.dp)
+                                                                )
+                                                                Spacer(modifier = Modifier.width(3.dp))
+                                                                Text(
+                                                                    text = "In Songbook",
+                                                                    fontSize = 10.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = customColors.chordAccent
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Text(
+                                                    text = item.artistName,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = customColors.textSecondary
+                                                )
+
+                                                Spacer(modifier = Modifier.height(6.dp))
+
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = customColors.canvasBackground
+                                                    ) {
+                                                        Text(
+                                                            text = "Ver ${item.version}",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = customColors.chordAccent,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = customColors.canvasBackground
+                                                    ) {
+                                                        Text(
+                                                            text = item.type,
+                                                            fontSize = 10.sp,
+                                                            color = customColors.textSecondary,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+
+                                                    if (item.votes > 0) {
+                                                        val votesStr = if (item.votes >= 1000) "${item.votes / 1000}k" else "${item.votes}"
+                                                        Text(
+                                                            text = "★ ${"%.1f".format(item.rating)} ($votesStr)",
+                                                            fontSize = 10.sp,
+                                                            color = Color(0xFFFBBF24),
+                                                            fontWeight = FontWeight.SemiBold
+                                                        )
+                                                    }
+
+                                                    if (item.tonality != null) {
+                                                        Text(
+                                                            text = "Key: ${item.tonality}",
+                                                            fontSize = 10.sp,
+                                                            color = customColors.textSecondary
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.width(10.dp))
+
+                                            if (localMatch != null) {
+                                                OutlinedButton(
+                                                    onClick = { onSelectSongEntity(localMatch) },
+                                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = customColors.chordAccent),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                                ) {
+                                                    Text("Open", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                }
+                                            } else {
+                                                Button(
+                                                    onClick = { onSelectSearchResult(item) },
+                                                    enabled = !webImportState.isLoading,
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = customColors.chordAccent,
+                                                        contentColor = Color.Black
+                                                    ),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Preview", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         } else {
-                            LazyColumn(
-                                state = songbookListState,
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            // REGULAR SONGBOOK VIEW (When not searching)
+                            androidx.compose.foundation.lazy.LazyRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                items(sortedSongs, key = { it.id }) { entity ->
-                                    SongCard(
-                                        entity = entity,
-                                        onSelect = { onSelectSongEntity(entity) },
-                                        onToggleFavorite = { onToggleFavoriteSong(entity.id, entity.isFavorite) },
-                                        onDelete = { onDeleteSong(entity) },
-                                        onEditTags = { editingSongForTags = entity }
+                                item {
+                                    FilterChip(
+                                        selected = selectedTag == null && !showOnlyFavorites,
+                                        onClick = {
+                                            onSelectTag(null)
+                                            onToggleShowOnlyFavorites(false)
+                                        },
+                                        label = { Text("All (${savedSongs.size})") },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = customColors.chordAccent.copy(alpha = 0.2f),
+                                            selectedLabelColor = customColors.chordAccent
+                                        )
                                     )
+                                }
+
+                                items(allDistinctTags.size) { idx ->
+                                    val tag = allDistinctTags[idx]
+                                    val count = savedSongs.count { it.hasTag(tag) }
+                                    FilterChip(
+                                        selected = selectedTag == tag,
+                                        onClick = {
+                                            val nextTag = if (selectedTag == tag) null else tag
+                                            onSelectTag(nextTag)
+                                            onToggleShowOnlyFavorites(false)
+                                        },
+                                        label = { Text(if (count > 0) "$tag ($count)" else tag) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = customColors.chordAccent.copy(alpha = 0.2f),
+                                            selectedLabelColor = customColors.chordAccent
+                                        )
+                                    )
+                                }
+                            }
+
+                            if (sortedSongs.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            imageVector = Icons.Default.MusicOff,
+                                            contentDescription = null,
+                                            tint = customColors.textSecondary,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = if (showOnlyFavorites) "No favorite songs yet." else if (selectedTag != null) "No songs tagged \"$selectedTag\"." else "No songs in library.",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = customColors.textPrimary
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "Import .txt / .chordtxt files or try instant samples!",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = customColors.textSecondary
+                                        )
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Button(
+                                            onClick = {
+                                                filePickerLauncher.launch(
+                                                    arrayOf("text/plain", "text/*", "application/octet-stream", "*/*")
+                                                )
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent)
+                                        ) {
+                                            Text("Import Chords (.txt / .chordpro)", color = Color.Black)
+                                        }
+                                    }
+                                }
+                            } else {
+                                LazyColumn(
+                                    state = songbookListState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(sortedSongs, key = { it.id }) { entity ->
+                                        SongCard(
+                                            entity = entity,
+                                            onSelect = { onSelectSongEntity(entity) },
+                                            onToggleFavorite = { onToggleFavoriteSong(entity.id, entity.isFavorite) },
+                                            onDelete = { onDeleteSong(entity) },
+                                            onEditTags = { editingSongForTags = entity }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -913,757 +1382,6 @@ fun HomeScreen(
                                 }
                             }
                         }
-                    }
-                }
-
-                HomeTab.IMPORT -> {
-                    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
-                    var webSearchInput by remember { mutableStateOf(webImportState.searchQuery) }
-                    var urlInput by remember { mutableStateOf("") }
-                    var showDirectUrlSection by remember { mutableStateOf(false) }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // 1. Online Song & Chord Search Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
-                            shape = RoundedCornerShape(20.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(20.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(customColors.chordAccent.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.TravelExplore,
-                                            contentDescription = null,
-                                            tint = customColors.chordAccent,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = "Song & Chords Web Search",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = customColors.textPrimary
-                                        )
-                                        Text(
-                                            text = "Type Title or Artist to fetch versions & chords online",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = customColors.textSecondary
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Search Bar with clear and search actions
-                                OutlinedTextField(
-                                    value = webSearchInput,
-                                    onValueChange = { webSearchInput = it },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    placeholder = {
-                                        Text("Search song title or artist (e.g. Hotel California)...", fontSize = 13.sp)
-                                    },
-                                    singleLine = true,
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Search, contentDescription = null, tint = customColors.chordAccent)
-                                    },
-                                    trailingIcon = {
-                                        if (webSearchInput.isNotBlank()) {
-                                            IconButton(onClick = {
-                                                webSearchInput = ""
-                                                onSearchWeb("")
-                                            }) {
-                                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = customColors.textSecondary)
-                                            }
-                                        }
-                                    },
-                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                        imeAction = androidx.compose.ui.text.input.ImeAction.Search
-                                    ),
-                                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                                        onSearch = {
-                                            if (webSearchInput.isNotBlank()) {
-                                                onSearchWeb(webSearchInput)
-                                            }
-                                        }
-                                    ),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = customColors.chordAccent,
-                                        unfocusedBorderColor = customColors.divider,
-                                        focusedTextColor = customColors.textPrimary,
-                                        unfocusedTextColor = customColors.textPrimary
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Button(
-                                    onClick = {
-                                        if (webSearchInput.isNotBlank()) {
-                                            onSearchWeb(webSearchInput)
-                                        }
-                                    },
-                                    enabled = webSearchInput.isNotBlank() && !webImportState.isSearching,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black)
-                                ) {
-                                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Find Online Versions", fontWeight = FontWeight.Bold)
-                                }
-
-                                // Quick suggestion chips
-                                Spacer(modifier = Modifier.height(10.dp))
-                                val sampleQueries = listOf("Hotel California", "Ang Huling El Bimbo", "Torete", "Creep", "With or Without You")
-                                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(sampleQueries.size) { idx ->
-                                        val sample = sampleQueries[idx]
-                                        SuggestionChip(
-                                            onClick = {
-                                                webSearchInput = sample
-                                                onSearchWeb(sample)
-                                            },
-                                            label = { Text(sample, fontSize = 11.sp) },
-                                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                                containerColor = customColors.canvasBackground,
-                                                labelColor = customColors.textSecondary
-                                            ),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                                        )
-                                    }
-                                }
-
-                                // Searching progress indicator
-                                if (webImportState.isSearching) {
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = customColors.chordAccent, strokeWidth = 2.dp)
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text("Searching online databases for chord versions...", style = MaterialTheme.typography.bodySmall, color = customColors.chordAccent)
-                                    }
-                                }
-
-                                // Search error banner
-                                if (webImportState.searchError != null) {
-                                    Spacer(modifier = Modifier.height(14.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = Color(0xFFEF4444).copy(alpha = 0.15f),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                            Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(text = webImportState.searchError, style = MaterialTheme.typography.bodySmall, color = Color(0xFFEF4444))
-                                        }
-                                    }
-                                }
-
-                                // Search Results List
-                                if (webImportState.searchResults.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = "CHORD VERSIONS (${webImportState.searchResults.size}):",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = customColors.textSecondary
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    webImportState.searchResults.forEach { item ->
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = customColors.canvasBackground,
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 4.dp)
-                                                .clickable { onSelectSearchResult(item) }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(text = item.songName, fontWeight = FontWeight.Bold, color = customColors.textPrimary)
-                                                    Text(text = item.artistName, style = MaterialTheme.typography.bodySmall, color = customColors.textSecondary)
-
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Row(
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Surface(
-                                                            shape = RoundedCornerShape(4.dp),
-                                                            color = customColors.chordAccent.copy(alpha = 0.2f)
-                                                        ) {
-                                                            Text(
-                                                                text = "Ver ${item.version}",
-                                                                fontSize = 10.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = customColors.chordAccent,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                            )
-                                                        }
-
-                                                        Surface(
-                                                            shape = RoundedCornerShape(4.dp),
-                                                            color = customColors.surfaceBackground
-                                                        ) {
-                                                            Text(
-                                                                text = item.type,
-                                                                fontSize = 10.sp,
-                                                                color = customColors.textSecondary,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                            )
-                                                        }
-
-                                                        if (item.votes > 0) {
-                                                            val votesStr = if (item.votes >= 1000) "${item.votes / 1000}k" else "${item.votes}"
-                                                            Text(
-                                                                text = "★ ${"%.1f".format(item.rating)} ($votesStr)",
-                                                                fontSize = 10.sp,
-                                                                color = Color(0xFFFBBF24),
-                                                                fontWeight = FontWeight.SemiBold
-                                                            )
-                                                        }
-
-                                                        if (item.tonality != null) {
-                                                            Text(
-                                                                text = "Key: ${item.tonality}",
-                                                                fontSize = 10.sp,
-                                                                color = customColors.textSecondary
-                                                            )
-                                                        }
-                                                    }
-                                                }
-
-                                                Spacer(modifier = Modifier.width(10.dp))
-
-                                                Button(
-                                                    onClick = { onSelectSearchResult(item) },
-                                                    enabled = !webImportState.isLoading,
-                                                    colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                                ) {
-                                                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("Preview", fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Browse External Song Sources (CCLI SongSelect, UG, Chordie, OPMTunes, Custom)
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
-                            shape = RoundedCornerShape(16.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(customColors.chordAccent.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Language,
-                                            contentDescription = null,
-                                            tint = customColors.chordAccent,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "Browse External Song Sources",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = customColors.textPrimary
-                                        )
-                                        Text(
-                                            text = "In-app browser with 1-tap 'Import Song' button",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = customColors.textSecondary
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                val externalSources = listOf(
-                                    Triple("songselect.ccli.com", "https://songselect.ccli.com", "Praise & Worship / Church Chords"),
-                                    Triple("ultimate-guitar.com", "https://www.ultimate-guitar.com", "Global chords & tabs catalog"),
-                                    Triple("chordie.com", "https://www.chordie.com", "Direct ChordPro catalog"),
-                                    Triple("opmtunes.com", "https://www.opmtunes.com", "OPM hits & Pinoy classics")
-                                )
-
-                                externalSources.forEach { (name, url, desc) ->
-                                    Surface(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 4.dp)
-                                            .clickable {
-                                                browserSourceName = name
-                                                browserInitialUrl = url
-                                            },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = customColors.canvasBackground,
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Public,
-                                                contentDescription = null,
-                                                tint = customColors.chordAccent,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = name,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = customColors.textPrimary,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                                Text(
-                                                    text = desc,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = customColors.textSecondary
-                                                )
-                                            }
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                                contentDescription = "Open",
-                                                tint = customColors.textSecondary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // + Add Source (Custom URL)
-                                OutlinedButton(
-                                    onClick = { showAddSourceDialog = true },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent.copy(alpha = 0.5f))
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("+ Add Source (Custom URL)", color = customColors.chordAccent, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // 2. Collapsible Direct Link or Clipboard Ingest Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
-                            shape = RoundedCornerShape(16.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { showDirectUrlSection = !showDirectUrlSection }
-                                        .padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Link, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(20.dp))
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text(
-                                            text = "Direct URL or Clipboard Ingest",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = customColors.textPrimary
-                                        )
-                                    }
-                                    Icon(
-                                        imageVector = if (showDirectUrlSection) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                        contentDescription = null,
-                                        tint = customColors.textSecondary
-                                    )
-                                }
-
-                                if (showDirectUrlSection) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    OutlinedTextField(
-                                        value = urlInput,
-                                        onValueChange = { urlInput = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        placeholder = { Text("Enter chord URL (e.g. tabs.ultimate-guitar.com/...)", fontSize = 13.sp) },
-                                        singleLine = true,
-                                        trailingIcon = {
-                                            if (urlInput.isNotBlank()) {
-                                                IconButton(onClick = { urlInput = "" }) {
-                                                    Icon(Icons.Default.Clear, contentDescription = "Clear", tint = customColors.textSecondary)
-                                                }
-                                            }
-                                        },
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = customColors.chordAccent,
-                                            unfocusedBorderColor = customColors.divider,
-                                            focusedTextColor = customColors.textPrimary,
-                                            unfocusedTextColor = customColors.textPrimary
-                                        ),
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-
-                                    Spacer(modifier = Modifier.height(10.dp))
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Button(
-                                            onClick = {
-                                                if (urlInput.isNotBlank()) {
-                                                    onFetchUrl(urlInput.trim())
-                                                }
-                                            },
-                                            enabled = urlInput.isNotBlank() && !webImportState.isLoading,
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(44.dp),
-                                            shape = RoundedCornerShape(10.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black)
-                                        ) {
-                                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Import URL", fontWeight = FontWeight.Bold)
-                                        }
-
-                                        OutlinedButton(
-                                            onClick = {
-                                                val clip = clipboardManager.getText()?.text ?: ""
-                                                if (clip.isNotBlank()) {
-                                                    if (clip.startsWith("http://", ignoreCase = true) || clip.startsWith("https://", ignoreCase = true)) {
-                                                        urlInput = clip.trim()
-                                                    }
-                                                    onPasteClipboard(clip)
-                                                }
-                                            },
-                                            enabled = !webImportState.isLoading,
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(44.dp),
-                                            shape = RoundedCornerShape(10.dp),
-                                            border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = customColors.chordAccent)
-                                        ) {
-                                            Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Paste Clipboard", fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-
-                                    if (webImportState.isLoading) {
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = customColors.chordAccent, strokeWidth = 2.dp)
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Scraping chords and cleaning web ads...", style = MaterialTheme.typography.bodySmall, color = customColors.chordAccent)
-                                        }
-                                    }
-
-                                    if (webImportState.error != null) {
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        Text(text = webImportState.error, style = MaterialTheme.typography.bodySmall, color = Color(0xFFEF4444))
-                                    }
-                                }
-                            }
-                        }
-
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // 2. Local Storage Files Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
-                            shape = RoundedCornerShape(20.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "Clean Chord & Tab Viewer",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = customColors.textPrimary,
-                                    textAlign = TextAlign.Center
-                                )
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Text(
-                                    text = "Offline-first performance stage tool. Fast dual-format parsing for 2-line tabs & ChordPro songs. Auto-saves directly to your local Songbook.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = customColors.textSecondary,
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 20.sp
-                                )
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Main SAF Open Button
-                                Button(
-                                    onClick = {
-                                        filePickerLauncher.launch(
-                                            arrayOf(
-                                                "text/plain",
-                                                "text/*",
-                                                "application/octet-stream",
-                                                "*/*"
-                                            )
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(56.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = customColors.chordAccent,
-                                        contentColor = Color.Black
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.FolderOpen,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = "Open Single File (.txt / .chordpro)",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Massive Folder Import Button via ACTION_OPEN_DOCUMENT_TREE
-                                OutlinedButton(
-                                    onClick = { folderPickerLauncher.launch(null) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(56.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = customColors.chordAccent
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DriveFolderUpload,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = "Import Song Folder",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // 3. Cloud Backup & Smart Restore Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
-                            shape = RoundedCornerShape(20.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(customColors.chordAccent.copy(alpha = 0.15f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CloudSync,
-                                        contentDescription = null,
-                                        tint = customColors.chordAccent,
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Text(
-                                    text = "Backup & Restore (Smart Merge)",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = customColors.textPrimary,
-                                    textAlign = TextAlign.Center
-                                )
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Text(
-                                    text = "Export active songs, soft-deleted songs, and setlists into a single JSON file. On restore, songs are merged by Title + Artist without deleting existing records.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = customColors.textSecondary,
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 20.sp
-                                )
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Export Backup Button (Share Sheet: Drive / Cloud / Local)
-                                Button(
-                                    onClick = onExportBackupShare,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(52.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = customColors.chordAccent,
-                                        contentColor = Color.Black
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CloudUpload,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = "Export Backup (Share / Google Drive)",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                // Save via SAF Button
-                                OutlinedButton(
-                                    onClick = { backupSaveSafLauncher.launch(BackupManager.generateBackupFileName()) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = customColors.textPrimary
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Save,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Save Backup to Device (.json)",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                // Restore from Backup Button
-                                OutlinedButton(
-                                    onClick = {
-                                        backupPickerLauncher.launch(
-                                            arrayOf(
-                                                "application/json",
-                                                "application/octet-stream",
-                                                "text/plain",
-                                                "*/*"
-                                            )
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(52.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = customColors.chordAccent
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CloudDownload,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = "Restore from Backup (.json)",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(32.dp))
                     }
                 }
 
@@ -2024,6 +1742,211 @@ fun HomeScreen(
             },
             containerColor = customColors.surfaceBackground,
             shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    // Direct URL / Paste Clipboard Ingest Dialog
+    if (showDirectImportDialog) {
+        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { showDirectImportDialog = false },
+            containerColor = customColors.surfaceBackground,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Link, contentDescription = null, tint = customColors.chordAccent)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Direct Link / Paste Chords", color = customColors.textPrimary)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Paste a URL from Ultimate-Guitar / CCLI or paste raw chord text directly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = directUrlInput,
+                        onValueChange = { directUrlInput = it },
+                        placeholder = { Text("Enter chord URL...", fontSize = 13.sp) },
+                        singleLine = true,
+                        trailingIcon = {
+                            if (directUrlInput.isNotBlank()) {
+                                IconButton(onClick = { directUrlInput = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear", tint = customColors.textSecondary)
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = customColors.chordAccent,
+                            unfocusedBorderColor = customColors.divider,
+                            focusedTextColor = customColors.textPrimary,
+                            unfocusedTextColor = customColors.textPrimary
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (directUrlInput.isNotBlank()) {
+                                    onFetchUrl(directUrlInput.trim())
+                                    showDirectImportDialog = false
+                                }
+                            },
+                            enabled = directUrlInput.isNotBlank() && !webImportState.isLoading,
+                            colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Fetch URL", fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                val clip = clipboardManager.getText()?.text ?: ""
+                                if (clip.isNotBlank()) {
+                                    if (clip.startsWith("http://", ignoreCase = true) || clip.startsWith("https://", ignoreCase = true)) {
+                                        directUrlInput = clip.trim()
+                                        onFetchUrl(clip.trim())
+                                    } else {
+                                        onPasteClipboard(clip)
+                                    }
+                                    showDirectImportDialog = false
+                                }
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = customColors.chordAccent),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, customColors.chordAccent),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Paste Clip", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (webImportState.isLoading) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = customColors.chordAccent, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Fetching chords...", style = MaterialTheme.typography.bodySmall, color = customColors.chordAccent)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showDirectImportDialog = false }) {
+                    Text("Close", color = customColors.textSecondary)
+                }
+            }
+        )
+    }
+
+    // Browse External Song Sources Dialog
+    if (showBrowseSourcesDialog) {
+        val externalSources = listOf(
+            Triple("songselect.ccli.com", "https://songselect.ccli.com", "Praise & Worship / Church Chords"),
+            Triple("ultimate-guitar.com", "https://www.ultimate-guitar.com", "Global chords & tabs catalog"),
+            Triple("chordie.com", "https://www.chordie.com", "Direct ChordPro catalog"),
+            Triple("opmtunes.com", "https://www.opmtunes.com", "OPM hits & Pinoy classics")
+        )
+        AlertDialog(
+            onDismissRequest = { showBrowseSourcesDialog = false },
+            containerColor = customColors.surfaceBackground,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Language, contentDescription = null, tint = customColors.chordAccent)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Browse Song Sources", color = customColors.textPrimary)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = "Open chords in the in-app browser with 1-tap 'Import Song' button.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = customColors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    externalSources.forEach { (name, url, desc) ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable {
+                                    browserSourceName = name
+                                    browserInitialUrl = url
+                                    showBrowseSourcesDialog = false
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = customColors.canvasBackground,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Public,
+                                    contentDescription = null,
+                                    tint = customColors.chordAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = name,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = customColors.textPrimary,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = customColors.textSecondary
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = "Open",
+                                    tint = customColors.textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            showBrowseSourcesDialog = false
+                            showAddSourceDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent.copy(alpha = 0.5f))
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = customColors.chordAccent, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("+ Add Custom Website URL", color = customColors.chordAccent, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showBrowseSourcesDialog = false }) {
+                    Text("Close", color = customColors.textSecondary)
+                }
+            }
         )
     }
 }

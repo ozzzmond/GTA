@@ -38,6 +38,7 @@ import com.joel.gta.ui.theme.LocalGtaColors
 private data class ColorPreset(val name: String, val hex: String)
 
 private val BackgroundPresets = listOf(
+    ColorPreset("Solarized Dark", "#002B36"),
     ColorPreset("AG Dark Slate", "#131418"),
     ColorPreset("AG Deep Charcoal", "#1A1B22"),
     ColorPreset("Muted Slate", "#22242D"),
@@ -48,6 +49,8 @@ private val BackgroundPresets = listOf(
 )
 
 private val ChordPresets = listOf(
+    ColorPreset("Solarized Yellow", "#B58900"),
+    ColorPreset("Solarized Cyan", "#2AA198"),
     ColorPreset("Soft Amber Gold", "#E5B866"),
     ColorPreset("AG Electric Blue", "#6C8EEF"),
     ColorPreset("Stage Amber", "#FFC107"),
@@ -56,6 +59,7 @@ private val ChordPresets = listOf(
 )
 
 private val LyricsPresets = listOf(
+    ColorPreset("Solarized Text", "#EEE8D5"),
     ColorPreset("Pure White", "#FFFFFF"),
     ColorPreset("Soft Ivory", "#F1F5F9"),
     ColorPreset("Light Gray", "#D1D5DB"),
@@ -63,6 +67,7 @@ private val LyricsPresets = listOf(
 )
 
 private val SectionHeaderPresets = listOf(
+    ColorPreset("Solarized Violet", "#8B5CF6"),
     ColorPreset("Soft Indigo", "#818CF8"),
     ColorPreset("Cyan Flame", "#06B6D4"),
     ColorPreset("Emerald", "#10B981"),

@@ -273,7 +273,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
      */
     fun loadSongFromUri(context: Context, uri: Uri) {
         viewModelScope.launch {
-            _activeHomeTab.value = HomeTab.IMPORT
+            _activeHomeTab.value = HomeTab.SONGBOOK
             _uiState.value = SongViewerState.Loading
             _isAutoScrolling.value = false
 
@@ -464,7 +464,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
 
     fun loadSampleSong(useChordPro: Boolean = false) {
         viewModelScope.launch {
-            _activeHomeTab.value = HomeTab.IMPORT
+            _activeHomeTab.value = HomeTab.SONGBOOK
             _uiState.value = SongViewerState.Loading
             _isAutoScrolling.value = false
 

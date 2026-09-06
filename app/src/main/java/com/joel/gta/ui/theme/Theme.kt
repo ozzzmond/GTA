@@ -13,37 +13,39 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 
 enum class AppThemeMode {
-    AMOLED_DARK,    // #000000 canvas with Electric Amber chords
+    AMOLED_DARK,    // Solarized Dark (#002B36) default stage theme
     PAPER_LIGHT,    // #FBF8F2 cream paper with warm amber/brown chords
-    AMOLED_CYAN,    // #000000 canvas with Neon Cyan chords
+    AMOLED_CYAN,    // Solarized Dark with Primary Cyan chords
     CUSTOM_STAGE    // Musician-tailored hex palette for custom stage lighting
 }
 
 data class CustomStageColors(
-    val canvasBackgroundHex: String = "#131418",
-    val chordAccentHex: String = "#E5B866",
-    val textPrimaryHex: String = "#F1F5F9",
-    val sectionHeaderHex: String = "#818CF8"
+    val canvasBackgroundHex: String = "#002B36",
+    val chordAccentHex: String = "#B58900",
+    val textPrimaryHex: String = "#EEE8D5",
+    val sectionHeaderHex: String = "#8B5CF6"
 ) {
     fun toGtaCustomColors(): GtaCustomColors {
-        val bg = parseColorOrNull(canvasBackgroundHex) ?: SlateCanvas
-        val chord = parseColorOrNull(chordAccentHex) ?: SoftAmberGold
-        val text = parseColorOrNull(textPrimaryHex) ?: SlateTextPrimary
-        val header = parseColorOrNull(sectionHeaderHex) ?: SectionHeaderColor
+        val bg = parseColorOrNull(canvasBackgroundHex) ?: SolarizedBg
+        val chord = parseColorOrNull(chordAccentHex) ?: SolarizedWarning
+        val text = parseColorOrNull(textPrimaryHex) ?: SolarizedText
+        val header = parseColorOrNull(sectionHeaderHex) ?: SolarizedAccent
 
         val isDark = isColorDark(bg)
         val surface = if (isDark) {
-            if (bg == SlateCanvas) SlateSurface else darkenOrLighten(bg, 0.07f)
+            if (bg == SolarizedBg) SolarizedSurface
+            else if (bg == Color(0xFF131418)) Color(0xFF22242D)
+            else darkenOrLighten(bg, 0.07f)
         } else {
             darkenOrLighten(bg, -0.05f)
         }
         val textSecondary = if (isDark) {
-            SlateTextSecondary
+            if (bg == SolarizedBg) SolarizedTextMuted else Color(0xFF94A3B8)
         } else {
             Color(0xFF64748B)
         }
         val divider = if (isDark) {
-            SlateDivider
+            if (bg == SolarizedBg) SolarizedBorder else Color(0xFF1A4A55)
         } else {
             Color(0xFFDFD7C7)
         }
@@ -55,8 +57,14 @@ data class CustomStageColors(
             textSecondary = textSecondary,
             chordAccent = chord,
             sectionHeader = header,
-            tabLineColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
-            divider = divider
+            tabLineColor = if (isDark) SolarizedPrimaryHover else Color(0xFF0284C7),
+            divider = divider,
+            primary = SolarizedPrimary,
+            primaryHover = SolarizedPrimaryHover,
+            accent = SolarizedAccent,
+            success = SolarizedSuccess,
+            warning = SolarizedWarning,
+            danger = SolarizedDanger
         )
     }
 
@@ -105,30 +113,55 @@ data class GtaCustomColors(
     val chordAccent: Color,
     val sectionHeader: Color,
     val tabLineColor: Color,
-    val divider: Color
+    val divider: Color,
+    val primary: Color = SolarizedPrimary,
+    val primaryHover: Color = SolarizedPrimaryHover,
+    val accent: Color = SolarizedAccent,
+    val success: Color = SolarizedSuccess,
+    val warning: Color = SolarizedWarning,
+    val danger: Color = SolarizedDanger
 )
 
 val LocalGtaColors = compositionLocalOf {
     GtaCustomColors(
-        canvasBackground = SlateCanvas,
-        surfaceBackground = SlateSurface,
-        textPrimary = SlateTextPrimary,
-        textSecondary = SlateTextSecondary,
-        chordAccent = SoftAmberGold,
-        sectionHeader = SectionHeaderColor,
-        tabLineColor = TabLineColor,
-        divider = SlateDivider
+        canvasBackground = SolarizedBg,
+        surfaceBackground = SolarizedSurface,
+        textPrimary = SolarizedText,
+        textSecondary = SolarizedTextMuted,
+        chordAccent = SolarizedWarning,
+        sectionHeader = SolarizedAccent,
+        tabLineColor = SolarizedPrimaryHover,
+        divider = SolarizedBorder,
+        primary = SolarizedPrimary,
+        primaryHover = SolarizedPrimaryHover,
+        accent = SolarizedAccent,
+        success = SolarizedSuccess,
+        warning = SolarizedWarning,
+        danger = SolarizedDanger
     )
 }
 
 private val AmoledDarkColorScheme = darkColorScheme(
-    primary = SoftAmberGold,
-    onPrimary = Color.Black,
-    secondary = AgElectricBlue,
-    background = SlateCanvas,
-    surface = SlateSurface,
-    onBackground = SlateTextPrimary,
-    onSurface = SlateTextPrimary
+    primary = SolarizedPrimary,
+    onPrimary = SolarizedBg,
+    primaryContainer = SolarizedSurface,
+    onPrimaryContainer = SolarizedText,
+    secondary = SolarizedAccent,
+    onSecondary = Color.White,
+    secondaryContainer = SolarizedBorder,
+    onSecondaryContainer = SolarizedText,
+    tertiary = SolarizedWarning,
+    onTertiary = SolarizedBg,
+    background = SolarizedBg,
+    surface = SolarizedSurface,
+    surfaceVariant = SolarizedSurface,
+    onBackground = SolarizedText,
+    onSurface = SolarizedText,
+    onSurfaceVariant = SolarizedTextMuted,
+    outline = SolarizedBorder,
+    outlineVariant = SolarizedBorder,
+    error = SolarizedDanger,
+    onError = Color.White
 )
 
 private val PaperLightColorScheme = lightColorScheme(
@@ -150,14 +183,20 @@ fun GTATheme(
     val (colorScheme, customColors) = when (themeMode) {
         AppThemeMode.AMOLED_DARK -> {
             AmoledDarkColorScheme to GtaCustomColors(
-                canvasBackground = SlateCanvas,
-                surfaceBackground = SlateSurface,
-                textPrimary = SlateTextPrimary,
-                textSecondary = SlateTextSecondary,
-                chordAccent = SoftAmberGold,
-                sectionHeader = SectionHeaderColor,
-                tabLineColor = TabLineColor,
-                divider = SlateDivider
+                canvasBackground = SolarizedBg,
+                surfaceBackground = SolarizedSurface,
+                textPrimary = SolarizedText,
+                textSecondary = SolarizedTextMuted,
+                chordAccent = SolarizedWarning,
+                sectionHeader = SolarizedAccent,
+                tabLineColor = SolarizedPrimaryHover,
+                divider = SolarizedBorder,
+                primary = SolarizedPrimary,
+                primaryHover = SolarizedPrimaryHover,
+                accent = SolarizedAccent,
+                success = SolarizedSuccess,
+                warning = SolarizedWarning,
+                danger = SolarizedDanger
             )
         }
         AppThemeMode.PAPER_LIGHT -> {
@@ -169,19 +208,31 @@ fun GTATheme(
                 chordAccent = Color(0xFFD97706),
                 sectionHeader = Color(0xFF6366F1),
                 tabLineColor = Color(0xFF0284C7),
-                divider = PaperDivider
+                divider = PaperDivider,
+                primary = Color(0xFFD97706),
+                primaryHover = Color(0xFFB45309),
+                accent = Color(0xFF6366F1),
+                success = DirectiveBadgeColor,
+                warning = Color(0xFFD97706),
+                danger = Color(0xFFDC2626)
             )
         }
         AppThemeMode.AMOLED_CYAN -> {
-            AmoledDarkColorScheme.copy(primary = AgElectricBlue) to GtaCustomColors(
-                canvasBackground = SlateCanvas,
-                surfaceBackground = SlateSurface,
-                textPrimary = SlateTextPrimary,
-                textSecondary = SlateTextSecondary,
-                chordAccent = AgElectricBlue,
-                sectionHeader = Color(0xFF38BDF8),
-                tabLineColor = TabLineColor,
-                divider = SlateDivider
+            AmoledDarkColorScheme.copy(primary = SolarizedPrimary) to GtaCustomColors(
+                canvasBackground = SolarizedBg,
+                surfaceBackground = SolarizedSurface,
+                textPrimary = SolarizedText,
+                textSecondary = SolarizedTextMuted,
+                chordAccent = SolarizedPrimary,
+                sectionHeader = SolarizedAccent,
+                tabLineColor = SolarizedPrimaryHover,
+                divider = SolarizedBorder,
+                primary = SolarizedPrimary,
+                primaryHover = SolarizedPrimaryHover,
+                accent = SolarizedAccent,
+                success = SolarizedSuccess,
+                warning = SolarizedWarning,
+                danger = SolarizedDanger
             )
         }
         AppThemeMode.CUSTOM_STAGE -> {

@@ -171,4 +171,25 @@ class CustomThemeTest {
         assertEquals(sans, com.joel.gta.ui.theme.SongFontStyle.valueOf("SANS_SERIF"))
         assertEquals(serif, com.joel.gta.ui.theme.SongFontStyle.valueOf("SERIF"))
     }
+
+    @Test
+    fun testSolarizedDarkDefaultPreset() {
+        val bg = CustomStageColors.parseColorOrNull("#002B36")
+        assertNotNull(bg)
+        assertTrue("Solarized Dark BG should be recognized as dark", CustomStageColors.isColorDark(bg!!))
+
+        val solarized = CustomStageColors(
+            canvasBackgroundHex = "#002B36",
+            chordAccentHex = "#B58900",
+            textPrimaryHex = "#EEE8D5",
+            sectionHeaderHex = "#8B5CF6"
+        ).toGtaCustomColors()
+
+        assertEquals(bg, solarized.canvasBackground)
+        assertEquals(CustomStageColors.parseColorOrNull("#B58900"), solarized.chordAccent)
+        assertEquals(CustomStageColors.parseColorOrNull("#EEE8D5"), solarized.textPrimary)
+        assertEquals(CustomStageColors.parseColorOrNull("#8B5CF6"), solarized.sectionHeader)
+        assertEquals(Color(0xFF93A1A1), solarized.textSecondary)
+        assertEquals(Color(0xFF1A4A55), solarized.divider)
+    }
 }
