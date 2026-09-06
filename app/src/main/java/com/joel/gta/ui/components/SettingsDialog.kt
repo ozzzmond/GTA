@@ -33,6 +33,7 @@ fun SettingsDialog(
     onSelectSongFontStyle: (SongFontStyle) -> Unit = {},
     onOpenThemeDialog: () -> Unit,
     onOpenStageTools: () -> Unit,
+    onCheckForUpdates: (() -> Unit)? = null,
     onDismissRequest: () -> Unit
 ) {
     val customColors = LocalGtaColors.current
@@ -477,6 +478,34 @@ fun SettingsDialog(
                             text = "Pro Gig Teleprompter & Chord Companion for Live Musicians",
                             style = MaterialTheme.typography.labelSmall,
                             color = customColors.textSecondary
+                        )
+                    }
+                }
+
+                if (onCheckForUpdates != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            onDismissRequest()
+                            onCheckForUpdates()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = customColors.chordAccent),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Check for Updates",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }

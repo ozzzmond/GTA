@@ -350,8 +350,7 @@ class MainActivity : ComponentActivity() {
                         currentThemeMode = themeMode,
                         currentCustomColors = customStageColors,
                         onDismissRequest = { showStageThemeDialog = false },
-                        onSelectPresetMode = { mode -> viewModel.setThemeMode(mode) },
-                        onApplyCustomColors = { colors -> viewModel.setCustomStageColors(colors) },
+                        onSaveTheme = { mode, colors -> viewModel.saveThemeSettings(mode, colors) },
                         onResetDefaults = { viewModel.resetCustomStageColors() }
                     )
                 }
@@ -369,6 +368,13 @@ class MainActivity : ComponentActivity() {
                         onOpenStageTools = {
                             showSettingsDialog = false
                             showStageToolsDialogFromSettings = true
+                        },
+                        onCheckForUpdates = {
+                            Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
+                            viewModel.checkForUpdates(
+                                onUpToDate = { msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() },
+                                onError = { err -> Toast.makeText(context, err, Toast.LENGTH_LONG).show() }
+                            )
                         },
                         onDismissRequest = { showSettingsDialog = false }
                     )

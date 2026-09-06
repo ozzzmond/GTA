@@ -247,10 +247,10 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         themeMode = _themeMode.asStateFlow()
 
         val loadedColors = CustomStageColors(
-            canvasBackgroundHex = themePrefs.getString("pref_custom_bg", "#000000") ?: "#000000",
-            chordAccentHex = themePrefs.getString("pref_custom_chord", "#FFC107") ?: "#FFC107",
-            textPrimaryHex = themePrefs.getString("pref_custom_text", "#F1F5F9") ?: "#F1F5F9",
-            sectionHeaderHex = themePrefs.getString("pref_custom_header", "#818CF8") ?: "#818CF8"
+            canvasBackgroundHex = themePrefs.getString("pref_custom_bg", "#002B36") ?: "#002B36",
+            chordAccentHex = themePrefs.getString("pref_custom_chord", "#B58900") ?: "#B58900",
+            textPrimaryHex = themePrefs.getString("pref_custom_text", "#EEE8D5") ?: "#EEE8D5",
+            sectionHeaderHex = themePrefs.getString("pref_custom_header", "#8B5CF6") ?: "#8B5CF6"
         )
         _customStageColors = MutableStateFlow(loadedColors)
         customStageColors = _customStageColors.asStateFlow()
@@ -684,16 +684,11 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         _fontSizeSp.value = (_fontSizeSp.value + delta).coerceIn(11f, 26f)
     }
 
-    fun setThemeMode(mode: AppThemeMode) {
-        _themeMode.value = mode
-        themePrefs.edit().putString("pref_theme_mode", mode.name).apply()
-    }
-
-    fun setCustomStageColors(colors: CustomStageColors) {
+    fun saveThemeSettings(mode: AppThemeMode, colors: CustomStageColors) {
         _customStageColors.value = colors
-        _themeMode.value = AppThemeMode.CUSTOM_STAGE
+        _themeMode.value = mode
         themePrefs.edit()
-            .putString("pref_theme_mode", AppThemeMode.CUSTOM_STAGE.name)
+            .putString("pref_theme_mode", mode.name)
             .putString("pref_custom_bg", colors.canvasBackgroundHex)
             .putString("pref_custom_chord", colors.chordAccentHex)
             .putString("pref_custom_text", colors.textPrimaryHex)
@@ -701,9 +696,23 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             .apply()
     }
 
+    fun setThemeMode(mode: AppThemeMode) {
+        _themeMode.value = mode
+        themePrefs.edit().putString("pref_theme_mode", mode.name).apply()
+    }
+
+    fun setCustomStageColors(colors: CustomStageColors) {
+        saveThemeSettings(AppThemeMode.CUSTOM_STAGE, colors)
+    }
+
     fun resetCustomStageColors() {
-        val defaultColors = CustomStageColors()
-        setCustomStageColors(defaultColors)
+        val defaultColors = CustomStageColors(
+            canvasBackgroundHex = "#002B36",
+            chordAccentHex = "#B58900",
+            textPrimaryHex = "#EEE8D5",
+            sectionHeaderHex = "#8B5CF6"
+        )
+        saveThemeSettings(AppThemeMode.AMOLED_DARK, defaultColors)
     }
 
     fun cycleThemeMode() {

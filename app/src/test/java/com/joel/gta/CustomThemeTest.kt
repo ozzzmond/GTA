@@ -192,4 +192,25 @@ class CustomThemeTest {
         assertEquals(Color(0xFF93A1A1), solarized.textSecondary)
         assertEquals(Color(0xFF1A4A55), solarized.divider)
     }
+
+    @Test
+    fun testDefaultForModePresets() {
+        val dark = CustomStageColors.defaultForMode(AppThemeMode.AMOLED_DARK)
+        assertEquals("#002B36", dark.canvasBackgroundHex)
+        assertEquals("#B58900", dark.chordAccentHex)
+        assertEquals("#EEE8D5", dark.textPrimaryHex)
+        assertEquals("#8B5CF6", dark.sectionHeaderHex)
+
+        val light = CustomStageColors.defaultForMode(AppThemeMode.PAPER_LIGHT)
+        assertEquals("#FBF8F2", light.canvasBackgroundHex)
+        assertEquals("#D97706", light.chordAccentHex)
+        assertEquals("#1E293B", light.textPrimaryHex)
+        assertEquals("#6366F1", light.sectionHeaderHex)
+
+        val cyan = CustomStageColors.defaultForMode(AppThemeMode.AMOLED_CYAN)
+        assertEquals("#002B36", cyan.canvasBackgroundHex)
+        assertEquals("#2AA198", cyan.chordAccentHex)
+        assertEquals("#EEE8D5", cyan.textPrimaryHex)
+        assertEquals("#8B5CF6", cyan.sectionHeaderHex)
+    }
 }

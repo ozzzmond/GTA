@@ -37,7 +37,8 @@ data class CustomStageColors(
             else if (bg == Color(0xFF131418)) Color(0xFF22242D)
             else darkenOrLighten(bg, 0.07f)
         } else {
-            darkenOrLighten(bg, -0.05f)
+            if (bg == PaperCanvas) PaperSurface
+            else darkenOrLighten(bg, -0.05f)
         }
         val textSecondary = if (isDark) {
             if (bg == SolarizedBg) SolarizedTextMuted else Color(0xFF94A3B8)
@@ -59,16 +60,37 @@ data class CustomStageColors(
             sectionHeader = header,
             tabLineColor = if (isDark) SolarizedPrimaryHover else Color(0xFF0284C7),
             divider = divider,
-            primary = SolarizedPrimary,
-            primaryHover = SolarizedPrimaryHover,
-            accent = SolarizedAccent,
+            primary = if (isDark) SolarizedPrimary else chord,
+            primaryHover = if (isDark) SolarizedPrimaryHover else darkenOrLighten(chord, -0.05f),
+            accent = header,
             success = SolarizedSuccess,
-            warning = SolarizedWarning,
+            warning = chord,
             danger = SolarizedDanger
         )
     }
 
     companion object {
+        fun defaultForMode(mode: AppThemeMode): CustomStageColors = when (mode) {
+            AppThemeMode.AMOLED_DARK -> CustomStageColors(
+                canvasBackgroundHex = "#002B36",
+                chordAccentHex = "#B58900",
+                textPrimaryHex = "#EEE8D5",
+                sectionHeaderHex = "#8B5CF6"
+            )
+            AppThemeMode.PAPER_LIGHT -> CustomStageColors(
+                canvasBackgroundHex = "#FBF8F2",
+                chordAccentHex = "#D97706",
+                textPrimaryHex = "#1E293B",
+                sectionHeaderHex = "#6366F1"
+            )
+            AppThemeMode.AMOLED_CYAN -> CustomStageColors(
+                canvasBackgroundHex = "#002B36",
+                chordAccentHex = "#2AA198",
+                textPrimaryHex = "#EEE8D5",
+                sectionHeaderHex = "#8B5CF6"
+            )
+            AppThemeMode.CUSTOM_STAGE -> CustomStageColors()
+        }
         fun parseColorOrNull(hex: String): Color? {
             return try {
                 var clean = hex.trim().removePrefix("#")
@@ -239,20 +261,50 @@ fun GTATheme(
             val custom = customStageColors.toGtaCustomColors()
             val isDark = CustomStageColors.isColorDark(custom.canvasBackground)
             val scheme = if (isDark) {
-                AmoledDarkColorScheme.copy(
+                darkColorScheme(
                     primary = custom.chordAccent,
+                    onPrimary = if (CustomStageColors.isColorDark(custom.chordAccent)) Color.White else Color.Black,
+                    primaryContainer = custom.surfaceBackground,
+                    onPrimaryContainer = custom.textPrimary,
+                    secondary = custom.sectionHeader,
+                    onSecondary = Color.White,
+                    secondaryContainer = custom.divider,
+                    onSecondaryContainer = custom.textPrimary,
+                    tertiary = custom.chordAccent,
+                    onTertiary = custom.canvasBackground,
                     background = custom.canvasBackground,
                     surface = custom.surfaceBackground,
+                    surfaceVariant = custom.surfaceBackground,
                     onBackground = custom.textPrimary,
-                    onSurface = custom.textPrimary
+                    onSurface = custom.textPrimary,
+                    onSurfaceVariant = custom.textSecondary,
+                    outline = custom.divider,
+                    outlineVariant = custom.divider,
+                    error = custom.danger,
+                    onError = Color.White
                 )
             } else {
-                PaperLightColorScheme.copy(
+                lightColorScheme(
                     primary = custom.chordAccent,
+                    onPrimary = Color.White,
+                    primaryContainer = custom.surfaceBackground,
+                    onPrimaryContainer = custom.textPrimary,
+                    secondary = custom.sectionHeader,
+                    onSecondary = Color.White,
+                    secondaryContainer = custom.divider,
+                    onSecondaryContainer = custom.textPrimary,
+                    tertiary = custom.chordAccent,
+                    onTertiary = Color.White,
                     background = custom.canvasBackground,
                     surface = custom.surfaceBackground,
+                    surfaceVariant = custom.surfaceBackground,
                     onBackground = custom.textPrimary,
-                    onSurface = custom.textPrimary
+                    onSurface = custom.textPrimary,
+                    onSurfaceVariant = custom.textSecondary,
+                    outline = custom.divider,
+                    outlineVariant = custom.divider,
+                    error = custom.danger,
+                    onError = Color.White
                 )
             }
             scheme to custom

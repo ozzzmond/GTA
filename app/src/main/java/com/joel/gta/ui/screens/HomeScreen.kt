@@ -425,22 +425,6 @@ fun HomeScreen(
                                         showBrowseSourcesDialog = true
                                     }
                                 )
-                                HorizontalDivider(color = customColors.divider)
-                                DropdownMenuItem(
-                                    text = { Text("Check for Updates") },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.SystemUpdate,
-                                            contentDescription = null,
-                                            tint = customColors.chordAccent
-                                        )
-                                    },
-                                    onClick = {
-                                        showBackupRestoreMenu = false
-                                        onCheckForUpdates()
-                                    }
-                                )
-                                HorizontalDivider(color = customColors.divider)
                                 DropdownMenuItem(
                                     text = { Text("Export Backup (Share / Google Drive)") },
                                     leadingIcon = {
@@ -489,6 +473,21 @@ fun HomeScreen(
                                                 "*/*"
                                             )
                                         )
+                                    }
+                                )
+                                HorizontalDivider(color = customColors.divider)
+                                DropdownMenuItem(
+                                    text = { Text("Check for Updates") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.SystemUpdate,
+                                            contentDescription = null,
+                                            tint = customColors.chordAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        showBackupRestoreMenu = false
+                                        onCheckForUpdates()
                                     }
                                 )
                             }

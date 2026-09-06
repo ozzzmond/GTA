@@ -75,23 +75,51 @@ private val SectionHeaderPresets = listOf(
     ColorPreset("Ruby Red", "#F43F5E")
 )
 
+private data class ThemePreset(
+    val name: String,
+    val mode: AppThemeMode,
+    val bgHex: String,
+    val chordHex: String,
+    val textHex: String,
+    val headerHex: String,
+    val colorDot: Color
+)
+
+private val AppThemePresets = listOf(
+    ThemePreset("Solarized Dark", AppThemeMode.AMOLED_DARK, "#002B36", "#B58900", "#EEE8D5", "#8B5CF6", Color(0xFFB58900)),
+    ThemePreset("Paper Light", AppThemeMode.PAPER_LIGHT, "#FBF8F2", "#D97706", "#1E293B", "#6366F1", Color(0xFFD97706)),
+    ThemePreset("Solarized Cyan", AppThemeMode.AMOLED_CYAN, "#002B36", "#2AA198", "#EEE8D5", "#8B5CF6", Color(0xFF2AA198)),
+    ThemePreset("AG Dark Slate", AppThemeMode.CUSTOM_STAGE, "#131418", "#E5B866", "#F1F5F9", "#6C8EEF", Color(0xFFE5B866)),
+    ThemePreset("Pure AMOLED", AppThemeMode.CUSTOM_STAGE, "#000000", "#FFC107", "#FFFFFF", "#818CF8", Color(0xFFFFC107)),
+    ThemePreset("Dark Teal", AppThemeMode.CUSTOM_STAGE, "#0E2226", "#2AA198", "#F1F5F9", "#818CF8", Color(0xFF0E2226)),
+    ThemePreset("Sepia Warm", AppThemeMode.CUSTOM_STAGE, "#FBF0D9", "#D97706", "#1E293B", "#4F46E5", Color(0xFFD97706))
+)
+
 @Composable
 fun StageThemeDialog(
     currentThemeMode: AppThemeMode,
     currentCustomColors: CustomStageColors,
     onDismissRequest: () -> Unit,
-    onSelectPresetMode: (AppThemeMode) -> Unit,
-    onApplyCustomColors: (CustomStageColors) -> Unit,
+    onSaveTheme: (AppThemeMode, CustomStageColors) -> Unit,
     onResetDefaults: () -> Unit
 ) {
     val localColors = LocalGtaColors.current
     val focusManager = LocalFocusManager.current
 
-    var selectedMode by remember { mutableStateOf(currentThemeMode) }
-    var bgHex by remember { mutableStateOf(currentCustomColors.canvasBackgroundHex) }
-    var chordHex by remember { mutableStateOf(currentCustomColors.chordAccentHex) }
-    var textHex by remember { mutableStateOf(currentCustomColors.textPrimaryHex) }
-    var headerHex by remember { mutableStateOf(currentCustomColors.sectionHeaderHex) }
+    var selectedMode by remember(currentThemeMode) { mutableStateOf(currentThemeMode) }
+
+    val initialColors = remember(currentThemeMode, currentCustomColors) {
+        if (currentThemeMode == AppThemeMode.CUSTOM_STAGE) {
+            currentCustomColors
+        } else {
+            CustomStageColors.defaultForMode(currentThemeMode)
+        }
+    }
+
+    var bgHex by remember(initialColors) { mutableStateOf(initialColors.canvasBackgroundHex) }
+    var chordHex by remember(initialColors) { mutableStateOf(initialColors.chordAccentHex) }
+    var textHex by remember(initialColors) { mutableStateOf(initialColors.textPrimaryHex) }
+    var headerHex by remember(initialColors) { mutableStateOf(initialColors.sectionHeaderHex) }
 
     val previewColors = remember(bgHex, chordHex, textHex, headerHex) {
         CustomStageColors(
@@ -191,47 +219,41 @@ fun StageThemeDialog(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ThemePresetChip(
-                            label = "AMOLED Dark",
-                            isSelected = selectedMode == AppThemeMode.AMOLED_DARK,
-                            colorDot = Color(0xFFFFC107),
-                            onClick = {
-                                selectedMode = AppThemeMode.AMOLED_DARK
-                                onSelectPresetMode(AppThemeMode.AMOLED_DARK)
-                            }
-                        )
-                        ThemePresetChip(
-                            label = "Paper Light",
-                            isSelected = selectedMode == AppThemeMode.PAPER_LIGHT,
-                            colorDot = Color(0xFFD97706),
-                            onClick = {
-                                selectedMode = AppThemeMode.PAPER_LIGHT
-                                onSelectPresetMode(AppThemeMode.PAPER_LIGHT)
-                            }
-                        )
-                        ThemePresetChip(
-                            label = "AMOLED Cyan",
-                            isSelected = selectedMode == AppThemeMode.AMOLED_CYAN,
-                            colorDot = Color(0xFF00E5FF),
-                            onClick = {
-                                selectedMode = AppThemeMode.AMOLED_CYAN
-                                onSelectPresetMode(AppThemeMode.AMOLED_CYAN)
-                            }
-                        )
+                        AppThemePresets.forEach { preset ->
+                            val isSelected = selectedMode == preset.mode &&
+                                    bgHex.equals(preset.bgHex, ignoreCase = true) &&
+                                    chordHex.equals(preset.chordHex, ignoreCase = true) &&
+                                    textHex.equals(preset.textHex, ignoreCase = true) &&
+                                    headerHex.equals(preset.headerHex, ignoreCase = true)
+
+                            ThemePresetChip(
+                                label = preset.name,
+                                isSelected = isSelected,
+                                colorDot = preset.colorDot,
+                                onClick = {
+                                    selectedMode = preset.mode
+                                    bgHex = preset.bgHex
+                                    chordHex = preset.chordHex
+                                    textHex = preset.textHex
+                                    headerHex = preset.headerHex
+                                }
+                            )
+                        }
+
+                        val isCustomPresetSelected = selectedMode == AppThemeMode.CUSTOM_STAGE &&
+                                AppThemePresets.none { preset ->
+                                    bgHex.equals(preset.bgHex, ignoreCase = true) &&
+                                            chordHex.equals(preset.chordHex, ignoreCase = true) &&
+                                            textHex.equals(preset.textHex, ignoreCase = true) &&
+                                            headerHex.equals(preset.headerHex, ignoreCase = true)
+                                }
+
                         ThemePresetChip(
                             label = "Custom Stage ✨",
-                            isSelected = selectedMode == AppThemeMode.CUSTOM_STAGE,
+                            isSelected = isCustomPresetSelected,
                             colorDot = previewColors.chordAccent,
                             onClick = {
                                 selectedMode = AppThemeMode.CUSTOM_STAGE
-                                onApplyCustomColors(
-                                    CustomStageColors(
-                                        canvasBackgroundHex = bgHex,
-                                        chordAccentHex = chordHex,
-                                        textPrimaryHex = textHex,
-                                        sectionHeaderHex = headerHex
-                                    )
-                                )
                             }
                         )
                     }
@@ -352,11 +374,11 @@ fun StageThemeDialog(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            bgHex = "#000000"
-                            chordHex = "#FFC107"
-                            textHex = "#F1F5F9"
-                            headerHex = "#818CF8"
-                            selectedMode = AppThemeMode.CUSTOM_STAGE
+                            bgHex = "#002B36"
+                            chordHex = "#B58900"
+                            textHex = "#EEE8D5"
+                            headerHex = "#8B5CF6"
+                            selectedMode = AppThemeMode.AMOLED_DARK
                             onResetDefaults()
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = localColors.textSecondary),
@@ -385,7 +407,7 @@ fun StageThemeDialog(
                                     textPrimaryHex = textHex,
                                     sectionHeaderHex = headerHex
                                 )
-                                onApplyCustomColors(newCustomColors)
+                                onSaveTheme(selectedMode, newCustomColors)
                                 onDismissRequest()
                             },
                             colors = ButtonDefaults.buttonColors(
@@ -580,3 +602,26 @@ private fun HexColorInputRow(
         }
     }
 }
+
+@Composable
+fun StageThemeDialog(
+    currentThemeMode: AppThemeMode,
+    currentCustomColors: CustomStageColors,
+    onDismissRequest: () -> Unit,
+    onSelectPresetMode: (AppThemeMode) -> Unit,
+    onApplyCustomColors: (CustomStageColors) -> Unit,
+    onResetDefaults: () -> Unit
+) = StageThemeDialog(
+    currentThemeMode = currentThemeMode,
+    currentCustomColors = currentCustomColors,
+    onDismissRequest = onDismissRequest,
+    onSaveTheme = { mode, colors ->
+        if (mode == AppThemeMode.CUSTOM_STAGE) {
+            onApplyCustomColors(colors)
+        } else {
+            onSelectPresetMode(mode)
+        }
+    },
+    onResetDefaults = onResetDefaults
+)
+
