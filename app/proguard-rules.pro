@@ -1,1 +1,1 @@
-# Proguard rules for GTA (Guitar Tool Application)
+# Proguard rules for GTAR (Guitar Tool App Republic)

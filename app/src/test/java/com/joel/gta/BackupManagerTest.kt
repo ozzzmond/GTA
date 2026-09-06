@@ -109,7 +109,7 @@ class BackupManagerTest {
 
         val json = JSONObject(jsonString)
         val metadata = json.getJSONObject("metadata")
-        assertEquals("GTA", metadata.getString("appName"))
+        assertEquals("GTAR", metadata.getString("appName"))
         assertEquals("1.0.24", metadata.getString("appVersion"))
         assertTrue(metadata.getLong("exportTimestamp") > 0)
 

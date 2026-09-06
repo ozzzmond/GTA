@@ -253,7 +253,7 @@ fun HomeScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "GTA",
+                                    text = "GTAR",
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Black,
                                     color = customColors.textPrimary
@@ -288,7 +288,7 @@ fun HomeScreen(
                                 }
                             }
                             Text(
-                                text = "Guitar Tool Application",
+                                text = "Guitar Tool App Republic",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = customColors.textSecondary
                             )

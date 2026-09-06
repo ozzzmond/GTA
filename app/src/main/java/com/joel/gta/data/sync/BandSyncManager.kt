@@ -262,7 +262,7 @@ class BandSyncManager(private val context: Context) {
     private fun registerNsdService(port: Int) {
         try {
             val serviceInfo = NsdServiceInfo().apply {
-                serviceName = "GTA-Leader-${Build.MODEL}"
+                serviceName = "GTAR-Leader-${Build.MODEL}"
                 serviceType = SERVICE_TYPE
                 setPort(port)
             }

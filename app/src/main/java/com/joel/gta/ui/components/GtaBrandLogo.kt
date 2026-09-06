@@ -29,7 +29,7 @@ fun GtaBrandLogo(
     ) {
         Icon(
             painter = painterResource(id = R.drawable.ic_gta_logo),
-            contentDescription = "GTA Logo",
+            contentDescription = "GTAR Logo",
             tint = tint,
             modifier = Modifier.size(size)
         )

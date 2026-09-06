@@ -56,7 +56,7 @@ object UpdateManager {
                 connectTimeout = 7000
                 readTimeout = 7000
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
-                setRequestProperty("User-Agent", "GTA-Android-App")
+                setRequestProperty("User-Agent", "GTAR-Android-App")
             }
 
             val responseCode = connection.responseCode
@@ -66,7 +66,7 @@ object UpdateManager {
 
                 val tagName = jsonObject.optString("tag_name", "")
                 val cleanLatestVersion = tagName.removePrefix("v").removePrefix("V").trim()
-                val releaseTitle = jsonObject.optString("name", "GTA $tagName")
+                val releaseTitle = jsonObject.optString("name", "GTAR $tagName")
                 val releaseNotes = jsonObject.optString("body", "Bug fixes and stage enhancements.")
                 val htmlUrl = jsonObject.optString("html_url", "https://github.com/ozzzmond/GTA/releases")
 
@@ -122,7 +122,7 @@ object UpdateManager {
                 connectTimeout = 7000
                 readTimeout = 7000
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
-                setRequestProperty("User-Agent", "GTA-Android-App")
+                setRequestProperty("User-Agent", "GTAR-Android-App")
             }
 
             if (tagsConnection.responseCode == HttpURLConnection.HTTP_OK) {
@@ -136,7 +136,7 @@ object UpdateManager {
                         val info = ReleaseInfo(
                             tagName = latestTag,
                             versionName = cleanTag,
-                            releaseTitle = "GTA $latestTag",
+                            releaseTitle = "GTAR $latestTag",
                             releaseNotes = "New release tag $latestTag available on GitHub. Tap to view release details or download build artifacts.",
                             apkDownloadUrl = null,
                             htmlUrl = "https://github.com/ozzzmond/GTA/releases",
@@ -204,21 +204,21 @@ object UpdateManager {
                 return
             }
 
-            val fileName = "GTA-v$versionName.apk"
+            val fileName = "GTAR-v$versionName.apk"
             val targetFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
             if (targetFile.exists()) {
                 targetFile.delete()
             }
 
             val request = DownloadManager.Request(Uri.parse(apkUrl)).apply {
-                setTitle("Downloading GTA v$versionName")
-                setDescription("Downloading latest GTA release APK...")
+                setTitle("Downloading GTAR v$versionName")
+                setDescription("Downloading latest GTAR release APK...")
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
                 setMimeType("application/vnd.android.package-archive")
             }
 
-            Toast.makeText(context, "Downloading GTA v$versionName... Check notification bar", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Downloading GTAR v$versionName... Check notification bar", Toast.LENGTH_LONG).show()
             val downloadId = downloadManager.enqueue(request)
 
             val onCompleteReceiver = object : BroadcastReceiver() {

@@ -1272,7 +1272,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 _updateCheckResult.value = result
                 when (result) {
                     is UpdateCheckResult.UpToDate -> {
-                        onUpToDate("GTA is up to date (v${BuildConfig.VERSION_NAME})!")
+                        onUpToDate("GTAR is up to date (v${BuildConfig.VERSION_NAME})!")
                     }
                     is UpdateCheckResult.Error -> {
                         onError(result.message)

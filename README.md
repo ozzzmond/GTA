@@ -1,4 +1,4 @@
-# GTA Stage Suite
+# GTAR Stage Suite (Guitar Tool App Republic)
 
 A high-performance Android stage prompter and chord chart manager designed for live gigging musicians and worship teams. Built with Kotlin and Jetpack Compose.
 

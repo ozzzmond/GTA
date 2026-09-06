@@ -818,7 +818,7 @@ private fun GuitarTunerPanel() {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "To detect guitar pitch in real-time, GTA needs microphone permission. Audio is processed 100% offline on your device.",
+                text = "To detect guitar pitch in real-time, GTAR needs microphone permission. Audio is processed 100% offline on your device.",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = customColors.textSecondary

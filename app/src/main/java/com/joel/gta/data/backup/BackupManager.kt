@@ -46,7 +46,7 @@ object BackupManager {
 
         // 1. Metadata
         val meta = JSONObject().apply {
-            put("appName", "GTA")
+            put("appName", "GTAR")
             put("appVersion", appVersion)
             put("exportTimestamp", System.currentTimeMillis())
         }
@@ -293,7 +293,7 @@ object BackupManager {
         return Intent(Intent.ACTION_SEND).apply {
             type = "application/json"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "GTA Songbook Backup ($fileName)")
+            putExtra(Intent.EXTRA_SUBJECT, "GTAR Songbook Backup ($fileName)")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }

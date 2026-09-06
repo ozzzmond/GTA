@@ -462,7 +462,7 @@ fun SettingsDialog(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "GTA Stage Suite",
+                            text = "GTAR Stage Suite",
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                             color = customColors.textPrimary
                         )

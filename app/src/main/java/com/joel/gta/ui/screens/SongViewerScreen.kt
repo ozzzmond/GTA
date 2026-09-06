@@ -373,7 +373,7 @@ fun SongViewerScreen(
                             val subtitle = if (isInSetlistMode && setlistProgressText != null) {
                                 setlistProgressText
                             } else {
-                                song.artist ?: fileName ?: "GTA Viewer"
+                                song.artist ?: fileName ?: "GTAR Viewer"
                             }
                             Text(
                                 text = subtitle,

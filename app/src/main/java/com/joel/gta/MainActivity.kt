@@ -184,7 +184,7 @@ class MainActivity : ComponentActivity() {
                             currentThemeName = themeMode.name,
                             onExportBackupShare = {
                                 viewModel.exportBackup(context) { shareIntent ->
-                                    context.startActivity(Intent.createChooser(shareIntent, "Save or Share GTA Backup"))
+                                    context.startActivity(Intent.createChooser(shareIntent, "Save or Share GTAR Backup"))
                                 }
                             },
                             onExportBackupSaf = { destUri ->

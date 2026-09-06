@@ -82,7 +82,7 @@ fun UpdateAvailableDialog(
                             color = customColors.textPrimary
                         )
                         Text(
-                            text = "GTA v${releaseInfo.versionName} is ready to install",
+                            text = "GTAR v${releaseInfo.versionName} is ready to install",
                             style = MaterialTheme.typography.bodySmall,
                             color = customColors.chordAccent
                         )
