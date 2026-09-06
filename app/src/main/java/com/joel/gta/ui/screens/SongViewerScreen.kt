@@ -959,7 +959,7 @@ fun SongViewerScreen(
                         val pageSong = if (pageIndex == currentSetlistIndex) {
                             song
                         } else {
-                            remember(setlistSongs[pageIndex]) {
+                            remember(setlistSongs[pageIndex].id, setlistSongs[pageIndex].transposeOffset) {
                                 val entity = setlistSongs[pageIndex]
                                 val parsed = SongParser.parse(entity.rawContent, entity.title)
                                 if (entity.transposeOffset != 0) {
@@ -1573,14 +1573,16 @@ private fun RenderSongLine(
     val customColors = LocalGtaColors.current
     when (line) {
         is SongLine.SectionHeader -> {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = "[${line.title}]",
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = (fontSizeSp + 1).sp,
+                lineHeight = ((fontSizeSp + 1) * 1.35f).sp,
+                letterSpacing = 0.8.sp,
                 color = customColors.sectionHeader,
-                modifier = Modifier.padding(vertical = 4.dp)
+                modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
             )
         }
 
@@ -1590,11 +1592,12 @@ private fun RenderSongLine(
                 text = line.chords,
                 style = ChordMonospaceStyle.copy(
                     fontSize = fontSizeSp.sp,
+                    lineHeight = (fontSizeSp * 1.35f).sp,
                     color = customColors.chordAccent
                 ),
                 onTextLayout = { layoutResult = it },
                 modifier = Modifier
-                    .padding(vertical = 1.dp)
+                    .padding(top = 4.dp, bottom = 1.dp)
                     .pointerInput(line.chords) {
                         detectTapGestures { tapOffset ->
                             layoutResult?.let { layout ->
@@ -1614,9 +1617,10 @@ private fun RenderSongLine(
                 text = line.lyrics,
                 style = LyricMonospaceStyle.copy(
                     fontSize = fontSizeSp.sp,
+                    lineHeight = (fontSizeSp * 1.35f).sp,
                     color = customColors.textPrimary
                 ),
-                modifier = Modifier.padding(vertical = 1.dp)
+                modifier = Modifier.padding(top = 1.dp, bottom = 5.dp)
             )
         }
 
@@ -1650,9 +1654,11 @@ private fun RenderSongLine(
                 text = annotatedText,
                 fontFamily = FontFamily.Monospace,
                 fontSize = fontSizeSp.sp,
+                lineHeight = (fontSizeSp * 1.4f).sp,
+                letterSpacing = 0.8.sp,
                 onTextLayout = { layoutResult = it },
                 modifier = Modifier
-                    .padding(vertical = 2.dp)
+                    .padding(vertical = 3.dp)
                     .pointerInput(annotatedText) {
                         detectTapGestures { tapOffset ->
                             layoutResult?.let { layout ->
@@ -1681,18 +1687,21 @@ private fun RenderSongLine(
         }
 
         is SongLine.TabLine -> {
+            val tabFontSize = (fontSizeSp - 1f).coerceAtLeast(11f)
             Text(
                 text = line.content,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Normal,
-                fontSize = (fontSizeSp - 1f).coerceAtLeast(11f).sp,
+                fontSize = tabFontSize.sp,
+                lineHeight = (tabFontSize * 1.25f).sp,
+                letterSpacing = 0.8.sp,
                 color = customColors.tabLineColor,
-                modifier = Modifier.padding(vertical = 1.dp)
+                modifier = Modifier.padding(vertical = 1.5.dp)
             )
         }
 
         is SongLine.EmptyLine -> {
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 }

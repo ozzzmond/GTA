@@ -47,12 +47,14 @@ val ChordMonospaceStyle = TextStyle(
     fontFamily = FontFamily.Monospace,
     fontWeight = FontWeight.Bold,
     fontSize = 16.sp,
-    letterSpacing = 0.5.sp
+    lineHeight = 22.sp,
+    letterSpacing = 0.8.sp
 )
 
 val LyricMonospaceStyle = TextStyle(
     fontFamily = FontFamily.Monospace,
     fontWeight = FontWeight.Normal,
     fontSize = 16.sp,
-    letterSpacing = 0.5.sp
+    lineHeight = 22.sp,
+    letterSpacing = 0.8.sp
 )

@@ -18,7 +18,8 @@ sealed class SongViewerState {
         val setlistId: Long? = null,
         val setlistName: String? = null,
         val setlistSongs: List<SongEntity> = emptyList(),
-        val currentSetlistIndex: Int = -1
+        val currentSetlistIndex: Int = -1,
+        val setlistTransposeOffsets: Map<Long, Int> = emptyMap()
     ) : SongViewerState() {
         val isInSetlistMode: Boolean get() = setlistId != null && setlistSongs.isNotEmpty() && currentSetlistIndex >= 0
         val hasPreviousSong: Boolean get() = isInSetlistMode && currentSetlistIndex > 0

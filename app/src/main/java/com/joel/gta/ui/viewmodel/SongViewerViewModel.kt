@@ -357,6 +357,8 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 repository.updateLastOpened(entity.id)
             }
 
+            val sessionOffsets = songs.associate { it.id to it.transposeOffset }
+
             _uiState.value = SongViewerState.Loaded(
                 song = transposed,
                 originalSong = parsedOriginal,
@@ -369,7 +371,8 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 setlistId = setlist.id,
                 setlistName = setlist.name,
                 setlistSongs = songs,
-                currentSetlistIndex = index
+                currentSetlistIndex = index,
+                setlistTransposeOffsets = sessionOffsets
             )
             broadcastSongIfHost(transposed, entity.rawContent, entity.id, setlistIndex = index)
             broadcastSongChangeIfHost(
@@ -391,14 +394,16 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         if (targetIndex == current.currentSetlistIndex) return
 
         val targetSongEntity = current.setlistSongs[targetIndex]
+        val targetOffset = current.setlistTransposeOffsets[targetSongEntity.id] ?: targetSongEntity.transposeOffset
+
         viewModelScope.launch {
             _isAutoScrolling.value = false
             withContext(Dispatchers.IO) {
                 repository.updateLastOpened(targetSongEntity.id)
             }
             val parsedOriginal = SongParser.parse(targetSongEntity.rawContent, defaultTitle = targetSongEntity.title)
-            val transposed = if (targetSongEntity.transposeOffset != 0) {
-                TransposeEngine.transposeSong(parsedOriginal, targetSongEntity.transposeOffset)
+            val transposed = if (targetOffset != 0) {
+                TransposeEngine.transposeSong(parsedOriginal, targetOffset)
             } else {
                 parsedOriginal
             }
@@ -409,7 +414,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 fileName = targetSongEntity.title,
                 songEntityId = targetSongEntity.id,
                 isFavorite = targetSongEntity.isFavorite,
-                transposeOffset = targetSongEntity.transposeOffset,
+                transposeOffset = targetOffset,
                 currentSetlistIndex = targetIndex
             )
 
@@ -484,9 +489,29 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             TransposeEngine.transposeSong(current.originalSong, clamped)
         }
 
+        val updatedSetlistSongs = if (current.isInSetlistMode) {
+            current.setlistSongs.mapIndexed { idx, songEntity ->
+                if (idx == current.currentSetlistIndex || (current.songEntityId != null && songEntity.id == current.songEntityId)) {
+                    songEntity.copy(transposeOffset = clamped)
+                } else {
+                    songEntity
+                }
+            }
+        } else {
+            current.setlistSongs
+        }
+
+        val updatedOffsets = if (current.songEntityId != null) {
+            current.setlistTransposeOffsets + (current.songEntityId to clamped)
+        } else {
+            current.setlistTransposeOffsets
+        }
+
         _uiState.value = current.copy(
             song = transposedSong,
-            transposeOffset = clamped
+            transposeOffset = clamped,
+            setlistSongs = updatedSetlistSongs,
+            setlistTransposeOffsets = updatedOffsets
         )
 
         current.songEntityId?.let { id ->
@@ -1056,9 +1081,10 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                     withContext(Dispatchers.IO) {
                         repository.updateLastOpened(targetSongEntity.id)
                     }
+                    val targetOffset = current.setlistTransposeOffsets[targetSongEntity.id] ?: targetSongEntity.transposeOffset
                     val parsedOriginal = SongParser.parse(targetSongEntity.rawContent, defaultTitle = targetSongEntity.title)
-                    val transposed = if (targetSongEntity.transposeOffset != 0) {
-                        TransposeEngine.transposeSong(parsedOriginal, targetSongEntity.transposeOffset)
+                    val transposed = if (targetOffset != 0) {
+                        TransposeEngine.transposeSong(parsedOriginal, targetOffset)
                     } else {
                         parsedOriginal
                     }
@@ -1069,7 +1095,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                         fileName = targetSongEntity.title,
                         songEntityId = targetSongEntity.id,
                         isFavorite = targetSongEntity.isFavorite,
-                        transposeOffset = targetSongEntity.transposeOffset,
+                        transposeOffset = targetOffset,
                         currentSetlistIndex = targetIndex
                     )
                     return@launch
