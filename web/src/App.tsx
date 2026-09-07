@@ -260,15 +260,110 @@ function App() {
     const unsub = bandSync.onMessage((msg) => {
       if (bandSync.getRole() === 'CLIENT') {
         if (msg.type === 'SONG_SYNC' && msg.payload) {
-          if (
-            typeof msg.payload.songIndex === 'number' &&
-            msg.payload.songIndex >= 0 &&
-            msg.payload.songIndex < songs.length
-          ) {
-            setActiveSongIndex(msg.payload.songIndex)
+          const title: string = msg.payload.title || msg.payload.songTitle || ''
+          const artist: string = msg.payload.artist || ''
+          const queueType: string = (msg.payload.queueType || 'LIBRARY').toUpperCase()
+          const queueIndex: number =
+            msg.payload.queueIndex ?? msg.payload.setlistIndex ?? msg.payload.songIndex ?? 0
+          const transpose: number = msg.payload.transpose ?? msg.payload.transposeOffset ?? 0
+          const rawContent: string = msg.payload.rawContent || msg.payload.content || ''
+
+          const normTitle = title.trim().toLowerCase()
+          const normArtist = artist.trim().toLowerCase()
+
+          if (queueType === 'SETLIST') {
+            setQueueMode('setlist')
+            let matched = false
+
+            // Try matching in active setlist songs
+            if (activeSetlist && activeSetlistSongs.length > 0) {
+              const idx = activeSetlistSongs.findIndex(
+                (s) =>
+                  s.title.trim().toLowerCase() === normTitle &&
+                  (!normArtist || s.artist.trim().toLowerCase() === normArtist)
+              )
+              if (idx !== -1) {
+                setActiveSetlistSongIndex(idx)
+                matched = true
+              } else if (queueIndex >= 0 && queueIndex < activeSetlistSongs.length) {
+                setActiveSetlistSongIndex(queueIndex)
+                matched = true
+              }
+            }
+
+            // If not found in active setlist, check other setlists
+            if (!matched) {
+              for (const sl of setlists) {
+                const slIdx = sl.songs.findIndex(
+                  (s: any) =>
+                    s.title.trim().toLowerCase() === normTitle &&
+                    (!normArtist || (s.artist || '').trim().toLowerCase() === normArtist)
+                )
+                if (slIdx !== -1) {
+                  setActiveSetlistId(sl.id)
+                  setActiveSetlistSongIndex(slIdx)
+                  matched = true
+                  break
+                }
+              }
+            }
+
+            // If still not matched, check songs library
+            if (!matched) {
+              const libIdx = songs.findIndex(
+                (s) =>
+                  s.title.trim().toLowerCase() === normTitle &&
+                  (!normArtist || s.artist.trim().toLowerCase() === normArtist)
+              )
+              if (libIdx !== -1) {
+                setActiveSongIndex(libIdx)
+              } else if (rawContent) {
+                const newSong: ActiveSongState = {
+                  id: Date.now(),
+                  title: title || 'Synced Song',
+                  artist: artist || '',
+                  key: msg.payload.key || 'G',
+                  capo: msg.payload.capo || 'No Capo',
+                  bpm: '120',
+                  format: 'CHORD_PRO',
+                  transposeOffset: transpose,
+                  rawContent: rawContent,
+                }
+                setSongs((prev) => [...prev, newSong])
+                setActiveSongIndex(songs.length)
+              }
+            }
+          } else {
+            // LIBRARY mode
+            setQueueMode('library')
+            const libIdx = songs.findIndex(
+              (s) =>
+                s.title.trim().toLowerCase() === normTitle &&
+                (!normArtist || s.artist.trim().toLowerCase() === normArtist)
+            )
+            if (libIdx !== -1) {
+              setActiveSongIndex(libIdx)
+            } else if (rawContent) {
+              const newSong: ActiveSongState = {
+                id: Date.now(),
+                title: title || 'Synced Song',
+                artist: artist || '',
+                key: msg.payload.key || 'G',
+                capo: msg.payload.capo || 'No Capo',
+                bpm: '120',
+                format: 'CHORD_PRO',
+                transposeOffset: transpose,
+                rawContent: rawContent,
+              }
+              setSongs((prev) => [...prev, newSong])
+              setActiveSongIndex(songs.length)
+            } else if (queueIndex >= 0 && queueIndex < songs.length) {
+              setActiveSongIndex(queueIndex)
+            }
           }
-          if (typeof msg.payload.transposeOffset === 'number') {
-            handleTransposeChange(msg.payload.transposeOffset)
+
+          if (typeof transpose === 'number') {
+            handleTransposeChange(transpose)
           }
         } else if (msg.type === 'SETLIST_SYNC' && msg.payload) {
           const incomingSetlistName = msg.payload.setlistName || 'Band Setlist'
@@ -844,13 +939,13 @@ function App() {
             <div className="space-y-1">
               <h3 className="text-base font-extrabold text-[#FDF6E3]">You're Up to Date!</h3>
               <p className="text-xs text-[#2AA198] font-mono font-bold">
-                GTAR Web App v1.0.45 (Build 46)
+                GTAR Web App v1.0.46 (Build 47)
               </p>
             </div>
             <div className="p-3 rounded-xl bg-[#002B36] text-left text-[11px] text-[#93A1A1] space-y-1 border border-[#1A4A55]">
               <div className="font-bold text-[#EEE8D5] flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-[#2AA198]" />
-                <span>1:1 Parity with Android v1.0.45</span>
+                <span>1:1 Parity with Android v1.0.46</span>
               </div>
               <p>• Unified TopAppBar with 4-Action 3-Dot Menu</p>
               <p>• Band Sync multi-screen stage sync (Leader / Member)</p>

@@ -155,15 +155,20 @@ export const StageView: React.FC<StageViewProps> = ({
     const unsubMsg = bandSync.onMessage((msg) => {
       if (syncState.role === 'CLIENT') {
         if (msg.type === 'SONG_SYNC' && msg.payload) {
-          if (
-            typeof msg.payload.songIndex === 'number' &&
-            msg.payload.songIndex >= 0 &&
-            msg.payload.songIndex < songs.length
-          ) {
-            onSelectSongIndex(msg.payload.songIndex)
-          }
           if (typeof msg.payload.transposeOffset === 'number') {
             onTransposeChange(msg.payload.transposeOffset)
+          }
+          if (typeof msg.payload.scrollProgress === 'number') {
+            const container = scrollContainerRef.current
+            if (container) {
+              const maxScroll = container.scrollHeight - container.clientHeight
+              if (maxScroll > 0) {
+                container.scrollTo({
+                  top: msg.payload.scrollProgress * maxScroll,
+                  behavior: 'smooth',
+                })
+              }
+            }
           }
         } else if (msg.type === 'SCROLL_SYNC' && msg.payload) {
           const container = scrollContainerRef.current
@@ -186,14 +191,40 @@ export const StageView: React.FC<StageViewProps> = ({
       }
     })
     return unsubMsg
-  }, [syncState.role, songs.length, onSelectSongIndex, onTransposeChange])
+  }, [syncState.role, onTransposeChange])
 
   // Broadcast song change when role is HOST
   useEffect(() => {
     if (syncState.role === 'HOST') {
-      bandSync.broadcastSong(activeSongIndex, song.title, transposeOffset)
+      const container = scrollContainerRef.current
+      const maxScroll = container ? container.scrollHeight - container.clientHeight : 1
+      const progress = container && maxScroll > 0 ? container.scrollTop / maxScroll : 0
+      bandSync.broadcastSong(
+        isInSetlistMode ? activeSetlistSongIndex : activeSongIndex,
+        song.title,
+        transposeOffset,
+        {
+          artist: song.artist,
+          queueType: isInSetlistMode ? 'SETLIST' : 'LIBRARY',
+          scrollProgress: progress,
+          rawContent: song.rawContent,
+          key: song.key,
+          capo: song.capo,
+        }
+      )
     }
-  }, [activeSongIndex, song.title, transposeOffset, syncState.role])
+  }, [
+    activeSongIndex,
+    activeSetlistSongIndex,
+    isInSetlistMode,
+    song.title,
+    song.artist,
+    song.rawContent,
+    song.key,
+    song.capo,
+    transposeOffset,
+    syncState.role,
+  ])
 
   // Metronome subscription & sync with song BPM
   useEffect(() => {
@@ -852,12 +883,12 @@ export const StageView: React.FC<StageViewProps> = ({
       {/* =================================================================== */}
       {/* 3. BOTTOM BAR (Gig Navigation Strip & Floating Glassmorphic Stage)   */}
       {/* =================================================================== */}
-      <div className="absolute bottom-4 sm:bottom-6 right-4 sm:right-6 z-30 flex flex-col items-end gap-2.5 pointer-events-none">
+      <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2.5 pointer-events-none w-[calc(100%-2rem)] max-w-md sm:max-w-lg">
         {/* Dynamic Gig Performance Navigation Strip (Strictly navigates within current active scope) */}
         {((isInSetlistMode && activeSetlistSongs.length > 1) ||
           (!isInSetlistMode && songs.length > 1)) && (
           <div
-            className="pointer-events-auto flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-2xl bg-[#073642]/95 border backdrop-blur-md shadow-xl text-xs font-mono select-none"
+            className="pointer-events-auto w-full flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-2xl bg-[#073642]/95 border backdrop-blur-md shadow-xl text-xs font-mono select-none"
             style={{
               borderColor: isInSetlistMode ? 'rgba(181, 137, 0, 0.45)' : 'rgba(42, 161, 152, 0.45)',
             }}
@@ -890,7 +921,7 @@ export const StageView: React.FC<StageViewProps> = ({
             <button
               type="button"
               onClick={() => setIsQueueDropdownOpen(true)}
-              className={`px-2 py-0.5 rounded-md font-extrabold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg font-extrabold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer ${
                 isInSetlistMode
                   ? 'bg-[#B58900]/15 text-[#B58900] hover:bg-[#B58900]/25'
                   : 'bg-[#2AA198]/20 text-[#2AA198] hover:bg-[#2AA198]/30'
@@ -941,7 +972,7 @@ export const StageView: React.FC<StageViewProps> = ({
         )}
 
         {/* Floating Glassmorphic Stage Controller (Compose lines 742-848) */}
-        <div className="pointer-events-auto flex items-center gap-2.5 sm:gap-3 bg-[#073642]/95 backdrop-blur-md px-3 sm:px-4 py-2 rounded-2xl border border-[#1A4A55] shadow-2xl shadow-black/80">
+        <div className="pointer-events-auto w-full flex items-center justify-between gap-2.5 sm:gap-3 bg-[#073642]/95 backdrop-blur-md px-3 sm:px-4 py-2 rounded-2xl border border-[#1A4A55] shadow-2xl shadow-black/80">
           {/* Primary Stage Play/Pause Action Button */}
           <button
             type="button"

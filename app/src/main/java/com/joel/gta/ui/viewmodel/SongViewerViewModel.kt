@@ -1117,10 +1117,13 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         when (msg) {
             is SyncMessage.SongChange -> {
                 handleSongChangeMessage(
-                    songId = msg.songId,
-                    setlistIndex = msg.setlistIndex,
                     title = msg.title,
                     artist = msg.artist,
+                    queueType = msg.queueType,
+                    queueIndex = msg.queueIndex,
+                    transpose = msg.transpose,
+                    scrollProgress = msg.scrollProgress,
+                    songId = msg.songId,
                     rawContent = msg.rawContent,
                     key = msg.key,
                     capo = msg.capo
@@ -1128,10 +1131,13 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             }
             is SyncMessage.SongSync -> {
                 handleSongChangeMessage(
-                    songId = msg.songId,
-                    setlistIndex = msg.setlistIndex,
                     title = msg.title,
                     artist = msg.artist,
+                    queueType = if (msg.setlistIndex != null) "SETLIST" else "LIBRARY",
+                    queueIndex = msg.setlistIndex ?: 0,
+                    transpose = 0,
+                    scrollProgress = 0f,
+                    songId = msg.songId,
                     rawContent = msg.rawContent,
                     key = msg.key,
                     capo = msg.capo
@@ -1156,61 +1162,136 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun handleSongChangeMessage(
-        songId: Long?,
-        setlistIndex: Int?,
         title: String,
         artist: String?,
+        queueType: String,
+        queueIndex: Int,
+        transpose: Int,
+        scrollProgress: Float,
+        songId: Long?,
         rawContent: String,
         key: String?,
         capo: String?
     ) {
         viewModelScope.launch {
             _isAutoScrolling.value = false
-            bandScrollOffset.tryEmit(0f)
+            bandScrollOffset.tryEmit(scrollProgress)
 
             val current = _uiState.value
-            // Scenario 1: Client is already in Setlist Mode
-            if (current is SongViewerState.Loaded && current.isInSetlistMode && current.setlistSongs.isNotEmpty()) {
-                val targetIndex = when {
-                    songId != null && current.setlistSongs.any { it.id == songId } -> {
-                        current.setlistSongs.indexOfFirst { it.id == songId }
-                    }
-                    setlistIndex != null && setlistIndex in current.setlistSongs.indices -> {
-                        setlistIndex
-                    }
-                    else -> -1
-                }
+            val normTitle = title.trim().lowercase()
+            val normArtist = artist?.trim()?.lowercase()
 
-                if (targetIndex in current.setlistSongs.indices) {
-                    val targetSongEntity = current.setlistSongs[targetIndex]
+            if (queueType.equals("SETLIST", ignoreCase = true)) {
+                // Switch queue view strictly to SETLIST
+                val currentLoaded = current as? SongViewerState.Loaded
+                if (currentLoaded != null && currentLoaded.isInSetlistMode && currentLoaded.setlistSongs.isNotEmpty()) {
+                    val matchIdx = currentLoaded.setlistSongs.indexOfFirst { s ->
+                        s.title.trim().lowercase() == normTitle &&
+                                (normArtist.isNullOrBlank() || s.artist?.trim()?.lowercase() == normArtist)
+                    }
+                    val targetIdx = when {
+                        matchIdx != -1 -> matchIdx
+                        queueIndex in currentLoaded.setlistSongs.indices -> queueIndex
+                        else -> 0
+                    }
+
+                    val targetSongEntity = currentLoaded.setlistSongs[targetIdx]
                     withContext(Dispatchers.IO) {
                         repository.updateLastOpened(targetSongEntity.id)
                     }
-                    val targetOffset = current.setlistTransposeOffsets[targetSongEntity.id] ?: targetSongEntity.transposeOffset
                     val parsedOriginal = SongParser.parse(targetSongEntity.rawContent, defaultTitle = targetSongEntity.title)
-                    val transposed = if (targetOffset != 0) {
-                        TransposeEngine.transposeSong(parsedOriginal, targetOffset)
+                    val transposed = if (transpose != 0) {
+                        TransposeEngine.transposeSong(parsedOriginal, transpose)
                     } else {
                         parsedOriginal
                     }
 
-                    _uiState.value = current.copy(
+                    _uiState.value = currentLoaded.copy(
                         song = transposed,
                         originalSong = parsedOriginal,
                         fileName = targetSongEntity.title,
                         songEntityId = targetSongEntity.id,
                         isFavorite = targetSongEntity.isFavorite,
-                        transposeOffset = targetOffset,
-                        currentSetlistIndex = targetIndex
+                        transposeOffset = transpose,
+                        currentSetlistIndex = targetIdx
                     )
                     return@launch
                 }
+
+                // If not currently in setlist mode, search local setlists for one containing this song
+                val allSetlists = withContext(Dispatchers.IO) { repository.getAllSetlistsWithSongsDirect() }
+                for (sl in allSetlists) {
+                    val matchIdx = sl.songs.indexOfFirst { s ->
+                        s.title.trim().lowercase() == normTitle &&
+                                (normArtist.isNullOrBlank() || s.artist?.trim()?.lowercase() == normArtist)
+                    }
+                    if (matchIdx != -1) {
+                        val targetSongEntity = sl.songs[matchIdx]
+                        withContext(Dispatchers.IO) {
+                            repository.updateLastOpened(targetSongEntity.id)
+                        }
+                        val parsedOriginal = SongParser.parse(targetSongEntity.rawContent, defaultTitle = targetSongEntity.title)
+                        val transposed = if (transpose != 0) {
+                            TransposeEngine.transposeSong(parsedOriginal, transpose)
+                        } else {
+                            parsedOriginal
+                        }
+
+                        _uiState.value = SongViewerState.Loaded(
+                            song = transposed,
+                            originalSong = parsedOriginal,
+                            fileName = targetSongEntity.title,
+                            songEntityId = targetSongEntity.id,
+                            isFavorite = targetSongEntity.isFavorite,
+                            transposeOffset = transpose,
+                            rawContent = targetSongEntity.rawContent,
+                            tags = targetSongEntity.tags,
+                            setlistId = sl.setlist.id,
+                            setlistName = sl.setlist.name,
+                            setlistSongs = sl.songs,
+                            currentSetlistIndex = matchIdx
+                        )
+                        return@launch
+                    }
+                }
             }
 
-            // Scenario 2: Fallback for standalone / client not in active setlist mode
-            if (rawContent.isNotBlank() || title.isNotBlank()) {
+            // Queue type is LIBRARY (or setlist match was not found in local setlists)
+            val allSongs = withContext(Dispatchers.IO) { repository.getAllSongsDirect() }
+            val matchedLocalSong = allSongs.firstOrNull { s ->
+                s.title.trim().lowercase() == normTitle &&
+                        (normArtist.isNullOrBlank() || s.artist?.trim()?.lowercase() == normArtist)
+            } ?: (if (songId != null) allSongs.firstOrNull { it.id == songId } else null)
+
+            if (matchedLocalSong != null) {
+                withContext(Dispatchers.IO) {
+                    repository.updateLastOpened(matchedLocalSong.id)
+                }
+                val parsedOriginal = SongParser.parse(matchedLocalSong.rawContent, defaultTitle = matchedLocalSong.title)
+                val transposed = if (transpose != 0) {
+                    TransposeEngine.transposeSong(parsedOriginal, transpose)
+                } else {
+                    parsedOriginal
+                }
+
+                _uiState.value = SongViewerState.Loaded(
+                    song = transposed,
+                    originalSong = parsedOriginal,
+                    fileName = matchedLocalSong.title,
+                    songEntityId = matchedLocalSong.id,
+                    isFavorite = matchedLocalSong.isFavorite,
+                    transposeOffset = transpose,
+                    rawContent = matchedLocalSong.rawContent,
+                    tags = matchedLocalSong.tags,
+                    setlistId = null,
+                    setlistName = null,
+                    setlistSongs = emptyList(),
+                    currentSetlistIndex = -1
+                )
+            } else if (rawContent.isNotBlank() || title.isNotBlank()) {
                 val defaultTitle = title.ifBlank { "Synced Song" }
-                val parsed = SongParser.parse(rawContent, defaultTitle = defaultTitle).let { base ->
+                val songContent = if (rawContent.isNotBlank()) rawContent else "{$defaultTitle}\n{artist: ${artist ?: ""}}"
+                val parsedOriginal = SongParser.parse(songContent, defaultTitle = defaultTitle).let { base ->
                     base.copy(
                         title = defaultTitle,
                         artist = artist ?: base.artist,
@@ -1218,20 +1299,29 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                         capo = capo ?: base.capo
                     )
                 }
+                val transposed = if (transpose != 0) {
+                    TransposeEngine.transposeSong(parsedOriginal, transpose)
+                } else {
+                    parsedOriginal
+                }
+
+                val newId = withContext(Dispatchers.IO) {
+                    repository.saveOrUpdateSong(parsedOriginal, songContent, transposeOffset = transpose)
+                }
 
                 _uiState.value = SongViewerState.Loaded(
-                    song = parsed,
-                    originalSong = parsed,
+                    song = transposed,
+                    originalSong = parsedOriginal,
                     fileName = defaultTitle,
-                    songEntityId = songId ?: 0L,
+                    songEntityId = newId,
                     isFavorite = false,
-                    transposeOffset = 0,
-                    rawContent = rawContent,
+                    transposeOffset = transpose,
+                    rawContent = songContent,
                     tags = "",
-                    setlistId = (current as? SongViewerState.Loaded)?.setlistId,
-                    setlistName = (current as? SongViewerState.Loaded)?.setlistName,
-                    setlistSongs = (current as? SongViewerState.Loaded)?.setlistSongs ?: emptyList(),
-                    currentSetlistIndex = setlistIndex ?: (current as? SongViewerState.Loaded)?.currentSetlistIndex ?: -1
+                    setlistId = null,
+                    setlistName = null,
+                    setlistSongs = emptyList(),
+                    currentSetlistIndex = -1
                 )
             }
         }
@@ -1241,18 +1331,26 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         song: com.joel.gta.data.model.ParsedSong,
         rawContent: String,
         songId: Long? = null,
-        setlistIndex: Int? = null
+        setlistIndex: Int? = null,
+        transposeOffset: Int = 0,
+        scrollProgress: Float = 0f
     ) {
         if (bandSyncState.value.role == BandSyncRole.HOST) {
+            val qType = if (setlistIndex != null) "SETLIST" else "LIBRARY"
+            val qIndex = setlistIndex ?: 0
             bandSyncManager.broadcast(
-                SyncMessage.SongSync(
+                SyncMessage.SongChange(
                     title = song.title,
                     artist = song.artist,
+                    queueType = qType,
+                    queueIndex = qIndex,
+                    transpose = transposeOffset,
+                    scrollProgress = scrollProgress,
+                    songId = songId,
+                    setlistIndex = qIndex,
                     rawContent = rawContent,
                     key = song.key,
-                    capo = song.capo,
-                    songId = songId,
-                    setlistIndex = setlistIndex
+                    capo = song.capo
                 )
             )
         }
@@ -1262,15 +1360,22 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         songId: Long?,
         setlistIndex: Int,
         song: com.joel.gta.data.model.ParsedSong? = null,
-        rawContent: String? = null
+        rawContent: String? = null,
+        queueType: String = "SETLIST",
+        transpose: Int = 0,
+        scrollProgress: Float = 0f
     ) {
         if (bandSyncState.value.role == BandSyncRole.HOST) {
             bandSyncManager.broadcast(
                 SyncMessage.SongChange(
-                    songId = songId,
-                    setlistIndex = setlistIndex,
                     title = song?.title ?: "",
                     artist = song?.artist,
+                    queueType = queueType,
+                    queueIndex = setlistIndex,
+                    transpose = transpose,
+                    scrollProgress = scrollProgress,
+                    songId = songId,
+                    setlistIndex = setlistIndex,
                     rawContent = rawContent ?: "",
                     key = song?.key,
                     capo = song?.capo
@@ -1288,6 +1393,25 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     fun broadcastTransposeIfHost(transposeOffset: Int) {
         if (bandSyncState.value.role == BandSyncRole.HOST) {
             bandSyncManager.broadcast(SyncMessage.TransposeSync(transposeOffset))
+            val loaded = _uiState.value as? SongViewerState.Loaded
+            if (loaded != null) {
+                val qType = if (loaded.isInSetlistMode) "SETLIST" else "LIBRARY"
+                val qIndex = if (loaded.isInSetlistMode) loaded.currentSetlistIndex else 0
+                bandSyncManager.broadcast(
+                    SyncMessage.SongChange(
+                        title = loaded.song.title,
+                        artist = loaded.song.artist,
+                        queueType = qType,
+                        queueIndex = qIndex,
+                        transpose = transposeOffset,
+                        scrollProgress = 0f,
+                        songId = loaded.songEntityId,
+                        rawContent = loaded.rawContent,
+                        key = loaded.song.key,
+                        capo = loaded.song.capo
+                    )
+                )
+            }
         }
     }
 

@@ -80,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="h-16 border-b border-[#1A4A55] bg-[#073642] px-3 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 select-none z-30 sticky top-0 shadow-md">
       {/* =================================================================== */}
-      {/* 1. LEFT: App Branding & v1.0.45 Badge (1:1 Android TopAppBar)        */}
+      {/* 1. LEFT: App Branding & v1.0.46 Badge (1:1 Android TopAppBar)        */}
       {/* =================================================================== */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <div className="flex items-center gap-2">
@@ -93,13 +93,13 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onCheckForUpdates}
-                title="Click to check for updates (v1.0.45)"
+                title="Click to check for updates (v1.0.46)"
                 className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
               >
                 {isCheckingUpdates && (
                   <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                 )}
-                <span>v1.0.45</span>
+                <span>v1.0.46</span>
               </button>
             </div>
             <span className="hidden md:inline text-[10px] text-[#93A1A1] mt-0.5 font-medium leading-none">

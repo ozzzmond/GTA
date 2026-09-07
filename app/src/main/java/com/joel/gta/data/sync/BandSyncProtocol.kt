@@ -22,10 +22,14 @@ sealed class SyncMessage {
      * (via swipe gesture, next/prev buttons, or Bluetooth pedal footswitch).
      */
     data class SongChange(
-        val songId: Long? = null,
-        val setlistIndex: Int = 0,
         val title: String = "",
         val artist: String? = null,
+        val queueType: String = "LIBRARY", // "SETLIST" or "LIBRARY"
+        val queueIndex: Int = 0,
+        val transpose: Int = 0,
+        val scrollProgress: Float = 0f,
+        val songId: Long? = null,
+        val setlistIndex: Int = 0,
         val rawContent: String = "",
         val key: String? = null,
         val capo: String? = null
@@ -113,16 +117,23 @@ sealed class SyncMessage {
                     if (message.setlistIndex != null) json.put("setlistIndex", message.setlistIndex)
                 }
                 is SongChange -> {
+                    val effectiveIndex = if (message.queueIndex != 0) message.queueIndex else message.setlistIndex
                     json.put("type", TYPE_SONG_CHANGE)
+                    json.put("title", message.title)
+                    json.put("artist", message.artist ?: "")
+                    json.put("queueType", message.queueType)
+                    json.put("queueIndex", effectiveIndex)
+                    json.put("setlistIndex", effectiveIndex)
+                    json.put("transpose", message.transpose)
+                    json.put("scrollProgress", message.scrollProgress.toDouble())
                     if (message.songId != null) {
                         json.put("songId", message.songId)
                         json.put("id", message.songId)
                     }
-                    json.put("setlistIndex", message.setlistIndex)
-                    json.put("title", message.title)
-                    if (!message.artist.isNullOrBlank()) json.put("artist", message.artist)
-                    json.put("content", message.rawContent)
-                    json.put("rawContent", message.rawContent)
+                    if (message.rawContent.isNotBlank()) {
+                        json.put("content", message.rawContent)
+                        json.put("rawContent", message.rawContent)
+                    }
                     if (!message.key.isNullOrBlank()) json.put("key", message.key)
                     if (!message.capo.isNullOrBlank()) json.put("capo", message.capo)
                 }
@@ -197,11 +208,38 @@ sealed class SyncMessage {
                             json.has("rawContent") -> json.getString("rawContent")
                             else -> ""
                         }
+                        val queueType = if (json.has("queueType")) {
+                            json.getString("queueType").uppercase()
+                        } else if (json.has("setlistIndex")) {
+                            "SETLIST"
+                        } else {
+                            "LIBRARY"
+                        }
+                        val queueIndex = when {
+                            json.has("queueIndex") -> json.getInt("queueIndex")
+                            json.has("setlistIndex") -> json.getInt("setlistIndex")
+                            else -> 0
+                        }
+                        val transpose = when {
+                            json.has("transpose") -> json.getInt("transpose")
+                            json.has("transposeOffset") -> json.getInt("transposeOffset")
+                            json.has("offset") -> json.getInt("offset")
+                            else -> 0
+                        }
+                        val scrollProgress = when {
+                            json.has("scrollProgress") -> json.getDouble("scrollProgress").toFloat()
+                            json.has("scroll") -> json.getDouble("scroll").toFloat()
+                            else -> 0f
+                        }
                         SongChange(
-                            songId = songId,
-                            setlistIndex = json.optInt("setlistIndex", 0),
                             title = json.optString("title", ""),
                             artist = json.optString("artist").takeIf { it.isNotBlank() },
+                            queueType = queueType,
+                            queueIndex = queueIndex,
+                            transpose = transpose,
+                            scrollProgress = scrollProgress,
+                            songId = songId,
+                            setlistIndex = queueIndex,
                             rawContent = content,
                             key = json.optString("key").takeIf { it.isNotBlank() },
                             capo = json.optString("capo").takeIf { it.isNotBlank() }

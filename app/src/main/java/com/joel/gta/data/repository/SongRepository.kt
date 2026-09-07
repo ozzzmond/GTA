@@ -40,6 +40,10 @@ class SongRepository(private val database: GtaDatabase) {
         songDao.getSongById(id)
     }
 
+    suspend fun getAllSongsDirect(): List<SongEntity> = withContext(Dispatchers.IO) {
+        songDao.getAllSongsDirect()
+    }
+
     /**
      * Inserts or updates a song. If a song with the same title already exists,
      * it updates the content and updates the lastOpenedAt timestamp.

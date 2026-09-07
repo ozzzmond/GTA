@@ -266,14 +266,24 @@ class BandSyncEngine {
 
     // Convert Android SyncMessage JSON to web BandSyncMessage
     if (data.type === 'SONG' || data.type === 'SONG_CHANGE') {
+      const qType = (data.queueType || (data.setlistIndex !== undefined ? 'SETLIST' : 'LIBRARY')).toUpperCase()
+      const qIndex = data.queueIndex ?? data.setlistIndex ?? data.songIndex ?? 0
+      const transpose = data.transpose ?? data.transposeOffset ?? data.offset ?? 0
+      const scrollProgress = data.scrollProgress ?? data.scroll ?? 0
       const msg: BandSyncMessage = {
         type: 'SONG_SYNC',
         senderId: 'android_leader',
         role: 'HOST',
         payload: {
-          songIndex: data.setlistIndex ?? 0,
+          title: data.title || '',
+          artist: data.artist || '',
+          queueType: qType,
+          queueIndex: qIndex,
+          songIndex: qIndex,
           songTitle: data.title || '',
-          transposeOffset: data.transposeOffset || 0,
+          transposeOffset: transpose,
+          transpose: transpose,
+          scrollProgress: scrollProgress,
           rawContent: data.content || data.rawContent || '',
           key: data.key || '',
           capo: data.capo || '',
@@ -405,9 +415,57 @@ class BandSyncEngine {
   }
 
   // Specialized broadcast actions (used by Band Leader)
-  public broadcastSong(songIndex: number, songTitle: string, transposeOffset: number) {
+  public broadcastSong(
+    songIndex: number,
+    songTitle: string,
+    transposeOffset: number,
+    extra?: {
+      artist?: string
+      queueType?: 'SETLIST' | 'LIBRARY'
+      scrollProgress?: number
+      rawContent?: string
+      key?: string
+      capo?: string
+    }
+  ) {
     if (this.role === 'HOST') {
-      this.broadcastMessage('SONG_SYNC', { songIndex, songTitle, transposeOffset })
+      const qType = extra?.queueType || 'LIBRARY'
+      const payload = {
+        type: 'SONG_CHANGE',
+        title: songTitle,
+        artist: extra?.artist || '',
+        queueType: qType,
+        queueIndex: songIndex,
+        songIndex,
+        songTitle,
+        transpose: transposeOffset,
+        transposeOffset,
+        scrollProgress: extra?.scrollProgress || 0,
+        rawContent: extra?.rawContent || '',
+        key: extra?.key || '',
+        capo: extra?.capo || '',
+      }
+      this.broadcastMessage('SONG_SYNC', payload)
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send(
+            JSON.stringify({
+              type: 'SONG_CHANGE',
+              title: songTitle,
+              artist: extra?.artist || '',
+              queueType: qType,
+              queueIndex: songIndex,
+              transpose: transposeOffset,
+              scrollProgress: extra?.scrollProgress || 0,
+              content: extra?.rawContent || '',
+              key: extra?.key || '',
+              capo: extra?.capo || '',
+            })
+          )
+        } catch {
+          // ignore
+        }
+      }
     }
   }
 
