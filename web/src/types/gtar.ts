@@ -1,8 +1,8 @@
 /**
- * GTAR Android Room Entity, Setlist & Stage Line Type Definitions (v1.0.46+ compatible)
+ * GTAR Android Room Entity, Setlist & Stage Line Type Definitions (v1.0.47+ compatible)
  */
 
-export const GTAR_APP_VERSION = '1.0.46'
+export const GTAR_APP_VERSION = '1.0.47'
 export const GTAR_SETLIST_VERSION = 1
 export const GTAR_SETLIST_TYPE = 'GTAR_SETLIST'
 
@@ -22,6 +22,13 @@ export interface SongEntity {
   isDeleted?: boolean
   createdAt?: number
   lastOpenedAt?: number
+}
+
+export interface WebSetlist {
+  id: string | number
+  name: string
+  createdAt?: number
+  songs: Array<{ title: string; artist?: string; id?: string | number }>
 }
 
 export interface GtarSetlistSong {
@@ -102,6 +109,7 @@ export interface ActiveSongState {
   rawContent: string
   format: SongFormat
   transposeOffset: number
+  isDeleted?: boolean
 }
 
 // Stage Lines Model matching Android SongLine.kt (v1.0.42)

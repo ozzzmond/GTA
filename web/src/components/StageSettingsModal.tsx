@@ -322,7 +322,7 @@ export const StageSettingsModal: React.FC<StageSettingsModalProps> = ({
           <div className="p-4 rounded-xl bg-[#002B36]/60 border border-[#1A4A55]/70 text-center space-y-2">
             <div className="text-xs font-extrabold text-[#FDF6E3]">GTAR Stage Suite</div>
             <div className="text-[11px] font-mono font-bold text-[#2AA198]">
-              Version 1.0.46 (Build 47)
+              Version 1.0.47 (Build 48)
             </div>
             <div className="text-[10px] text-[#93A1A1]">
               Pro Gig Teleprompter & Chord Companion for Live Musicians

@@ -3,6 +3,8 @@ import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
 import { DesktopEditor } from './components/DesktopEditor'
 import { StageView } from './components/StageView'
+import { SongbookHomeView } from './components/SongbookHomeView'
+import { TrashView } from './components/TrashView'
 import { JsonBridgeModal } from './components/JsonBridgeModal'
 import { KeyPickerModal } from './components/KeyPickerModal'
 import { SetlistDrawer } from './components/SetlistDrawer'
@@ -10,10 +12,12 @@ import { WebsiteUrlSourceModal } from './components/WebsiteUrlSourceModal'
 import { ImportDialogModal } from './components/ImportDialogModal'
 import { BackupRestoreDialogModal } from './components/BackupRestoreDialogModal'
 import { StageSettingsModal, type SongFontStyleOption } from './components/StageSettingsModal'
+import { ThemeModal, type ThemeMode } from './components/ThemeModal'
 import { BandSyncModal } from './components/BandSyncModal'
 import { bandSync } from './utils/bandSync'
 import { extractDirectives } from './utils/chordSheetParser'
 import type { ActiveSongState } from './types/gtar'
+import type { FetchedChordSheet } from './utils/onlineSearch'
 import { Check, Sparkles } from 'lucide-react'
 
 // Modern GTAR v1.0.42 Default Stage Setlist
@@ -185,25 +189,167 @@ function App() {
     return sessionStorage.getItem('gtar_authenticated') === 'true'
   })
 
-  // View state: Desktop Editor vs Stage View
-  const [activeView, setActiveView] = useState<'editor' | 'stage'>('stage')
+  // View state: Songbook Library Home vs Desktop Editor vs Stage View vs Trash Bin
+  const [activeView, setActiveView] = useState<'songbook' | 'editor' | 'stage' | 'trash'>('songbook')
 
-  // Songbook Library of Songs (Strictly separated from setlists)
-  const [songs, setSongs] = useState<ActiveSongState[]>(DEFAULT_SETLIST)
-  const [setlists, setSetlists] = useState<WebSetlist[]>(DEFAULT_SAMPLE_SETLISTS)
-  const [activeSetlistId, setActiveSetlistId] = useState<string | number | null>('gig-set-1')
+  // Songbook Library of Songs (Strictly separated from setlists, persisted in localStorage)
+  const [songs, setSongs] = useState<ActiveSongState[]>(() => {
+    try {
+      const saved = localStorage.getItem('gtar_songs_store')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load songs from localStorage', e)
+    }
+    return DEFAULT_SETLIST
+  })
+
+  // Soft-deleted songs (Trash bin, persisted in localStorage)
+  const [deletedSongs, setDeletedSongs] = useState<ActiveSongState[]>(() => {
+    try {
+      const saved = localStorage.getItem('gtar_trash_songs_store')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          return parsed
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load trash from localStorage', e)
+    }
+    return []
+  })
+
+  // Custom Setlists (persisted in localStorage)
+  const [setlists, setSetlists] = useState<WebSetlist[]>(() => {
+    try {
+      const saved = localStorage.getItem('gtar_setlists_store')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          return parsed
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load setlists from localStorage', e)
+    }
+    return DEFAULT_SAMPLE_SETLISTS
+  })
+
+  // Stage Color Theme (persisted in localStorage)
+  const [stageTheme, setStageTheme] = useState<ThemeMode>(() => {
+    try {
+      const saved = localStorage.getItem('gtar_theme_store') as ThemeMode
+      if (saved) return saved
+    } catch (e) {
+      console.error('Failed to load theme from localStorage', e)
+    }
+    return 'solarized-dark'
+  })
+
+  const [activeSetlistId, setActiveSetlistId] = useState<string | number | null>(() => {
+    try {
+      const saved = localStorage.getItem('gtar_active_setlist_id')
+      if (saved) return JSON.parse(saved)
+    } catch (_) {}
+    return 'gig-set-1'
+  })
   const [activeSongIndex, setActiveSongIndex] = useState<number>(0)
   const [activeSetlistSongIndex, setActiveSetlistSongIndex] = useState<number>(0)
   const [queueMode, setQueueMode] = useState<'library' | 'setlist'>('library')
   const [searchQuery, setSearchQuery] = useState<string>('')
 
-  // Display Settings
-  const [fontStyle, setFontStyle] = useState<SongFontStyleOption>('mono')
-  const [isTwoColumn, setIsTwoColumn] = useState<boolean>(false)
+  // Display Settings (persisted in localStorage)
+  const [fontStyle, setFontStyle] = useState<SongFontStyleOption>(() => {
+    try {
+      const saved = localStorage.getItem('gtar_font_style_store') as SongFontStyleOption
+      if (saved) return saved
+    } catch (_) {}
+    return 'mono'
+  })
+  const [isTwoColumn, setIsTwoColumn] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('gtar_twocolumn_store')
+      if (saved !== null) return JSON.parse(saved)
+    } catch (_) {}
+    return false
+  })
+
+  // Save songs to localStorage on any change
+  useEffect(() => {
+    try {
+      localStorage.setItem('gtar_songs_store', JSON.stringify(songs))
+    } catch (e) {
+      console.error('Failed to persist songs to localStorage', e)
+    }
+  }, [songs])
+
+  // Save trash to localStorage on any change
+  useEffect(() => {
+    try {
+      localStorage.setItem('gtar_trash_songs_store', JSON.stringify(deletedSongs))
+    } catch (e) {
+      console.error('Failed to persist trash to localStorage', e)
+    }
+  }, [deletedSongs])
+
+  // Save setlists to localStorage on any change
+  useEffect(() => {
+    try {
+      localStorage.setItem('gtar_setlists_store', JSON.stringify(setlists))
+    } catch (e) {
+      console.error('Failed to persist setlists to localStorage', e)
+    }
+  }, [setlists])
+
+  // Save active setlist ID
+  useEffect(() => {
+    try {
+      localStorage.setItem('gtar_active_setlist_id', JSON.stringify(activeSetlistId))
+    } catch (_) {}
+  }, [activeSetlistId])
+
+  // Save font style to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('gtar_font_style_store', fontStyle)
+    } catch (_) {}
+  }, [fontStyle])
+
+  // Save two-column state to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('gtar_twocolumn_store', JSON.stringify(isTwoColumn))
+    } catch (_) {}
+  }, [isTwoColumn])
+
+  // Apply theme to document.body and persist
+  useEffect(() => {
+    try {
+      localStorage.setItem('gtar_theme_store', stageTheme)
+    } catch (_) {}
+
+    document.body.classList.remove(
+      'theme-solarized-dark',
+      'theme-amber-stage',
+      'theme-oled-black',
+      'theme-paper-light'
+    )
+    document.body.classList.add(`theme-${stageTheme}`)
+  }, [stageTheme])
 
   // Active Setlist context
   const activeSetlist = useMemo(() => {
-    return setlists.find((sl) => sl.id === activeSetlistId) || null
+    if (!setlists.length) return null
+    return (
+      setlists.find((sl) => String(sl.id) === String(activeSetlistId)) ||
+      setlists[0] ||
+      null
+    )
   }, [setlists, activeSetlistId])
 
   // Resolved Setlist Songs
@@ -220,9 +366,9 @@ function App() {
           id: (ref.id as number) || Date.now() + idx,
           title: ref.title,
           artist: ref.artist || '',
-          key: 'G',
-          capo: 'No Capo',
-          bpm: '120',
+          key: (ref as any).key || 'G',
+          capo: (ref as any).capo || 'No Capo',
+          bpm: (ref as any).bpm || '120',
           format: 'CHORD_PRO',
           transposeOffset: 0,
           rawContent: `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
@@ -248,6 +394,7 @@ function App() {
   const [isBackupRestoreModalOpen, setIsBackupRestoreModalOpen] = useState(false)
   const [isStageSettingsModalOpen, setIsStageSettingsModalOpen] = useState(false)
   const [isStageToolsModalOpen, setIsStageToolsModalOpen] = useState(false)
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false)
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false)
   const [isHeaderKeyPickerOpen, setIsHeaderKeyPickerOpen] = useState(false)
   const [isSetlistDrawerOpen, setIsSetlistDrawerOpen] = useState(false)
@@ -260,6 +407,10 @@ function App() {
     const unsub = bandSync.onMessage((msg) => {
       if (bandSync.getRole() === 'CLIENT') {
         if (msg.type === 'SONG_SYNC' && msg.payload) {
+          // Auto Route: immediately switch directly to Stage View without needing to open setlist drawer
+          setActiveView('stage')
+          setIsSetlistDrawerOpen(false)
+
           const title: string = msg.payload.title || msg.payload.songTitle || ''
           const artist: string = msg.payload.artist || ''
           const queueType: string = (msg.payload.queueType || 'LIBRARY').toUpperCase()
@@ -538,8 +689,13 @@ function App() {
   }
 
   // Band Leader Action: Push Setlist to Members
-  const handlePushSetlistToMembers = (): { success: boolean; message: string } => {
-    const targetSetlist = activeSetlist || setlists[0]
+  const handlePushSetlistToMembers = (
+    targetSetlistId?: string | number
+  ): { success: boolean; message: string } => {
+    const targetSetlist = targetSetlistId
+      ? setlists.find((s) => String(s.id) === String(targetSetlistId)) || activeSetlist || setlists[0]
+      : activeSetlist || setlists[0]
+
     if (!targetSetlist || targetSetlist.songs.length === 0) {
       const msg = 'No setlist available to push. Please create or select a setlist first.'
       setToastMessage(msg)
@@ -557,25 +713,144 @@ function App() {
       return {
         title: ref.title,
         artist: ref.artist || matched?.artist || '',
-        key: matched?.key || 'G',
-        capo: matched?.capo || 'No Capo',
-        bpm: matched?.bpm || '120',
+        key: matched?.key || (ref as any).key || 'G',
+        capo: matched?.capo || (ref as any).capo || 'No Capo',
+        bpm: matched?.bpm || (ref as any).bpm || '120',
         format: matched?.format || 'CHORD_PRO',
-        rawContent: matched?.rawContent || `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
+        rawContent:
+          matched?.rawContent ||
+          `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
       }
     })
 
     bandSync.broadcastSetlist(targetSetlist.name, payloadSongs)
-    const successMsg = `Pushed setlist '${targetSetlist.name}' (${payloadSongs.length} songs) to band members!`
+    const successMsg = `Pushed setlist '${targetSetlist.name}' (${payloadSongs.length} songs) to band members via BandSync!`
     setToastMessage(successMsg)
     setTimeout(() => setToastMessage(null), 4000)
     return { success: true, message: successMsg }
   }
 
-  // Delete song from library state with safe index adjustment
+  // Export / Share Setlist (.json download & clipboard copy)
+  const handleShareSetlist = (setlist: WebSetlist) => {
+    try {
+      const exportData = {
+        app: 'GTAR',
+        version: '1.0.47',
+        type: 'SETLIST_EXPORT',
+        exportedAt: new Date().toISOString(),
+        setlist: {
+          id: setlist.id,
+          name: setlist.name,
+          songs: setlist.songs.map((ref) => {
+            const matched = songs.find(
+              (s) =>
+                s.title.trim().toLowerCase() === ref.title.trim().toLowerCase() &&
+                (!ref.artist || (s.artist || '').trim().toLowerCase() === ref.artist.trim().toLowerCase())
+            )
+            return {
+              title: ref.title,
+              artist: ref.artist || matched?.artist || '',
+              key: matched?.key || (ref as any).key || 'G',
+              capo: matched?.capo || (ref as any).capo || 'No Capo',
+              bpm: matched?.bpm || (ref as any).bpm || '120',
+              format: matched?.format || 'CHORD_PRO',
+              rawContent:
+                matched?.rawContent ||
+                `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
+            }
+          }),
+        },
+      }
+
+      const jsonStr = JSON.stringify(exportData, null, 2)
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard
+          .writeText(jsonStr)
+          .then(() => {
+            setToastMessage(`Setlist "${setlist.name}" copied to clipboard as JSON!`)
+            setTimeout(() => setToastMessage(null), 3500)
+          })
+          .catch(() => {
+            triggerSetlistDownload(setlist.name, jsonStr)
+          })
+      } else {
+        triggerSetlistDownload(setlist.name, jsonStr)
+      }
+    } catch (e) {
+      console.error('Failed to share setlist', e)
+    }
+  }
+
+  const triggerSetlistDownload = (name: string, content: string) => {
+    const blob = new Blob([content], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${name.replace(/\s+/g, '_')}_setlist.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    setToastMessage(`Downloaded "${name}" setlist .json file!`)
+    setTimeout(() => setToastMessage(null), 3500)
+  }
+
+  // Import online chord sheet directly into songbook library
+  const handleImportOnlineChordSheet = (
+    sheet: FetchedChordSheet,
+    openInStage = false
+  ) => {
+    const existingIdx = songs.findIndex(
+      (s) =>
+        s.title.trim().toLowerCase() === sheet.title.trim().toLowerCase() &&
+        (!sheet.artist || (s.artist || '').trim().toLowerCase() === sheet.artist.trim().toLowerCase())
+    )
+
+    if (existingIdx !== -1) {
+      setToastMessage(`"${sheet.title}" is already in your library.`)
+      setTimeout(() => setToastMessage(null), 3000)
+      if (openInStage) {
+        setActiveSongIndex(existingIdx)
+        setQueueMode('library')
+        setActiveView('stage')
+      }
+      return
+    }
+
+    const newSong: ActiveSongState = {
+      id: Date.now(),
+      title: sheet.title,
+      artist: sheet.artist,
+      key: sheet.key || 'G',
+      capo: sheet.capo || 'No Capo',
+      bpm: sheet.bpm || '120',
+      format: sheet.format,
+      transposeOffset: 0,
+      rawContent: sheet.rawContent,
+    }
+
+    setSongs((prev) => [newSong, ...prev])
+    setToastMessage(`Imported "${sheet.title}" to Songbook Library!`)
+    setTimeout(() => setToastMessage(null), 4000)
+
+    if (openInStage) {
+      setActiveSongIndex(0)
+      setQueueMode('library')
+      setActiveView('stage')
+    }
+  }
+
+  // Soft-delete song from library (moves to Trash bin)
   const handleDeleteSong = (indexToDelete: number) => {
+    const songToDelete = songs[indexToDelete]
+    if (!songToDelete) return
+
+    // Move to deletedSongs (Trash)
+    setDeletedSongs((prev) => [{ ...songToDelete, isDeleted: true }, ...prev])
+
     if (songs.length <= 1) {
-      // If last remaining song is deleted, reset to blank template
+      // If last remaining song is deleted, create blank song template
       const blankSong: ActiveSongState = {
         id: Date.now(),
         title: 'New Song',
@@ -589,16 +864,47 @@ function App() {
       }
       setSongs([blankSong])
       setActiveSongIndex(0)
-      return
+    } else {
+      const updatedSongs = songs.filter((_, idx) => idx !== indexToDelete)
+      setSongs(updatedSongs)
+      if (activeSongIndex === indexToDelete) {
+        setActiveSongIndex(Math.min(indexToDelete, updatedSongs.length - 1))
+      } else if (activeSongIndex > indexToDelete) {
+        setActiveSongIndex(activeSongIndex - 1)
+      }
     }
 
-    const updatedSongs = songs.filter((_, idx) => idx !== indexToDelete)
-    setSongs(updatedSongs)
-    if (activeSongIndex === indexToDelete) {
-      setActiveSongIndex(Math.min(indexToDelete, updatedSongs.length - 1))
-    } else if (activeSongIndex > indexToDelete) {
-      setActiveSongIndex(activeSongIndex - 1)
-    }
+    setToastMessage(`Moved "${songToDelete.title}" to Trash.`)
+    setTimeout(() => setToastMessage(null), 3500)
+  }
+
+  // Restore song from Trash back to library
+  const handleRestoreSong = (id: number | string) => {
+    const songToRestore = deletedSongs.find((s) => String(s.id) === String(id))
+    if (!songToRestore) return
+
+    setDeletedSongs((prev) => prev.filter((s) => String(s.id) !== String(id)))
+    const restoredSong: ActiveSongState = { ...songToRestore, isDeleted: false }
+    setSongs((prev) => [restoredSong, ...prev])
+
+    setToastMessage(`Restored "${restoredSong.title}" to Songbook Library!`)
+    setTimeout(() => setToastMessage(null), 3500)
+  }
+
+  // Permanently delete song from Trash
+  const handlePermanentDeleteSong = (id: number | string) => {
+    const target = deletedSongs.find((s) => String(s.id) === String(id))
+    setDeletedSongs((prev) => prev.filter((s) => String(s.id) !== String(id)))
+    setToastMessage(`Permanently deleted ${target ? `"${target.title}"` : 'song'}.`)
+    setTimeout(() => setToastMessage(null), 3500)
+  }
+
+  // Permanently delete all songs in Trash
+  const handleEmptyTrash = () => {
+    const count = deletedSongs.length
+    setDeletedSongs([])
+    setToastMessage(`Trash emptied (${count} songs permanently deleted).`)
+    setTimeout(() => setToastMessage(null), 3500)
   }
 
   // Create new blank song template and switch to Desktop Editor
@@ -618,6 +924,32 @@ function App() {
     setActiveSongIndex(0)
     setActiveSetlistId(null)
     setActiveView('editor')
+    setIsSetlistDrawerOpen(false)
+  }
+
+  // Create a new setlist
+  const handleNewSetlist = () => {
+    const newId = `setlist-${Date.now()}`
+    const newSetlistName = `Setlist ${setlists.length + 1}`
+    const created: WebSetlist = {
+      id: newId,
+      name: newSetlistName,
+      createdAt: Date.now(),
+      songs: [],
+    }
+    setSetlists((prev) => [...prev, created])
+    setActiveSetlistId(newId)
+    setActiveSetlistSongIndex(0)
+    setQueueMode('setlist')
+    setToastMessage(`Created new setlist "${newSetlistName}"`)
+    setTimeout(() => setToastMessage(null), 3000)
+  }
+
+  // Navigate Home (Logo click / Songbook tab opens Songbook Library)
+  const handleNavigateHome = () => {
+    setQueueMode('library')
+    setActiveView('songbook')
+    setSearchQuery('')
     setIsSetlistDrawerOpen(false)
   }
 
@@ -774,34 +1106,81 @@ function App() {
         activeView={activeView}
         onViewChange={setActiveView}
         song={currentSong}
+        allSongs={songs}
         songsCount={filteredSongs.length > 0 ? filteredSongs.length : songs.length}
+        deletedSongsCount={deletedSongs.length}
         activeSongIndex={activeSongIndex}
         queueMode={queueMode}
         activeSetlistSongsCount={activeSetlistSongs.length}
         activeSetlistSongIndex={activeSetlistSongIndex}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
+        onSelectSearchSong={(songIdx) => {
+          handleSelectLibrarySong(songIdx)
+          setActiveView('stage')
+        }}
+        onSearchWebExternal={(query) => {
+          setSearchQuery(query)
+          setIsWebsiteUrlModalOpen(true)
+        }}
+        onNavigateHome={handleNavigateHome}
         onOpenWebsiteUrlSource={() => setIsWebsiteUrlModalOpen(true)}
         onOpenStageTools={() => setIsStageToolsModalOpen(true)}
-        onToggleTheme={() => {
-          // Toggle between dark and stage contrast
-          document.body.classList.toggle('stage-contrast')
-        }}
+        onToggleTheme={() => setIsThemeModalOpen(true)}
         onOpenStageSettings={() => setIsStageSettingsModalOpen(true)}
         onOpenImportModal={() => setIsImportModalOpen(true)}
         onOpenBackupRestoreModal={() => setIsBackupRestoreModalOpen(true)}
         onCheckForUpdates={handleCheckForUpdates}
         isCheckingUpdates={isCheckingUpdates}
         onOpenSetlistDrawer={() => setIsSetlistDrawerOpen(true)}
+        setlists={setlists}
+        activeSetlistId={activeSetlistId}
+        activeSetlistName={activeSetlist?.name}
+        activeSetlistSongs={activeSetlistSongs}
+        onSelectSetlistSong={handleSelectSetlistSong}
+        onSelectSetlist={handleSelectSetlist}
+        onPushSetlistToBandSync={handlePushSetlistToMembers}
+        onShareSetlist={handleShareSetlist}
+        onDirectImportOnlineSong={handleImportOnlineChordSheet}
       />
 
-      {/* Main Workspace: Split Desktop Editor vs 1:1 Stage View */}
+      {/* Main Workspace: Songbook Library vs Split Desktop Editor vs Trash vs 1:1 Stage View */}
       <main className="flex-1 flex overflow-hidden">
-        {activeView === 'editor' ? (
+        {activeView === 'songbook' ? (
+          <SongbookHomeView
+            songs={filteredSongs.length > 0 ? filteredSongs : songs}
+            activeSongIndex={activeSongIndex}
+            onSelectSong={(songIdx) => {
+              handleSelectLibrarySong(songIdx)
+              setActiveView('stage')
+            }}
+            onNewSong={handleNewSong}
+            onNewSetlist={handleNewSetlist}
+            onOpenImportModal={() => setIsImportModalOpen(true)}
+            onOpenWebsiteUrlSource={() => setIsWebsiteUrlModalOpen(true)}
+            onOpenSetlists={() => setIsSetlistDrawerOpen(true)}
+            onDeleteSong={handleDeleteSong}
+            setlists={setlists}
+            onSelectSetlistSong={(setlistId, songIdx) => {
+              handleSelectSetlistSong(setlistId, songIdx)
+              setActiveView('stage')
+            }}
+            onPushSetlistToBandSync={handlePushSetlistToMembers}
+            onShareSetlist={handleShareSetlist}
+          />
+        ) : activeView === 'editor' ? (
           <DesktopEditor
             song={currentSong}
             onUpdateSong={handleUpdateSong}
             transposeOffset={currentSong.transposeOffset || 0}
+          />
+        ) : activeView === 'trash' ? (
+          <TrashView
+            deletedSongs={deletedSongs}
+            onRestoreSong={handleRestoreSong}
+            onPermanentDeleteSong={handlePermanentDeleteSong}
+            onEmptyTrash={handleEmptyTrash}
+            onBackToSongbook={() => setActiveView('songbook')}
           />
         ) : (
           <StageView
@@ -852,6 +1231,15 @@ function App() {
         onDeleteSetlist={handleDeleteSetlist}
         onDeleteSong={handleDeleteSong}
         onNewSong={handleNewSong}
+        onNewSetlist={handleNewSetlist}
+      />
+
+      {/* Stage Color Theme Modal */}
+      <ThemeModal
+        isOpen={isThemeModalOpen}
+        onClose={() => setIsThemeModalOpen(false)}
+        currentTheme={stageTheme}
+        onSelectTheme={(theme) => setStageTheme(theme)}
       />
 
       {/* Website URL Source Modal */}
@@ -893,7 +1281,10 @@ function App() {
           setIsStageSettingsModalOpen(false)
           setIsStageToolsModalOpen(true)
         }}
-        onToggleTheme={() => document.body.classList.toggle('stage-contrast')}
+        onToggleTheme={() => {
+          setIsStageSettingsModalOpen(false)
+          setIsThemeModalOpen(true)
+        }}
         onCheckForUpdates={handleCheckForUpdates}
       />
 
@@ -939,13 +1330,13 @@ function App() {
             <div className="space-y-1">
               <h3 className="text-base font-extrabold text-[#FDF6E3]">You're Up to Date!</h3>
               <p className="text-xs text-[#2AA198] font-mono font-bold">
-                GTAR Web App v1.0.46 (Build 47)
+                GTAR Web App v1.0.47 (Build 48)
               </p>
             </div>
             <div className="p-3 rounded-xl bg-[#002B36] text-left text-[11px] text-[#93A1A1] space-y-1 border border-[#1A4A55]">
               <div className="font-bold text-[#EEE8D5] flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-[#2AA198]" />
-                <span>1:1 Parity with Android v1.0.46</span>
+                <span>1:1 Parity with Android v1.0.47</span>
               </div>
               <p>• Unified TopAppBar with 4-Action 3-Dot Menu</p>
               <p>• Band Sync multi-screen stage sync (Leader / Member)</p>

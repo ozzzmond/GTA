@@ -25,6 +25,8 @@ export interface BandSyncState {
   wsConnecting: boolean
   wsLeaderIp: string
   customHostIp: string
+  detectedLanIp: string
+  hasLanIp: boolean
   wsStatus: ConnectionStatus
   roomId: string
   leaderEndpoint: string
@@ -32,6 +34,50 @@ export interface BandSyncState {
 
 type SyncListener = (state: BandSyncState) => void
 type MessageHandler = (msg: BandSyncMessage) => void
+
+/**
+ * Automatically attempts to detect local machine LAN IP using WebRTC ICE candidates.
+ */
+export async function detectLanIp(): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  const RTCPeer = (window as any).RTCPeerConnection || (window as any).webkitRTCPeerConnection
+  if (!RTCPeer) return null
+
+  return new Promise((resolve) => {
+    try {
+      const pc = new RTCPeer({ iceServers: [] })
+      pc.createDataChannel('')
+      let resolved = false
+      const finish = (ip: string | null) => {
+        if (!resolved) {
+          resolved = true
+          try {
+            pc.close()
+          } catch {}
+          resolve(ip)
+        }
+      }
+
+      pc.onicecandidate = (e: any) => {
+        if (!e || !e.candidate || !e.candidate.candidate) return
+        const cand = e.candidate.candidate
+        // Match private IPv4 address (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+        const match = cand.match(/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})/)
+        if (match && match[1]) {
+          finish(match[1])
+        }
+      }
+
+      pc.createOffer()
+        .then((offer: any) => pc.setLocalDescription(offer))
+        .catch(() => finish(null))
+
+      setTimeout(() => finish(null), 1200)
+    } catch {
+      resolve(null)
+    }
+  })
+}
 
 class BandSyncEngine {
   private channel: BroadcastChannel | null = null
@@ -53,12 +99,19 @@ class BandSyncEngine {
   private shouldReconnectWs: boolean = false
 
   private customHostIp: string = ''
+  private detectedLanIp: string = ''
 
   constructor() {
     this.initChannel()
     if (typeof window !== 'undefined') {
       this.wsLeaderIp = localStorage.getItem('gtar_band_sync_leader_ip') || ''
       this.customHostIp = localStorage.getItem('gtar_band_sync_custom_host_ip') || ''
+      detectLanIp().then((ip) => {
+        if (ip) {
+          this.detectedLanIp = ip
+          this.notify()
+        }
+      })
     }
   }
 
@@ -118,15 +171,36 @@ class BandSyncEngine {
       status = 'Disconnected'
     }
 
-    const host =
-      this.customHostIp ||
-      (typeof window !== 'undefined' && window.location.hostname
+    const browserHost =
+      typeof window !== 'undefined' && window.location.hostname
         ? window.location.hostname
-        : '127.0.0.1')
-    const leaderEndpoint =
-      host === 'localhost' || host === '127.0.0.1'
-        ? 'ws://127.0.0.1:8765'
-        : `ws://${host}:8765`
+        : ''
+    const isBrowserHostLan =
+      browserHost &&
+      browserHost !== 'localhost' &&
+      browserHost !== '127.0.0.1' &&
+      browserHost !== '::1'
+
+    let effectiveHost = ''
+    let hasLanIp = false
+
+    if (this.customHostIp) {
+      effectiveHost = this.customHostIp
+      hasLanIp = true
+    } else if (isBrowserHostLan) {
+      effectiveHost = browserHost
+      hasLanIp = true
+    } else if (this.detectedLanIp) {
+      effectiveHost = this.detectedLanIp
+      hasLanIp = true
+    } else {
+      effectiveHost = ''
+      hasLanIp = false
+    }
+
+    const leaderEndpoint = hasLanIp
+      ? `ws://${effectiveHost}:8765`
+      : 'ws://<SET-LAN-IP>:8765'
 
     return {
       role: this.role,
@@ -136,6 +210,8 @@ class BandSyncEngine {
       wsConnecting: this.wsConnecting,
       wsLeaderIp: this.wsLeaderIp,
       customHostIp: this.customHostIp,
+      detectedLanIp: this.detectedLanIp,
+      hasLanIp,
       wsStatus: status,
       roomId: 'gtar_stage_band_sync',
       leaderEndpoint,
@@ -145,18 +221,23 @@ class BandSyncEngine {
   public connectWebSocket(leaderIp: string) {
     let clean = leaderIp.trim()
     if (!clean) return
+
+    // Strip protocol
     clean = clean.replace(/^(ws:\/\/|wss:\/\/|http:\/\/|https:\/\/)/i, '')
+    // Strip trailing slashes or subpaths
+    clean = clean.split('/')[0].trim()
+
     let ipOnly = clean
     let port = '8765'
     if (clean.includes(':')) {
       const parts = clean.split(':')
-      ipOnly = parts[0]
-      port = parts[1] || '8765'
+      ipOnly = parts[0].trim()
+      port = parts[1]?.trim() || '8765'
     }
     this.wsLeaderIp = ipOnly
     this.wsPort = port
     if (typeof window !== 'undefined') {
-      localStorage.setItem('gtar_band_sync_leader_ip', ipOnly)
+      localStorage.setItem('gtar_band_sync_leader_ip', leaderIp.trim())
     }
 
     this.shouldReconnectWs = true
@@ -292,13 +373,23 @@ class BandSyncEngine {
       }
       this.dispatchSyncMessage(msg)
     } else if (data.type === 'SCROLL') {
+      const scrollVal =
+        typeof data.scroll === 'number'
+          ? data.scroll
+          : typeof data.scrollFraction === 'number'
+          ? data.scrollFraction
+          : typeof data.scrollProgress === 'number'
+          ? data.scrollProgress
+          : 0
       const msg: BandSyncMessage = {
         type: 'SCROLL_SYNC',
         senderId: 'android_leader',
         role: 'HOST',
         payload: {
-          scrollFraction: data.scroll || 0,
-          scrollTop: 0,
+          scrollFraction: scrollVal,
+          scrollProgress: scrollVal,
+          scroll: scrollVal,
+          scrollTop: typeof data.scrollTop === 'number' ? data.scrollTop : 0,
         },
         timestamp: Date.now(),
       }
@@ -426,6 +517,7 @@ class BandSyncEngine {
       rawContent?: string
       key?: string
       capo?: string
+      songId?: number | string
     }
   ) {
     if (this.role === 'HOST') {
@@ -436,32 +528,25 @@ class BandSyncEngine {
         artist: extra?.artist || '',
         queueType: qType,
         queueIndex: songIndex,
+        setlistIndex: songIndex,
         songIndex,
         songTitle,
         transpose: transposeOffset,
         transposeOffset,
+        offset: transposeOffset,
         scrollProgress: extra?.scrollProgress || 0,
+        scroll: extra?.scrollProgress || 0,
+        content: extra?.rawContent || '',
         rawContent: extra?.rawContent || '',
         key: extra?.key || '',
         capo: extra?.capo || '',
+        songId: extra?.songId ? Number(extra.songId) : undefined,
+        id: extra?.songId ? Number(extra.songId) : undefined,
       }
       this.broadcastMessage('SONG_SYNC', payload)
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         try {
-          this.ws.send(
-            JSON.stringify({
-              type: 'SONG_CHANGE',
-              title: songTitle,
-              artist: extra?.artist || '',
-              queueType: qType,
-              queueIndex: songIndex,
-              transpose: transposeOffset,
-              scrollProgress: extra?.scrollProgress || 0,
-              content: extra?.rawContent || '',
-              key: extra?.key || '',
-              capo: extra?.capo || '',
-            })
-          )
+          this.ws.send(JSON.stringify(payload))
         } catch {
           // ignore
         }
@@ -472,6 +557,33 @@ class BandSyncEngine {
   public broadcastScroll(scrollFraction: number, scrollTop: number) {
     if (this.role === 'HOST') {
       this.broadcastMessage('SCROLL_SYNC', { scrollFraction, scrollTop })
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send(
+            JSON.stringify({
+              type: 'SCROLL',
+              scroll: scrollFraction,
+            })
+          )
+        } catch {}
+      }
+    }
+  }
+
+  public broadcastTranspose(transposeOffset: number) {
+    if (this.role === 'HOST') {
+      this.broadcastMessage('SONG_SYNC', { transposeOffset })
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send(
+            JSON.stringify({
+              type: 'TRANSPOSE',
+              transposeOffset,
+              offset: transposeOffset,
+            })
+          )
+        } catch {}
+      }
     }
   }
 
@@ -482,8 +594,27 @@ class BandSyncEngine {
   }
 
   public broadcastSetlist(setlistName: string, songs: any[]) {
-    if (this.role === 'HOST') {
-      this.broadcastMessage('SETLIST_SYNC', { setlistName, songs })
+    const formattedSongs = songs.map((s) => ({
+      title: s.title || '',
+      artist: s.artist || '',
+      key: s.key || '',
+      capo: s.capo || '',
+      bpm: s.bpm || '',
+      format: s.format || 'CHORD_PRO',
+      rawContent: s.rawContent || s.content || '',
+    }))
+    const payload = {
+      type: 'SETLIST_SYNC',
+      setlistName: setlistName || 'Band Setlist',
+      songs: formattedSongs,
+    }
+    this.broadcastMessage('SETLIST_SYNC', payload)
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify(payload))
+      } catch (err) {
+        console.error('Failed to send SETLIST_SYNC over WebSocket:', err)
+      }
     }
   }
 

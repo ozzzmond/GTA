@@ -11,18 +11,16 @@ import {
   Square,
   Minus,
   Plus,
-  SlidersHorizontal,
   SkipBack,
   SkipForward,
   Radio,
   Users,
   Wifi,
   BookOpen,
-  Check,
 } from 'lucide-react'
 import { transposeKey, formatTransposeOffset } from '../utils/chordTransposer'
 import { parseGtarSong, splitSongLinesForColumns } from '../utils/songParser'
-import { metronome, type MetronomeState } from '../utils/metronome'
+import { metronome } from '../utils/metronome'
 import { bandSync, type BandSyncState } from '../utils/bandSync'
 import { getChordVoicing, type ChordVoicing } from '../utils/chordDictionary'
 import { SongLineRenderer } from './SongLineRenderer'
@@ -71,14 +69,10 @@ export const StageView: React.FC<StageViewProps> = ({
   activeSongIndex,
   onSelectSongIndex,
   queueMode = 'library',
-  onToggleQueueMode,
   isInSetlistMode: propIsInSetlistMode = false,
   activeSetlistSongs = [],
   activeSetlistSongIndex = 0,
   onSelectSetlistSongIndex,
-  activeSetlistName,
-  setlists = [],
-  onSelectSetlist,
   onOpenSetlistDrawer,
   transposeOffset,
   onTransposeChange,
@@ -109,37 +103,12 @@ export const StageView: React.FC<StageViewProps> = ({
   const [isSpeedPromptOpen, setIsSpeedPromptOpen] = useState(false)
   const [speedInputText, setSpeedInputText] = useState('35')
   const [isBandSyncModalOpen, setIsBandSyncModalOpen] = useState(false)
-  const [isQueueDropdownOpen, setIsQueueDropdownOpen] = useState(false)
-  const queueDropdownRef = useRef<HTMLDivElement>(null)
-
-  // Metronome State & Beat pulse (matching MetronomeEngine state in Android)
-  const [metroState, setMetroState] = useState<MetronomeState>(() => metronome.getState())
-  const [activeBeat, setActiveBeat] = useState<number>(1)
-  const [isBeatFlash, setIsBeatFlash] = useState(false)
 
   // Band Sync State
   const [syncState, setSyncState] = useState<BandSyncState>(() => bandSync.getState())
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollAnimRef = useRef<number | null>(null)
-
-  // Click outside to close queue dropdown
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        queueDropdownRef.current &&
-        !queueDropdownRef.current.contains(e.target as Node)
-      ) {
-        setIsQueueDropdownOpen(false)
-      }
-    }
-    if (isQueueDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isQueueDropdownOpen])
 
   // Parse song with native v1.0.42 parser and active transpose offset
   const parsedSong = parseGtarSong(song.rawContent, transposeOffset)
@@ -159,27 +128,49 @@ export const StageView: React.FC<StageViewProps> = ({
             onTransposeChange(msg.payload.transposeOffset)
           }
           if (typeof msg.payload.scrollProgress === 'number') {
+            const fraction = msg.payload.scrollProgress
             const container = scrollContainerRef.current
             if (container) {
               const maxScroll = container.scrollHeight - container.clientHeight
               if (maxScroll > 0) {
                 container.scrollTo({
-                  top: msg.payload.scrollProgress * maxScroll,
+                  top: fraction * maxScroll,
                   behavior: 'smooth',
                 })
               }
             }
+            if (typeof window !== 'undefined') {
+              const winMax = document.documentElement.scrollHeight - window.innerHeight
+              if (winMax > 0) {
+                window.scrollTo({ top: fraction * winMax, behavior: 'smooth' })
+              }
+            }
           }
         } else if (msg.type === 'SCROLL_SYNC' && msg.payload) {
+          const fraction =
+            typeof msg.payload.scrollFraction === 'number'
+              ? msg.payload.scrollFraction
+              : typeof msg.payload.scrollProgress === 'number'
+              ? msg.payload.scrollProgress
+              : typeof msg.payload.scroll === 'number'
+              ? msg.payload.scroll
+              : 0
+
           const container = scrollContainerRef.current
           if (container) {
             const maxScroll = container.scrollHeight - container.clientHeight
             if (maxScroll > 0) {
               const targetTop =
-                msg.payload.scrollTop !== undefined
+                msg.payload.scrollTop !== undefined && msg.payload.scrollTop > 0
                   ? msg.payload.scrollTop
-                  : msg.payload.scrollFraction * maxScroll
+                  : fraction * maxScroll
               container.scrollTo({ top: targetTop, behavior: 'smooth' })
+            }
+          }
+          if (typeof window !== 'undefined') {
+            const winMax = document.documentElement.scrollHeight - window.innerHeight
+            if (winMax > 0) {
+              window.scrollTo({ top: fraction * winMax, behavior: 'smooth' })
             }
           }
         } else if (msg.type === 'AUTOSCROLL_SYNC' && msg.payload) {
@@ -226,26 +217,11 @@ export const StageView: React.FC<StageViewProps> = ({
     syncState.role,
   ])
 
-  // Metronome subscription & sync with song BPM
+  // Metronome sync with song BPM
   useEffect(() => {
     const songBpmNum = parseInt(song.bpm, 10)
     if (!isNaN(songBpmNum) && songBpmNum >= 30 && songBpmNum <= 300) {
       metronome.setBpm(songBpmNum)
-    }
-
-    const unsubState = metronome.subscribe((st) => {
-      setMetroState(st)
-    })
-
-    const unsubBeat = metronome.onBeat((beat) => {
-      setActiveBeat(beat)
-      setIsBeatFlash(true)
-      setTimeout(() => setIsBeatFlash(false), 120)
-    })
-
-    return () => {
-      unsubState()
-      unsubBeat()
     }
   }, [song.bpm])
 
@@ -448,164 +424,10 @@ export const StageView: React.FC<StageViewProps> = ({
       {/* 1. TOP APP BAR (Exact 1:1 Jetpack Compose SongViewerScreen.kt)       */}
       {/* =================================================================== */}
       <div className="border-b border-[#1A4A55] bg-[#073642] px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3 z-20 shadow-md">
-        {/* Left Side: Navigation / Interactive Queue Switcher + Title & Artist */}
+        {/* Left Side: Song Title & Artist */}
         <div className="flex items-center gap-3">
-          <div className="relative" ref={queueDropdownRef}>
-            <button
-              type="button"
-              onClick={() => setIsQueueDropdownOpen((prev) => !prev)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer shadow-sm ${
-                isInSetlistMode
-                  ? 'bg-[#002B36] border-[#B58900] text-[#B58900] hover:bg-[#B58900]/10'
-                  : 'bg-[#002B36] border-[#1A4A55] text-[#EEE8D5] hover:border-[#2AA198] hover:text-[#2AA198]'
-              }`}
-              title="Click to switch stage playback queue between Full Library and Active Setlist"
-            >
-              {isInSetlistMode ? (
-                <ListMusic className="w-4 h-4 text-[#B58900]" />
-              ) : (
-                <BookOpen className="w-4 h-4 text-[#2AA198]" />
-              )}
-              <span className="hidden sm:inline font-bold">
-                {isInSetlistMode ? 'Setlist' : 'Library'}
-              </span>
-              <span
-                className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                  isInSetlistMode
-                    ? 'bg-[#B58900]/25 text-[#B58900]'
-                    : 'bg-[#2AA198]/20 text-[#2AA198]'
-                }`}
-              >
-                {isInSetlistMode
-                  ? `${activeSetlistSongIndex + 1}/${activeSetlistSongs.length || 1}`
-                  : `${activeSongIndex + 1}/${songs.length}`}
-              </span>
-              <ChevronDown
-                className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                  isQueueDropdownOpen ? 'rotate-180 text-[#2AA198]' : 'text-[#93A1A1]'
-                }`}
-              />
-            </button>
-
-            {/* Dynamic Queue Mode Switcher Dropdown Menu */}
-            {isQueueDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 z-50 w-72 rounded-2xl bg-[#073642] border border-[#1A4A55] shadow-2xl overflow-hidden py-1 animate-fade-in text-[#EEE8D5]">
-                <div className="px-3.5 py-2 text-[10px] font-mono font-bold uppercase tracking-wider text-[#93A1A1] border-b border-[#1A4A55] flex items-center justify-between">
-                  <span>STAGE PLAYBACK QUEUE</span>
-                  <span className="text-[#2AA198]">SCOPE</span>
-                </div>
-
-                {/* Option 1: Full Library */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onToggleQueueMode) onToggleQueueMode('library')
-                    setIsQueueDropdownOpen(false)
-                  }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs transition-colors cursor-pointer text-left ${
-                    !isInSetlistMode
-                      ? 'bg-[#002B36] text-[#2AA198] font-bold border-l-2 border-[#2AA198]'
-                      : 'hover:bg-[#002B36] text-[#EEE8D5]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <BookOpen className="w-4 h-4 text-[#2AA198] shrink-0" />
-                    <div>
-                      <div className="font-bold">Full Library</div>
-                      <div className="text-[10px] text-[#93A1A1] font-mono">
-                        {songs.length} total songbook songs
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#2AA198]/20 text-[#2AA198] font-bold">
-                      {activeSongIndex + 1}/{songs.length}
-                    </span>
-                    {!isInSetlistMode && <Check className="w-3.5 h-3.5 text-[#2AA198]" />}
-                  </div>
-                </button>
-
-                {/* Option 2: Active Setlist */}
-                {(activeSetlistSongs.length > 0 || (setlists && setlists.length > 0)) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onToggleQueueMode) onToggleQueueMode('setlist')
-                      setIsQueueDropdownOpen(false)
-                    }}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs transition-colors cursor-pointer text-left ${
-                      isInSetlistMode
-                        ? 'bg-[#002B36] text-[#B58900] font-bold border-l-2 border-[#B58900]'
-                        : 'hover:bg-[#002B36] text-[#EEE8D5]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <ListMusic className="w-4 h-4 text-[#B58900] shrink-0" />
-                      <div className="min-w-0">
-                        <div className="font-bold truncate">
-                          {activeSetlistName || 'Active Setlist'}
-                        </div>
-                        <div className="text-[10px] text-[#93A1A1] font-mono">
-                          {activeSetlistSongs.length || 1} gig song
-                          {activeSetlistSongs.length !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#B58900]/20 text-[#B58900] font-bold">
-                        {activeSetlistSongIndex + 1}/{activeSetlistSongs.length || 1}
-                      </span>
-                      {isInSetlistMode && <Check className="w-3.5 h-3.5 text-[#B58900]" />}
-                    </div>
-                  </button>
-                )}
-
-                {/* Additional Setlists Quick Select */}
-                {setlists && setlists.length > 1 && (
-                  <div className="border-t border-[#1A4A55] pt-1 mt-1">
-                    <div className="px-3.5 py-1 text-[9px] font-bold uppercase tracking-wider text-[#93A1A1]">
-                      Switch Setlist
-                    </div>
-                    {setlists.map((sl) => (
-                      <button
-                        key={sl.id}
-                        type="button"
-                        onClick={() => {
-                          if (onSelectSetlist) onSelectSetlist(sl.id)
-                          if (onToggleQueueMode) onToggleQueueMode('setlist')
-                          setIsQueueDropdownOpen(false)
-                        }}
-                        className="w-full flex items-center justify-between px-3.5 py-1.5 text-xs text-[#EEE8D5] hover:bg-[#002B36] hover:text-[#B58900] transition-colors cursor-pointer text-left"
-                      >
-                        <span className="truncate">{sl.name}</span>
-                        <span className="text-[10px] font-mono text-[#93A1A1] shrink-0">
-                          {sl.songs.length}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Drawer shortcut */}
-                <div className="border-t border-[#1A4A55] p-1.5 bg-[#002B36]/60">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsQueueDropdownOpen(false)
-                      onOpenSetlistDrawer()
-                    }}
-                    className="w-full py-1.5 rounded-lg text-center text-xs font-bold text-[#2AA198] hover:bg-[#2AA198]/15 transition-colors cursor-pointer"
-                  >
-                    Manage Setlists & Library...
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Title & Artist (Compose typography) */}
           <div className="min-w-0">
-            <h1 className="text-base sm:text-lg font-extrabold text-[#EEE8D5] tracking-tight leading-tight truncate max-w-[200px] sm:max-w-xs md:max-w-md">
+            <h1 className="text-base sm:text-lg font-extrabold text-[#EEE8D5] tracking-tight leading-tight truncate max-w-[240px] sm:max-w-xs md:max-w-md">
               {song.title || 'Untitled Song'}
             </h1>
             {song.artist && (
@@ -774,30 +596,6 @@ export const StageView: React.FC<StageViewProps> = ({
               </>
             )}
           </button>
-
-          {/* Stage Tools (Metronome & Guitar Tuner with pulsing green LED dot) */}
-          <button
-            type="button"
-            onClick={() => metronome.toggle()}
-            className="relative p-2 rounded-lg bg-[#002B36] border border-[#1A4A55] text-[#EEE8D5] hover:text-[#2AA198] transition-colors cursor-pointer"
-            title="Toggle Stage Metronome (Audio & Visual)"
-          >
-            <SlidersHorizontal
-              className={`w-4 h-4 ${metroState.isRunning ? 'text-[#10B981]' : 'text-[#B58900]'}`}
-            />
-            {metroState.isRunning && (
-              <span
-                className={`absolute top-1 right-1 w-2 h-2 rounded-full transition-all ${
-                  isBeatFlash
-                    ? activeBeat === 1
-                      ? 'bg-[#B58900] scale-125 shadow-sm shadow-[#B58900]'
-                      : 'bg-[#10B981] scale-110 shadow-sm shadow-[#10B981]'
-                    : 'bg-[#10B981]'
-                }`}
-              />
-            )}
-          </button>
-
           {/* Stage Focus Mode (Fullscreen) */}
           <button
             type="button"
@@ -833,8 +631,7 @@ export const StageView: React.FC<StageViewProps> = ({
                   }
                 />
               )}
-            <MetaBadge label={isTwoColumn ? '2 COLUMNS' : parsedSong.format.replace('_', ' ')} />
-            {song.bpm && <MetaBadge label={`${song.bpm} BPM`} />}
+            <MetaBadge label={isTwoColumn ? '2 COLUMNS' : '1 COLUMN'} />
           </div>
 
           {/* HorizontalDivider (color = customColors.divider, thickness = 1.dp) */}
@@ -883,12 +680,12 @@ export const StageView: React.FC<StageViewProps> = ({
       {/* =================================================================== */}
       {/* 3. BOTTOM BAR (Gig Navigation Strip & Floating Glassmorphic Stage)   */}
       {/* =================================================================== */}
-      <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2.5 pointer-events-none w-[calc(100%-2rem)] max-w-md sm:max-w-lg">
+      <div className="absolute bottom-4 sm:bottom-6 right-4 sm:right-6 z-30 flex flex-col items-end gap-2.5 pointer-events-none">
         {/* Dynamic Gig Performance Navigation Strip (Strictly navigates within current active scope) */}
         {((isInSetlistMode && activeSetlistSongs.length > 1) ||
           (!isInSetlistMode && songs.length > 1)) && (
           <div
-            className="pointer-events-auto w-full flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-2xl bg-[#073642]/95 border backdrop-blur-md shadow-xl text-xs font-mono select-none"
+            className="pointer-events-auto flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-2xl bg-[#073642]/95 border backdrop-blur-md shadow-xl text-xs font-mono select-none"
             style={{
               borderColor: isInSetlistMode ? 'rgba(181, 137, 0, 0.45)' : 'rgba(42, 161, 152, 0.45)',
             }}
@@ -920,13 +717,13 @@ export const StageView: React.FC<StageViewProps> = ({
 
             <button
               type="button"
-              onClick={() => setIsQueueDropdownOpen(true)}
+              onClick={onOpenSetlistDrawer}
               className={`px-2.5 py-1 rounded-lg font-extrabold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer ${
                 isInSetlistMode
                   ? 'bg-[#B58900]/15 text-[#B58900] hover:bg-[#B58900]/25'
                   : 'bg-[#2AA198]/20 text-[#2AA198] hover:bg-[#2AA198]/30'
               }`}
-              title="Click to switch stage queue scope"
+              title="Click to open setlists and library drawer"
             >
               {isInSetlistMode ? (
                 <ListMusic className="w-3.5 h-3.5" />
@@ -972,7 +769,7 @@ export const StageView: React.FC<StageViewProps> = ({
         )}
 
         {/* Floating Glassmorphic Stage Controller (Compose lines 742-848) */}
-        <div className="pointer-events-auto w-full flex items-center justify-between gap-2.5 sm:gap-3 bg-[#073642]/95 backdrop-blur-md px-3 sm:px-4 py-2 rounded-2xl border border-[#1A4A55] shadow-2xl shadow-black/80">
+        <div className="pointer-events-auto flex items-center gap-2.5 sm:gap-3 bg-[#073642]/95 backdrop-blur-md px-3 sm:px-4 py-2 rounded-2xl border border-[#1A4A55] shadow-2xl shadow-black/80">
           {/* Primary Stage Play/Pause Action Button */}
           <button
             type="button"

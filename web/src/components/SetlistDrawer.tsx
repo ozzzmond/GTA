@@ -31,6 +31,7 @@ interface SetlistDrawerProps {
   onDeleteSetlist?: (setlistId: string | number) => void
   onDeleteSong: (index: number) => void
   onNewSong: () => void
+  onNewSetlist?: () => void
 }
 
 export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
@@ -48,6 +49,7 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
   onDeleteSetlist,
   onDeleteSong,
   onNewSong,
+  onNewSetlist,
 }) => {
   const [drawerTab, setDrawerTab] = useState<'songbook' | 'setlists'>('songbook')
   const [searchQuery, setSearchQuery] = useState('')
@@ -468,24 +470,49 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
           )}
         </div>
 
-        {/* Drawer Bottom Action Bar: + New Song Button */}
+        {/* Drawer Bottom Action Bar: Contextual (+ New Song vs + New Setlist) */}
         <div className="p-3 bg-[#002B36] border-t border-[#1A4A55] flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              onNewSong()
-              onClose()
-            }}
-            className="w-full py-2.5 px-4 rounded-xl bg-[#2AA198] text-[#002B36] font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#35B8AD] transition-all cursor-pointer shadow-md active:scale-95 select-none"
-            title="Create a new blank song template in Desktop Editor"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>+ New Song</span>
-          </button>
+          {drawerTab === 'songbook' ? (
+            <button
+              type="button"
+              onClick={() => {
+                onNewSong()
+                onClose()
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#2AA198] text-[#002B36] font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#35B8AD] transition-all cursor-pointer shadow-md active:scale-95 select-none"
+              title="Create a new blank song template in Desktop Editor"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>New Song</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (onNewSetlist) {
+                  onNewSetlist()
+                }
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#B58900] text-[#002B36] font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#B58900]/90 transition-all cursor-pointer shadow-md active:scale-95 select-none"
+              title="Create a new empty setlist"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>New Setlist</span>
+            </button>
+          )}
 
           <div className="flex items-center justify-between text-[10px] font-mono text-[#93A1A1] px-1">
-            <span>Active: {songs[activeSongIndex]?.title || 'None'}</span>
-            <span className="text-[#2AA198]">{songs.length} total</span>
+            {drawerTab === 'songbook' ? (
+              <>
+                <span>Active: {songs[activeSongIndex]?.title || 'None'}</span>
+                <span className="text-[#2AA198]">{songs.length} total</span>
+              </>
+            ) : (
+              <>
+                <span>Active Setlist: {setlists.find((s: any) => s.id === activeSetlistId)?.name || 'None'}</span>
+                <span className="text-[#B58900]">{setlists.length} setlists</span>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -303,7 +303,7 @@ fun HomeScreen(
                                             Spacer(modifier = Modifier.width(4.dp))
                                         }
                                         Text(
-                                            text = "v${BuildConfig.VERSION_NAME}",
+                                            text = if (BuildConfig.VERSION_NAME.startsWith("v")) BuildConfig.VERSION_NAME else "v${BuildConfig.VERSION_NAME}",
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold

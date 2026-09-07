@@ -111,3 +111,102 @@ body {
 .chord-sheet-container .lyrics {
   color: #FDF6E3;
 }
+
+/* ========================================================================== */
+/* Stage Theme Palettes (Amber, OLED, Paper Light)                            */
+/* ========================================================================== */
+body.theme-amber-stage {
+  background-color: #0d131a;
+  color: #FDF6E3;
+}
+body.theme-amber-stage header,
+body.theme-amber-stage .bg-\[\#073642\] {
+  background-color: #151e28 !important;
+}
+body.theme-amber-stage .bg-\[\#002B36\] {
+  background-color: #0d131a !important;
+}
+body.theme-amber-stage .border-\[\#1A4A55\] {
+  border-color: #2a3746 !important;
+}
+
+body.theme-oled-black {
+  background-color: #000000;
+  color: #FFFFFF;
+}
+body.theme-oled-black header,
+body.theme-oled-black .bg-\[\#073642\] {
+  background-color: #0d0d0d !important;
+}
+body.theme-oled-black .bg-\[\#002B36\] {
+  background-color: #000000 !important;
+}
+body.theme-oled-black .border-\[\#1A4A55\] {
+  border-color: #222222 !important;
+}
+
+body.theme-paper-light {
+  background-color: #f4ecd8 !important;
+  color: #111827 !important;
+}
+body.theme-paper-light header,
+body.theme-paper-light .bg-\[\#073642\] {
+  background-color: #ebe0c7 !important;
+  color: #111827 !important;
+}
+body.theme-paper-light .bg-\[\#002B36\] {
+  background-color: #dfd2b5 !important;
+  color: #111827 !important;
+}
+body.theme-paper-light .text-\[\#FDF6E3\],
+body.theme-paper-light .text-\[\#EEE8D5\] {
+  color: #111827 !important;
+}
+body.theme-paper-light .text-\[\#93A1A1\] {
+  color: #4b5563 !important;
+}
+body.theme-paper-light .border-\[\#1A4A55\] {
+  border-color: #d2c3a3 !important;
+}
+
+/* Lyrics & Text in Paper Theme: deep dark charcoal/black */
+body.theme-paper-light div[style*="color: rgb(238, 232, 213)"],
+body.theme-paper-light div[style*="color: #EEE8D5"],
+body.theme-paper-light span[style*="color: rgb(238, 232, 213)"],
+body.theme-paper-light span[style*="color: #EEE8D5"],
+body.theme-paper-light .stage-lyric-text,
+body.theme-paper-light .chord-sheet-container .lyrics {
+  color: #111827 !important;
+}
+
+/* Chords in Paper Theme: rich readable burnt amber / brown (#b45309) */
+body.theme-paper-light div[style*="color: rgb(181, 137, 0)"],
+body.theme-paper-light div[style*="color: #B58900"],
+body.theme-paper-light span[style*="color: rgb(181, 137, 0)"],
+body.theme-paper-light span[style*="color: #B58900"],
+body.theme-paper-light .stage-chord-text,
+body.theme-paper-light .text-\[\#B58900\],
+body.theme-paper-light .chord-sheet-container .chord {
+  color: #b45309 !important;
+  font-weight: 800 !important;
+}
+
+/* Section Headers in Paper Theme: bold dark indigo (#4338ca) */
+body.theme-paper-light div[style*="color: rgb(139, 92, 246)"],
+body.theme-paper-light div[style*="color: #8B5CF6"],
+body.theme-paper-light span[style*="color: rgb(139, 92, 246)"],
+body.theme-paper-light span[style*="color: #8B5CF6"],
+body.theme-paper-light .stage-section-header,
+body.theme-paper-light .chord-sheet-container .comment {
+  color: #4338ca !important;
+  font-weight: 800 !important;
+}
+
+/* Tab lines in Paper Theme: clear teal/navy */
+body.theme-paper-light div[style*="color: rgb(53, 184, 173)"],
+body.theme-paper-light div[style*="color: #35B8AD"],
+body.theme-paper-light .stage-tab-text {
+  color: #0f766e !important;
+  font-weight: 700 !important;
+}
+
