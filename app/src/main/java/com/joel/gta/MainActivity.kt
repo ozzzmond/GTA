@@ -225,14 +225,15 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             },
-                            onRestoreBackup = { srcUri ->
+                            onRestoreBackup = { srcUri, wipeAndReplace ->
                                 viewModel.restoreBackupFromUri(
                                     context = context,
                                     uri = srcUri,
+                                    wipeAndReplace = wipeAndReplace,
                                     onResult = { summary ->
                                         Toast.makeText(
                                             context,
-                                            "${summary.songsRestored} songs and ${summary.setlistsRestored} setlists restored/merged!",
+                                            "Successfully restored ${summary.songsRestored} songs and ${summary.setlistsRestored} setlists",
                                             Toast.LENGTH_LONG
                                         ).show()
                                     },

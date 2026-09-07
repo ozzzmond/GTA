@@ -41,6 +41,12 @@ interface SetlistDao {
     @Query("DELETE FROM setlist_songs WHERE setlistId = :setlistId AND songId = :songId")
     suspend fun removeSongFromSetlist(setlistId: Long, songId: Long)
 
+    @Query("DELETE FROM setlists")
+    suspend fun deleteAllSetlists()
+
+    @Query("DELETE FROM setlist_songs")
+    suspend fun deleteAllCrossRefs()
+
     @Delete
     suspend fun deleteSetlist(setlist: SetlistEntity)
 }

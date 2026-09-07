@@ -50,7 +50,7 @@ export const KeyPickerModal: React.FC<KeyPickerModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-[#FDF6E3]">Stage Key & Transpose Engine</h2>
-              <p className="text-[11px] font-mono text-[#93A1A1]">GTAR v1.0.40 Real-time Pitch Pitcher</p>
+              <p className="text-[11px] font-mono text-[#93A1A1]">GTAR v1.0.42 Real-time Pitch Pitcher</p>
             </div>
           </div>
           <button

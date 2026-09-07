@@ -40,6 +40,13 @@ sealed class SyncMessage {
     ) : SyncMessage()
 
     /**
+     * Broadcast by the Host when the key transpose offset is changed.
+     */
+    data class TransposeSync(
+        val transposeOffset: Int
+    ) : SyncMessage()
+
+    /**
      * Broadcast by the Host when the stage metronome tempo is adjusted or started/stopped.
      */
     data class TempoSync(
@@ -64,6 +71,7 @@ sealed class SyncMessage {
         private const val TYPE_SONG = "SONG"
         private const val TYPE_SONG_CHANGE = "SONG_CHANGE"
         private const val TYPE_SCROLL = "SCROLL"
+        private const val TYPE_TRANSPOSE = "TRANSPOSE"
         private const val TYPE_TEMPO = "TEMPO"
         private const val TYPE_JOIN = "JOIN"
         private const val TYPE_PING = "PING"
@@ -101,6 +109,11 @@ sealed class SyncMessage {
                 is ScrollSync -> {
                     json.put("type", TYPE_SCROLL)
                     json.put("scroll", message.scrollFraction.toDouble())
+                }
+                is TransposeSync -> {
+                    json.put("type", TYPE_TRANSPOSE)
+                    json.put("transposeOffset", message.transposeOffset)
+                    json.put("offset", message.transposeOffset)
                 }
                 is TempoSync -> {
                     json.put("type", TYPE_TEMPO)
@@ -158,6 +171,9 @@ sealed class SyncMessage {
                     }
                     TYPE_SCROLL -> ScrollSync(
                         scrollFraction = json.getDouble("scroll").toFloat().coerceIn(0f, 1f)
+                    )
+                    TYPE_TRANSPOSE -> TransposeSync(
+                        transposeOffset = if (json.has("transposeOffset")) json.getInt("transposeOffset") else json.optInt("offset", 0)
                     )
                     TYPE_TEMPO -> TempoSync(
                         bpm = json.getInt("bpm"),

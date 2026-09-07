@@ -314,7 +314,7 @@ export function convertChordProToTwoLine(line: string): [string, string] {
 }
 
 /**
- * Parses raw song text into a structured ParsedGtarSong model matching Android v1.0.40.
+ * Parses raw song text into a structured ParsedGtarSong model matching Android v1.0.42.
  */
 export function parseGtarSong(rawText: string, transposeOffset: number = 0): ParsedGtarSong {
   const lines = rawText.split('\n')
@@ -557,7 +557,7 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
 
 /**
  * Splits song lines into two columns for widescreen desktop displays,
- * preferring a section header boundary near the middle (exact v1.0.40 algorithm).
+ * preferring a section header boundary near the middle (exact v1.0.42 algorithm).
  */
 export function splitSongLinesForColumns(lines: SongLine[]): [SongLine[], SongLine[]] {
   if (lines.length <= 4) {

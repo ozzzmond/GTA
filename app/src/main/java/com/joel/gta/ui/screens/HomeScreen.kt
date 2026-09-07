@@ -114,7 +114,7 @@ fun HomeScreen(
     onExportBackupSaf: (Uri) -> Unit = {},
     onExportSetlistShare: (SetlistWithSongs) -> Unit = {},
     onExportSetlistSaf: (SetlistWithSongs, Uri) -> Unit = { _, _ -> },
-    onRestoreBackup: (Uri) -> Unit = {},
+    onRestoreBackup: (Uri, Boolean) -> Unit = { _, _ -> },
     onOpenSettings: () -> Unit = {},
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
@@ -222,12 +222,14 @@ fun HomeScreen(
         }
     }
 
+    var isWipeAndReplaceRestore by remember { mutableStateOf(false) }
+
     // SAF Backup Restore Picker launcher - accepts .json files
     val backupPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
-            onRestoreBackup(uri)
+            onRestoreBackup(uri, isWipeAndReplaceRestore)
         }
     }
 
@@ -2191,12 +2193,62 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Option 2: Restore Backup (Smart Merge)
+                    // Option 2: Full Restore (Wipe & Replace)
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
                                 showBackupRestoreDialog = false
+                                isWipeAndReplaceRestore = true
+                                backupPickerLauncher.launch(
+                                    arrayOf(
+                                        "application/json",
+                                        "application/octet-stream",
+                                        "text/plain",
+                                        "*/*"
+                                    )
+                                )
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = customColors.canvasBackground,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteSweep,
+                                contentDescription = null,
+                                tint = Color(0xFFEF5350),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Full Restore (Wipe & Replace)",
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textPrimary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = "Resets current songs & setlists, then imports complete backup",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = customColors.textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Option 3: Restore Backup (Smart Merge)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showBackupRestoreDialog = false
+                                isWipeAndReplaceRestore = false
                                 backupPickerLauncher.launch(
                                     arrayOf(
                                         "application/json",
@@ -2229,7 +2281,7 @@ fun HomeScreen(
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
-                                    text = "Select backup .json file from Device or Google Drive",
+                                    text = "Updates existing songs and appends new ones safely",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = customColors.textSecondary
                                 )

@@ -1,8 +1,7 @@
 package com.joel.gta.data.sync
 
 import android.content.Context
-import android.net.nsd.NsdManager
-import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -11,12 +10,16 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.PrintWriter
+import org.java_websocket.WebSocket
+import org.java_websocket.client.WebSocketClient
+import org.java_websocket.handshake.ClientHandshake
+import org.java_websocket.handshake.ServerHandshake
+import org.java_websocket.server.WebSocketServer
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.InetAddress
-import java.net.ServerSocket
-import java.net.Socket
+import java.net.InetSocketAddress
+import java.net.URI
 import java.util.concurrent.CopyOnWriteArrayList
 
 enum class BandSyncRole {
@@ -48,7 +51,6 @@ data class BandSyncState(
 
 class BandSyncManager(private val context: Context) {
 
-    private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val _syncState = MutableStateFlow(BandSyncState())
@@ -57,288 +59,308 @@ class BandSyncManager(private val context: Context) {
     private val _incomingMessages = MutableSharedFlow<SyncMessage>(extraBufferCapacity = 64)
     val incomingMessages: SharedFlow<SyncMessage> = _incomingMessages.asSharedFlow()
 
-    // Host Server references
-    private var serverSocket: ServerSocket? = null
-    private var registrationListener: NsdManager.RegistrationListener? = null
-    private val activeClients = CopyOnWriteArrayList<ClientConnection>()
+    // Host WebSocket Server references
+    private var wsServer: GtarWsServer? = null
+    private var udpBroadcastJob: Job? = null
 
-    // Client Socket references
-    private var clientSocket: Socket? = null
-    private var clientWriter: PrintWriter? = null
-    private var discoveryListener: NsdManager.DiscoveryListener? = null
+    // Client WebSocket references
+    private var wsClient: GtarWsClient? = null
+    private var udpListenJob: Job? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
 
-    private val SERVICE_TYPE = "_gtasync._tcp."
     private val DEFAULT_PORT = 8765
+    private val UDP_BEACON_PREFIX = "GTAR_LEADER:"
 
-    private data class ClientConnection(
-        val socket: Socket,
-        val writer: PrintWriter,
-        var name: String = "Band Member"
-    )
+    private inner class GtarWsServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
+        private val clientMap = mutableMapOf<WebSocket, String>()
+
+        override fun onStart() {
+            _syncState.value = _syncState.value.copy(
+                statusMessage = "Host active on WebSocket port $port. Ready for band members.",
+                hostIp = getLocalIpAddress()
+            )
+        }
+
+        override fun onOpen(conn: WebSocket?, handshake: ClientHandshake?) {
+            if (conn != null) {
+                clientMap[conn] = "Band Member"
+                updateHostClients()
+            }
+        }
+
+        override fun onClose(conn: WebSocket?, code: Int, reason: String?, remote: Boolean) {
+            if (conn != null) {
+                clientMap.remove(conn)
+                updateHostClients()
+            }
+        }
+
+        override fun onMessage(conn: WebSocket?, message: String?) {
+            if (message != null && conn != null) {
+                val parsed = SyncMessage.deserialize(message)
+                if (parsed is SyncMessage.ClientJoin) {
+                    clientMap[conn] = parsed.clientName
+                    updateHostClients()
+                } else if (parsed != null) {
+                    _incomingMessages.tryEmit(parsed)
+                }
+            }
+        }
+
+        override fun onError(conn: WebSocket?, ex: Exception?) {
+            // Log or ignore non-fatal socket issues
+        }
+
+        private fun updateHostClients() {
+            val names = clientMap.values.toList()
+            _syncState.value = _syncState.value.copy(
+                connectedClientsCount = names.size,
+                connectedClientNames = names
+            )
+        }
+    }
+
+    private inner class GtarWsClient(serverUri: URI) : WebSocketClient(serverUri) {
+        override fun onOpen(handshakedata: ServerHandshake?) {
+            val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+            val joinMsg = SyncMessage.serialize(SyncMessage.ClientJoin(deviceName))
+            send(joinMsg)
+
+            _syncState.value = _syncState.value.copy(
+                isConnectedToHost = true,
+                currentHostName = uri.host,
+                statusMessage = "Connected to Band Leader at ${uri.host}!"
+            )
+        }
+
+        override fun onMessage(message: String?) {
+            if (message != null) {
+                val parsed = SyncMessage.deserialize(message)
+                if (parsed != null) {
+                    _incomingMessages.tryEmit(parsed)
+                }
+            }
+        }
+
+        override fun onClose(code: Int, reason: String?, remote: Boolean) {
+            _syncState.value = _syncState.value.copy(
+                isConnectedToHost = false,
+                statusMessage = "Disconnected from Band Leader."
+            )
+        }
+
+        override fun onError(ex: Exception?) {
+            _syncState.value = _syncState.value.copy(
+                isConnectedToHost = false,
+                statusMessage = "Connection error: ${ex?.localizedMessage ?: "Unknown error"}"
+            )
+        }
+    }
 
     /**
-     * Starts Host Mode (Band Leader).
-     * Binds ServerSocket and advertises via NSD.
+     * Starts Host Mode (Band Leader):
+     * - Binds WebSocket server on port 8765
+     * - Broadcasts periodic UDP beacon to 255.255.255.255:8765
      */
     fun startHost(port: Int = DEFAULT_PORT) {
         stopAll()
+        val localIp = getLocalIpAddress()
         _syncState.value = _syncState.value.copy(
             role = BandSyncRole.HOST,
             hostPort = port,
-            statusMessage = "Starting Host on port $port..."
+            hostIp = localIp,
+            statusMessage = "Starting Host WebSocket on port $port..."
         )
 
         scope.launch {
             try {
-                serverSocket = ServerSocket(port)
-                registerNsdService(port)
+                val server = GtarWsServer(port)
+                server.isReuseAddr = true
+                server.start()
+                wsServer = server
 
-                _syncState.value = _syncState.value.copy(
-                    statusMessage = "Host active on port $port. Ready for band members.",
-                    hostIp = getLocalIpAddress()
-                )
-
-                while (isActive && serverSocket?.isClosed == false) {
-                    val socket = serverSocket?.accept() ?: break
-                    val writer = PrintWriter(socket.getOutputStream(), true)
-                    val conn = ClientConnection(socket, writer)
-                    activeClients.add(conn)
-                    updateHostClientCount()
-
-                    // Handle messages from this client
-                    launch {
-                        handleClientMessages(conn)
-                    }
-                }
+                // Start periodic UDP broadcast beacon
+                startUdpBeacon(port)
             } catch (e: Exception) {
-                if (isActive) {
-                    _syncState.value = _syncState.value.copy(
-                        statusMessage = "Host error: ${e.localizedMessage}"
-                    )
-                }
+                _syncState.value = _syncState.value.copy(
+                    statusMessage = "Host start failed: ${e.localizedMessage}"
+                )
             }
         }
     }
 
-    private suspend fun handleClientMessages(conn: ClientConnection) = withContext(Dispatchers.IO) {
-        try {
-            val reader = BufferedReader(InputStreamReader(conn.socket.getInputStream()))
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                line?.let { msgStr ->
-                    val parsed = SyncMessage.deserialize(msgStr)
-                    if (parsed is SyncMessage.ClientJoin) {
-                        conn.name = parsed.clientName
-                        updateHostClientCount()
-                    } else if (parsed != null) {
-                        _incomingMessages.emit(parsed)
+    private fun startUdpBeacon(port: Int) {
+        udpBroadcastJob?.cancel()
+        udpBroadcastJob = scope.launch(Dispatchers.IO) {
+            val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+            val beaconMessage = "$UDP_BEACON_PREFIX$deviceName:$port"
+            val beaconBytes = beaconMessage.toByteArray(Charsets.UTF_8)
+
+            var socket: DatagramSocket? = null
+            try {
+                socket = DatagramSocket()
+                socket.broadcast = true
+                val broadcastAddress = InetAddress.getByName("255.255.255.255")
+                val packet = DatagramPacket(beaconBytes, beaconBytes.size, broadcastAddress, port)
+
+                while (isActive) {
+                    try {
+                        socket.send(packet)
+                    } catch (_: Exception) {
                     }
+                    delay(1500)
                 }
+            } catch (_: Exception) {
+            } finally {
+                socket?.close()
             }
-        } catch (_: Exception) {
-        } finally {
-            activeClients.remove(conn)
-            runCatching { conn.socket.close() }
-            updateHostClientCount()
         }
-    }
-
-    private fun updateHostClientCount() {
-        _syncState.value = _syncState.value.copy(
-            connectedClientsCount = activeClients.size,
-            connectedClientNames = activeClients.map { it.name }
-        )
     }
 
     /**
-     * Broadcasts a SyncMessage to all connected band members.
+     * Broadcasts a SyncMessage to all connected band members via WebSocket.
      */
     fun broadcast(message: SyncMessage) {
         if (_syncState.value.role != BandSyncRole.HOST) return
         val serialized = SyncMessage.serialize(message)
-        scope.launch {
-            for (client in activeClients) {
-                try {
-                    client.writer.println(serialized)
-                } catch (_: Exception) {
-                    activeClients.remove(client)
-                }
-            }
-        }
+        wsServer?.broadcast(serialized)
     }
 
     /**
-     * Starts Client Mode (Band Member).
-     * Discovers Host via NSD or connects directly if target specified.
+     * Starts Client Mode (Band Member):
+     * - Listens on UDP port 8765 for beacon announcements
+     * - Displays active Leaders dynamically in Discovered Leaders list
      */
     fun startClient() {
         stopAll()
         _syncState.value = _syncState.value.copy(
             role = BandSyncRole.CLIENT,
             isConnectedToHost = false,
-            statusMessage = "Searching for Band Leader..."
+            discoveredHosts = emptyList(),
+            statusMessage = "Searching for Band Leader via UDP..."
         )
-        startNsdDiscovery()
+        startUdpListener()
     }
 
-    /**
-     * Connects directly to a Host by IP and port (e.g. Wi-Fi Hotspot or manual input).
-     */
-    fun connectToHost(hostIp: String, port: Int = DEFAULT_PORT) {
-        stopClientConnection()
-        _syncState.value = _syncState.value.copy(
-            role = BandSyncRole.CLIENT,
-            statusMessage = "Connecting to $hostIp:$port..."
-        )
+    private fun startUdpListener(port: Int = DEFAULT_PORT) {
+        udpListenJob?.cancel()
 
-        scope.launch {
+        // Acquire MulticastLock to ensure Wi-Fi radio receives UDP broadcasts
+        try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            multicastLock = wifi?.createMulticastLock("gtar_udp_lock")?.apply {
+                setReferenceCounted(true)
+                acquire()
+            }
+        } catch (_: Exception) {}
+
+        udpListenJob = scope.launch(Dispatchers.IO) {
+            var socket: DatagramSocket? = null
             try {
-                val socket = Socket(hostIp, port)
-                clientSocket = socket
-                clientWriter = PrintWriter(socket.getOutputStream(), true)
+                socket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(port))
+                }
+                val buffer = ByteArray(1024)
+                val packet = DatagramPacket(buffer, buffer.size)
 
-                // Send Join notification
-                val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
-                clientWriter?.println(SyncMessage.serialize(SyncMessage.ClientJoin(deviceName)))
+                while (isActive) {
+                    try {
+                        socket.receive(packet)
+                        val text = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
+                        val senderIp = packet.address.hostAddress ?: continue
 
-                _syncState.value = _syncState.value.copy(
-                    isConnectedToHost = true,
-                    currentHostName = hostIp,
-                    statusMessage = "Connected to Band Leader at $hostIp!"
-                )
+                        if (text.startsWith(UDP_BEACON_PREFIX)) {
+                            val payload = text.removePrefix(UDP_BEACON_PREFIX)
+                            val parts = payload.split(":")
+                            val leaderName = if (parts.isNotEmpty()) parts[0] else "Stage Leader"
+                            val leaderPort = if (parts.size > 1) parts[1].toIntOrNull() ?: port else port
 
-                // Read incoming broadcast messages from host
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
-                var line: String? = null
-                while (isActive && reader.readLine().also { line = it } != null) {
-                    line?.let { msgStr ->
-                        val msg = SyncMessage.deserialize(msgStr)
-                        if (msg != null) {
-                            _incomingMessages.emit(msg)
+                            val currentList = _syncState.value.discoveredHosts.toMutableList()
+                            if (currentList.none { it.hostAddress == senderIp && it.port == leaderPort }) {
+                                currentList.add(DiscoveredHost(leaderName, senderIp, leaderPort))
+                                _syncState.value = _syncState.value.copy(
+                                    discoveredHosts = currentList,
+                                    statusMessage = "Found Leader: $leaderName ($senderIp)"
+                                )
+                            }
                         }
+                    } catch (_: Exception) {
                     }
                 }
             } catch (e: Exception) {
                 if (isActive) {
                     _syncState.value = _syncState.value.copy(
-                        isConnectedToHost = false,
-                        statusMessage = "Connection failed: ${e.localizedMessage}"
+                        statusMessage = "UDP listener error: ${e.localizedMessage}"
                     )
                 }
             } finally {
-                stopClientConnection()
+                socket?.close()
+                releaseMulticastLock()
+            }
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        try {
+            if (multicastLock?.isHeld == true) {
+                multicastLock?.release()
+            }
+            multicastLock = null
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Connects to a Stage Leader via WebSocket: ws://<hostIp>:<port>
+     */
+    fun connectToHost(hostIp: String, port: Int = DEFAULT_PORT) {
+        stopClientConnection()
+        _syncState.value = _syncState.value.copy(
+            role = BandSyncRole.CLIENT,
+            statusMessage = "Connecting to ws://$hostIp:$port..."
+        )
+
+        scope.launch {
+            try {
+                val uri = URI("ws://$hostIp:$port")
+                val client = GtarWsClient(uri)
+                wsClient = client
+                client.connect()
+            } catch (e: Exception) {
+                _syncState.value = _syncState.value.copy(
+                    isConnectedToHost = false,
+                    statusMessage = "Failed to connect: ${e.localizedMessage}"
+                )
             }
         }
     }
 
     /**
-     * Stops all active server/client connections and NSD listeners.
+     * Stops all active server, client, UDP broadcasts, and listeners.
      */
     fun stopAll() {
         stopHostServer()
         stopClientConnection()
-        stopNsdDiscovery()
+        udpListenJob?.cancel()
+        udpListenJob = null
+        releaseMulticastLock()
         _syncState.value = BandSyncState(role = BandSyncRole.OFF, statusMessage = "Band Sync inactive")
     }
 
     private fun stopHostServer() {
-        unregisterNsdService()
-        runCatching { serverSocket?.close() }
-        serverSocket = null
-        for (c in activeClients) {
-            runCatching { c.socket.close() }
-        }
-        activeClients.clear()
+        udpBroadcastJob?.cancel()
+        udpBroadcastJob = null
+        try {
+            wsServer?.stop()
+        } catch (_: Exception) {}
+        wsServer = null
     }
 
     private fun stopClientConnection() {
-        runCatching { clientSocket?.close() }
-        clientSocket = null
-        clientWriter = null
-    }
-
-    // --- NSD Registration & Discovery ---
-
-    private fun registerNsdService(port: Int) {
         try {
-            val serviceInfo = NsdServiceInfo().apply {
-                serviceName = "GTAR-Leader-${Build.MODEL}"
-                serviceType = SERVICE_TYPE
-                setPort(port)
-            }
-
-            registrationListener = object : NsdManager.RegistrationListener {
-                override fun onServiceRegistered(info: NsdServiceInfo?) {
-                    _syncState.value = _syncState.value.copy(
-                        statusMessage = "Host registered as ${info?.serviceName}"
-                    )
-                }
-
-                override fun onRegistrationFailed(info: NsdServiceInfo?, errCode: Int) {
-                    _syncState.value = _syncState.value.copy(
-                        statusMessage = "Host NSD registration failed (code $errCode)"
-                    )
-                }
-
-                override fun onServiceUnregistered(info: NsdServiceInfo?) {}
-                override fun onUnregistrationFailed(info: NsdServiceInfo?, errCode: Int) {}
-            }
-
-            nsdManager?.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+            wsClient?.close()
         } catch (_: Exception) {}
-    }
-
-    private fun unregisterNsdService() {
-        registrationListener?.let {
-            runCatching { nsdManager?.unregisterService(it) }
-            registrationListener = null
-        }
-    }
-
-    private fun startNsdDiscovery() {
-        try {
-            discoveryListener = object : NsdManager.DiscoveryListener {
-                override fun onDiscoveryStarted(regType: String) {}
-
-                override fun onServiceFound(service: NsdServiceInfo) {
-                    if (service.serviceType.contains("gtasync")) {
-                        nsdManager?.resolveService(service, object : NsdManager.ResolveListener {
-                            override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {}
-
-                            override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                                val host = serviceInfo.host?.hostAddress ?: return
-                                val port = serviceInfo.port
-                                val name = serviceInfo.serviceName
-
-                                val currentList = _syncState.value.discoveredHosts.toMutableList()
-                                if (currentList.none { it.hostAddress == host && it.port == port }) {
-                                    currentList.add(DiscoveredHost(name, host, port))
-                                    _syncState.value = _syncState.value.copy(discoveredHosts = currentList)
-                                }
-                            }
-                        })
-                    }
-                }
-
-                override fun onServiceLost(service: NsdServiceInfo) {
-                    val currentList = _syncState.value.discoveredHosts.filterNot { it.name == service.serviceName }
-                    _syncState.value = _syncState.value.copy(discoveredHosts = currentList)
-                }
-
-                override fun onDiscoveryStopped(serviceType: String) {}
-                override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {}
-                override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
-            }
-
-            nsdManager?.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
-        } catch (_: Exception) {}
-    }
-
-    private fun stopNsdDiscovery() {
-        discoveryListener?.let {
-            runCatching { nsdManager?.stopServiceDiscovery(it) }
-            discoveryListener = null
-        }
+        wsClient = null
     }
 
     private fun getLocalIpAddress(): String? {

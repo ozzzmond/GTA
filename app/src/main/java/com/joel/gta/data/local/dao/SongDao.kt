@@ -67,6 +67,9 @@ interface SongDao {
     @Query("DELETE FROM songs WHERE isDeleted = 1")
     suspend fun emptyTrash()
 
+    @Query("DELETE FROM songs")
+    suspend fun deleteAllSongs()
+
     @Query("UPDATE songs SET lastOpenedAt = :timestamp WHERE id = :id")
     suspend fun updateLastOpened(id: Long, timestamp: Long = System.currentTimeMillis())
 

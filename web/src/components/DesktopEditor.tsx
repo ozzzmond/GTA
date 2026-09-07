@@ -24,7 +24,7 @@ export const DesktopEditor: React.FC<DesktopEditorProps> = ({
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Parse song with native v1.0.40 parser and active transpose offset
+  // Parse song with native v1.0.42 parser and active transpose offset
   const parsedSong = parseGtarSong(song.rawContent, transposeOffset)
 
   // Quick insertion of section tags at cursor position

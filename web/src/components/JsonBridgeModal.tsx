@@ -1,5 +1,4 @@
 import React, { useState, useRef, useMemo } from 'react'
-
 import {
   X,
   Download,
@@ -9,16 +8,27 @@ import {
   FileJson,
   Music,
   ListMusic,
+  CloudUpload,
   AlertCircle
 } from 'lucide-react'
-import type { ActiveSongState, SongEntity, GtarSetlist, GtarBackup } from '../types/gtar'
+import {
+  GTAR_APP_VERSION,
+  GTAR_SETLIST_VERSION,
+  GTAR_SETLIST_TYPE,
+  type ActiveSongState,
+  type SongEntity,
+  type GtarSetlist,
+  type GtarBackup,
+} from '../types/gtar'
 
 interface JsonBridgeModalProps {
   isOpen: boolean
   initialTab?: 'export' | 'import'
   onClose: () => void
   song: ActiveSongState
+  allSongs?: ActiveSongState[]
   onImportSong: (imported: Partial<ActiveSongState>) => void
+  onImportAllSongs?: (importedList: Array<Partial<ActiveSongState>>) => void
 }
 
 export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
@@ -26,10 +36,12 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
   initialTab = 'export',
   onClose,
   song,
+  allSongs,
   onImportSong,
+  onImportAllSongs,
 }) => {
   const [tab, setTab] = useState<'export' | 'import'>(initialTab)
-  const [exportFormat, setExportFormat] = useState<'song' | 'setlist'>('song')
+  const [exportFormat, setExportFormat] = useState<'song' | 'setlist' | 'backup'>('song')
   const [setlistName, setSetlistName] = useState('My Setlist')
   const [copied, setCopied] = useState(false)
 
@@ -41,11 +53,12 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
 
   const [exportTimestamp] = useState(() => Date.now())
 
-  // Generate Song Room Entity JSON payload & Setlist JSON payload in useMemo
-  const { songRoomPayload, setlistPayload } = useMemo(() => {
+  // Generate Song Room Entity, Setlist, and Full GTAR Backup payloads matching Android v1.0.42
+  const { songRoomPayload, setlistPayload, backupPayload } = useMemo(() => {
     const isoString = new Date(exportTimestamp).toISOString()
+    const songList = allSongs && allSongs.length > 0 ? allSongs : [song]
 
-
+    // 1. Native SongEntity (.json)
     const songEntity: SongEntity = {
       id: song.id || 0,
       title: song.title || 'Untitled Song',
@@ -62,34 +75,67 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
       lastOpenedAt: exportTimestamp,
     }
 
-
+    // 2. GTAR Setlist (.json) matching SetlistExportImportManager.kt
     const gtarSetlist: GtarSetlist = {
-      version: 1,
-      type: 'GTAR_SETLIST',
+      version: GTAR_SETLIST_VERSION,
+      type: GTAR_SETLIST_TYPE,
       name: setlistName.trim() || 'GTAR Setlist',
       createdAt: isoString,
-      songs: [
+      songs: songList.map((s, index) => ({
+        title: s.title || 'Untitled Song',
+        artist: s.artist || '',
+        key: s.key || '',
+        chordsContent: s.rawContent,
+        order: index + 1,
+      })),
+    }
+
+    // 3. Full GTAR Backup payload matching Android BackupManager.kt (v1.0.42)
+    const gtarBackup: GtarBackup = {
+      metadata: {
+        appName: 'GTAR',
+        appVersion: GTAR_APP_VERSION,
+        exportTimestamp,
+      },
+      songs: songList.map((s, idx) => ({
+        id: s.id || idx + 1,
+        title: s.title || 'Untitled Song',
+        artist: s.artist || null,
+        key: s.key || null,
+        capo: s.capo || null,
+        rawContent: s.rawContent,
+        format: s.format,
+        isFavorite: false,
+        transposeOffset: s.transposeOffset || 0,
+        tags: '',
+        isDeleted: false,
+        createdAt: exportTimestamp,
+        lastOpenedAt: exportTimestamp,
+      })),
+      setlists: [
         {
-          title: song.title || 'Untitled Song',
-          artist: song.artist || '',
-          key: song.key || '',
-          chordsContent: song.rawContent,
-          order: 1,
+          name: setlistName.trim() || 'GTAR Setlist',
+          createdAt: exportTimestamp,
+          songs: songList.map((s, idx) => ({
+            title: s.title || 'Untitled Song',
+            artist: s.artist || '',
+            position: idx,
+          })),
         },
       ],
     }
 
-    return { songRoomPayload: songEntity, setlistPayload: gtarSetlist }
-  }, [song, setlistName, exportTimestamp])
-
+    return { songRoomPayload: songEntity, setlistPayload: gtarSetlist, backupPayload: gtarBackup }
+  }, [song, allSongs, setlistName, exportTimestamp])
 
   if (!isOpen) return null
-
 
   const exportPayloadString =
     exportFormat === 'song'
       ? JSON.stringify(songRoomPayload, null, 2)
-      : JSON.stringify(setlistPayload, null, 2)
+      : exportFormat === 'setlist'
+      ? JSON.stringify(setlistPayload, null, 2)
+      : JSON.stringify(backupPayload, null, 2)
 
   const handleCopy = () => {
     navigator.clipboard.writeText(exportPayloadString).then(() => {
@@ -99,10 +145,18 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
   }
 
   const handleDownload = () => {
-    const filename =
-      exportFormat === 'song'
-        ? `${(song.title || 'song').toLowerCase().replace(/[^a-z0-9]/gi, '_')}.song.json`
-        : `${(setlistName || 'setlist').toLowerCase().replace(/[^a-z0-9]/gi, '_')}.setlist.json`
+    let filename: string
+    if (exportFormat === 'song') {
+      filename = `${(song.title || 'song').toLowerCase().replace(/[^a-z0-9]/gi, '_')}.song.json`
+    } else if (exportFormat === 'setlist') {
+      filename = `${(setlistName || 'setlist').toLowerCase().replace(/[^a-z0-9]/gi, '_')}.setlist.json`
+    } else {
+      const now = new Date(exportTimestamp)
+      const yyyy = now.getFullYear()
+      const mm = String(now.getMonth() + 1).padStart(2, '0')
+      const dd = String(now.getDate()).padStart(2, '0')
+      filename = `gta_backup_${yyyy}${mm}${dd}.json`
+    }
 
     const blob = new Blob([exportPayloadString], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -146,12 +200,14 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
 
       // Case 2: GTAR Backup JSON format (metadata.appName === "GTAR")
       if (data.metadata?.appName === 'GTAR' && Array.isArray(data.songs)) {
-        const list = (data as GtarBackup).songs.map((s) => ({
-          title: s.title,
-          artist: s.artist || undefined,
-          key: s.key || undefined,
-          content: s.rawContent,
-        }))
+        const list = (data as GtarBackup).songs
+          .filter((s) => !s.isDeleted)
+          .map((s) => ({
+            title: s.title,
+            artist: s.artist || undefined,
+            key: s.key || undefined,
+            content: s.rawContent,
+          }))
         if (list.length === 0) {
           setImportError('Backup contains no active songs.')
         } else {
@@ -224,7 +280,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
           <div className="flex items-center gap-2">
             <FileJson className="w-5 h-5 text-[#2AA198]" />
             <h2 className="text-base font-bold text-[#FDF6E3]">
-              GTAR JSON Bridge (v1.0.39+ Schema)
+              GTAR JSON Bridge (v1.0.43+)
             </h2>
           </div>
           <button
@@ -248,7 +304,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
             }`}
           >
             <Download className="w-4 h-4" />
-            <span>Export to Android</span>
+            <span>Export Backup & JSON</span>
           </button>
           <button
             type="button"
@@ -260,7 +316,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
             }`}
           >
             <Upload className="w-4 h-4" />
-            <span>Import from Android / JSON</span>
+            <span>Import Songs / Setlists</span>
           </button>
         </div>
 
@@ -273,7 +329,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
                 <label className="block text-[#93A1A1] font-mono text-[11px] mb-2 uppercase">
                   Select Android Export Schema:
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
                     type="button"
                     onClick={() => setExportFormat('song')}
@@ -285,9 +341,9 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
                   >
                     <Music className="w-4 h-4 text-[#2AA198] shrink-0 mt-0.5" />
                     <div>
-                      <div className="font-bold text-xs text-[#FDF6E3]">Room SongEntity (.json)</div>
+                      <div className="font-bold text-xs text-[#FDF6E3]">Native SongEntity</div>
                       <div className="text-[11px] text-[#93A1A1] mt-0.5">
-                        Native GTAR single-song room model
+                        Single song Room entity (.json)
                       </div>
                     </div>
                   </button>
@@ -303,16 +359,34 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
                   >
                     <ListMusic className="w-4 h-4 text-[#B58900] shrink-0 mt-0.5" />
                     <div>
-                      <div className="font-bold text-xs text-[#FDF6E3]">GTAR Setlist (.json)</div>
+                      <div className="font-bold text-xs text-[#FDF6E3]">GTAR Setlist</div>
                       <div className="text-[11px] text-[#93A1A1] mt-0.5">
-                        GTAR_SETLIST v1 share payload
+                        GTAR_SETLIST v1 share (.json)
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setExportFormat('backup')}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-2.5 cursor-pointer transition-all ${
+                      exportFormat === 'backup'
+                        ? 'border-[#268BD2] bg-[#002B36] text-[#FDF6E3] ring-1 ring-[#268BD2]'
+                        : 'border-[#1A4A55] bg-[#002B36]/50 text-[#93A1A1] hover:border-[#1A4A55]'
+                    }`}
+                  >
+                    <CloudUpload className="w-4 h-4 text-[#268BD2] shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-xs text-[#FDF6E3]">Export Backup</div>
+                      <div className="text-[11px] text-[#93A1A1] mt-0.5">
+                        Full GTAR v1.0.42 backup (.json)
                       </div>
                     </div>
                   </button>
                 </div>
               </div>
 
-              {exportFormat === 'setlist' && (
+              {(exportFormat === 'setlist' || exportFormat === 'backup') && (
                 <div>
                   <label className="block text-[#93A1A1] font-mono text-[11px] mb-1 uppercase">
                     Setlist Name:
@@ -410,8 +484,30 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
 
               {detectedSongs.length > 0 && (
                 <div>
-                  <div className="text-[#93A1A1] font-mono text-[11px] uppercase mb-2">
-                    Detected Songs ({detectedSongs.length}):
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[#93A1A1] font-mono text-[11px] uppercase">
+                      Detected Songs ({detectedSongs.length}):
+                    </span>
+                    {detectedSongs.length > 1 && onImportAllSongs && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onImportAllSongs(
+                            detectedSongs.map((s) => ({
+                              title: s.title,
+                              artist: s.artist || '',
+                              key: s.key || '',
+                              rawContent: s.content,
+                            }))
+                          )
+                          onClose()
+                        }}
+                        className="text-xs text-[#2AA198] hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                      >
+                        <ListMusic className="w-3.5 h-3.5" />
+                        <span>Import All Songs ({detectedSongs.length})</span>
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {detectedSongs.map((s, idx) => (

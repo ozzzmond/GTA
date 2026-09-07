@@ -1,6 +1,10 @@
 /**
- * GTAR Android Room Entity, Setlist & Stage Line Type Definitions (v1.0.40+ compatible)
+ * GTAR Android Room Entity, Setlist & Stage Line Type Definitions (v1.0.43+ compatible)
  */
+
+export const GTAR_APP_VERSION = '1.0.43'
+export const GTAR_SETLIST_VERSION = 1
+export const GTAR_SETLIST_TYPE = 'GTAR_SETLIST'
 
 export type SongFormat = 'TWO_LINE' | 'CHORD_PRO' | 'PLAIN'
 
@@ -56,6 +60,26 @@ export interface GtarBackup {
   }>
 }
 
+export function generateGtarBackupPayload(songs: SongEntity[]): GtarBackup {
+  return {
+    metadata: {
+      appName: 'GTAR',
+      appVersion: GTAR_APP_VERSION,
+      exportTimestamp: Date.now(),
+    },
+    songs,
+  }
+}
+
+export function isValidGtarPayload(obj: any): boolean {
+  if (!obj || typeof obj !== 'object') return false
+  if (obj.metadata && (obj.metadata.appName === 'GTAR' || obj.metadata.appVersion)) return true
+  if (obj.type === 'GTAR_SETLIST') return true
+  if (Array.isArray(obj.songs)) return true
+  if (typeof obj.title === 'string') return true
+  return false
+}
+
 export interface ActiveSongState {
   id?: number
   title: string
@@ -68,7 +92,7 @@ export interface ActiveSongState {
   transposeOffset: number
 }
 
-// Stage Lines Model matching Android SongLine.kt (v1.0.40)
+// Stage Lines Model matching Android SongLine.kt (v1.0.42)
 export interface ChordSegment {
   chord: string | null
   text: string

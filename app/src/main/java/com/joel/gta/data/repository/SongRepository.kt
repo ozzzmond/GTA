@@ -177,6 +177,10 @@ class SongRepository(private val database: GtaDatabase) {
         com.joel.gta.data.backup.BackupManager.restoreBackup(jsonString, songDao, setlistDao)
     }
 
+    suspend fun fullRestoreBackup(jsonString: String): com.joel.gta.data.backup.RestoreSummary = withContext(Dispatchers.IO) {
+        com.joel.gta.data.backup.BackupManager.fullRestoreWipeAndReplace(jsonString, songDao, setlistDao)
+    }
+
     suspend fun createSetlistJson(setlist: SetlistEntity, songs: List<SongEntity>): String = withContext(Dispatchers.IO) {
         com.joel.gta.data.setlist.SetlistExportImportManager.createSetlistJson(setlist, songs)
     }

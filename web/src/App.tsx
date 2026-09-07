@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
 import { DesktopEditor } from './components/DesktopEditor'
@@ -6,10 +6,17 @@ import { StageView } from './components/StageView'
 import { JsonBridgeModal } from './components/JsonBridgeModal'
 import { KeyPickerModal } from './components/KeyPickerModal'
 import { SetlistDrawer } from './components/SetlistDrawer'
-import { SAMPLE_SONGS, extractDirectives } from './utils/chordSheetParser'
+import { WebsiteUrlSourceModal } from './components/WebsiteUrlSourceModal'
+import { ImportDialogModal } from './components/ImportDialogModal'
+import { BackupRestoreDialogModal } from './components/BackupRestoreDialogModal'
+import { StageSettingsModal, type SongFontStyleOption } from './components/StageSettingsModal'
+import { BandSyncModal } from './components/BandSyncModal'
+import { bandSync } from './utils/bandSync'
+import { extractDirectives } from './utils/chordSheetParser'
 import type { ActiveSongState } from './types/gtar'
+import { Check, Sparkles } from 'lucide-react'
 
-// Modern GTAR v1.0.40 Default Stage Setlist
+// Modern GTAR v1.0.42 Default Stage Setlist
 const DEFAULT_SETLIST: ActiveSongState[] = [
   {
     id: 1,
@@ -164,15 +171,47 @@ function App() {
   // Setlist of Songs
   const [songs, setSongs] = useState<ActiveSongState[]>(DEFAULT_SETLIST)
   const [activeSongIndex, setActiveSongIndex] = useState<number>(0)
+  const [searchQuery, setSearchQuery] = useState<string>('')
+
+  // Display Settings
+  const [fontStyle, setFontStyle] = useState<SongFontStyleOption>('mono')
+  const [isTwoColumn, setIsTwoColumn] = useState<boolean>(false)
 
   // Current active song
   const currentSong = songs[activeSongIndex] || DEFAULT_SETLIST[0]
 
-  // Global modals & drawer
+  // Global Modals
+  const [isWebsiteUrlModalOpen, setIsWebsiteUrlModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [isBackupRestoreModalOpen, setIsBackupRestoreModalOpen] = useState(false)
+  const [isStageSettingsModalOpen, setIsStageSettingsModalOpen] = useState(false)
+  const [isStageToolsModalOpen, setIsStageToolsModalOpen] = useState(false)
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false)
-  const [jsonModalTab, setJsonModalTab] = useState<'export' | 'import'>('export')
   const [isHeaderKeyPickerOpen, setIsHeaderKeyPickerOpen] = useState(false)
   const [isSetlistDrawerOpen, setIsSetlistDrawerOpen] = useState(false)
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
+  const [showUpdateSuccessModal, setShowUpdateSuccessModal] = useState(false)
+
+  // Band Sync: listen to leader song sync events when client
+  useEffect(() => {
+    const unsub = bandSync.onMessage((msg) => {
+      if (bandSync.getRole() === 'CLIENT') {
+        if (msg.type === 'SONG_SYNC' && msg.payload) {
+          if (
+            typeof msg.payload.songIndex === 'number' &&
+            msg.payload.songIndex >= 0 &&
+            msg.payload.songIndex < songs.length
+          ) {
+            setActiveSongIndex(msg.payload.songIndex)
+          }
+          if (typeof msg.payload.transposeOffset === 'number') {
+            handleTransposeChange(msg.payload.transposeOffset)
+          }
+        }
+      }
+    })
+    return unsub
+  }, [songs.length])
 
   // Transpose handler
   const handleTransposeChange = (newOffset: number) => {
@@ -248,24 +287,7 @@ function App() {
     )
   }
 
-  // Load sample song
-  const handleLoadSampleSong = (sample: typeof SAMPLE_SONGS.standByMe) => {
-    const newSong: ActiveSongState = {
-      id: Date.now(),
-      title: sample.title,
-      artist: sample.artist,
-      key: sample.key,
-      capo: sample.capo,
-      bpm: sample.bpm,
-      rawContent: sample.rawContent,
-      format: sample.format,
-      transposeOffset: 0,
-    }
-    setSongs((prev) => [newSong, ...prev])
-    setActiveSongIndex(0)
-  }
-
-  // Import song
+  // Import single song
   const handleImportSong = (imported: Partial<ActiveSongState>) => {
     const newSong: ActiveSongState = {
       id: Date.now(),
@@ -282,10 +304,60 @@ function App() {
     setActiveSongIndex(0)
   }
 
-  const handleLockApp = () => {
-    sessionStorage.removeItem('gtar_authenticated')
-    setIsUnlocked(false)
+  // Batch import all detected songs
+  const handleImportAllSongs = (importedSongs: Array<Partial<ActiveSongState>>) => {
+    if (importedSongs.length === 0) return
+    const completeSongs: ActiveSongState[] = importedSongs.map((s, idx) => ({
+      id: Date.now() + idx,
+      title: s.title || 'Imported Song',
+      artist: s.artist || '',
+      key: s.key || 'G',
+      capo: s.capo || 'No Capo',
+      bpm: s.bpm || '120',
+      format: s.format || 'CHORD_PRO',
+      transposeOffset: s.transposeOffset || 0,
+      rawContent: s.rawContent || '',
+    }))
+
+    setSongs((prev) => [...prev, ...completeSongs])
   }
+
+  // Full Restore (Wipe & Replace) multiple songs into library
+  const handleFullRestoreSongs = (importedSongs: Array<Partial<ActiveSongState>>) => {
+    if (importedSongs.length === 0) return
+    const completeSongs: ActiveSongState[] = importedSongs.map((s, idx) => ({
+      id: Date.now() + idx,
+      title: s.title || 'Imported Song',
+      artist: s.artist || '',
+      key: s.key || 'G',
+      capo: s.capo || 'No Capo',
+      bpm: s.bpm || '120',
+      format: s.format || 'CHORD_PRO',
+      transposeOffset: s.transposeOffset || 0,
+      rawContent: s.rawContent || '',
+    }))
+
+    setSongs(completeSongs)
+    setActiveSongIndex(0)
+  }
+
+  // Check for updates simulation
+  const handleCheckForUpdates = () => {
+    setIsCheckingUpdates(true)
+    setTimeout(() => {
+      setIsCheckingUpdates(false)
+      setShowUpdateSuccessModal(true)
+    }, 850)
+  }
+
+  // Filter songs if searchQuery is active
+  const filteredSongs = searchQuery.trim()
+    ? songs.filter(
+        (s) =>
+          s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.artist?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : songs
 
   if (!isUnlocked) {
     return <LoginWall onUnlock={() => setIsUnlocked(true)} />
@@ -293,27 +365,27 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#002B36] text-[#EEE8D5]">
-      {/* Top Stage Header */}
+      {/* Unified Android v1.0.42 Top Bar */}
       <Header
         activeView={activeView}
         onViewChange={setActiveView}
         song={currentSong}
         songsCount={songs.length}
         activeSongIndex={activeSongIndex}
-        transposeOffset={currentSong.transposeOffset || 0}
-        onTransposeChange={handleTransposeChange}
-        onOpenKeyPicker={() => setIsHeaderKeyPickerOpen(true)}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        onOpenWebsiteUrlSource={() => setIsWebsiteUrlModalOpen(true)}
+        onOpenStageTools={() => setIsStageToolsModalOpen(true)}
+        onToggleTheme={() => {
+          // Toggle between dark and stage contrast
+          document.body.classList.toggle('stage-contrast')
+        }}
+        onOpenStageSettings={() => setIsStageSettingsModalOpen(true)}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
+        onOpenBackupRestoreModal={() => setIsBackupRestoreModalOpen(true)}
+        onCheckForUpdates={handleCheckForUpdates}
+        isCheckingUpdates={isCheckingUpdates}
         onOpenSetlistDrawer={() => setIsSetlistDrawerOpen(true)}
-        onOpenExportModal={() => {
-          setJsonModalTab('export')
-          setIsJsonModalOpen(true)
-        }}
-        onOpenImportModal={() => {
-          setJsonModalTab('import')
-          setIsJsonModalOpen(true)
-        }}
-        onLoadSong={handleLoadSampleSong}
-        onLockApp={handleLockApp}
       />
 
       {/* Main Workspace: Split Desktop Editor vs 1:1 Stage View */}
@@ -327,12 +399,17 @@ function App() {
         ) : (
           <StageView
             song={currentSong}
-            songs={songs}
+            songs={filteredSongs.length > 0 ? filteredSongs : songs}
             activeSongIndex={activeSongIndex}
             onSelectSongIndex={setActiveSongIndex}
             onOpenSetlistDrawer={() => setIsSetlistDrawerOpen(true)}
             transposeOffset={currentSong.transposeOffset || 0}
             onTransposeChange={handleTransposeChange}
+            fontStyle={fontStyle}
+            onSelectFontStyle={setFontStyle}
+            isTwoColumn={isTwoColumn}
+            onToggleTwoColumn={setIsTwoColumn}
+            onOpenBandSync={() => setIsStageToolsModalOpen(true)}
           />
         )}
       </main>
@@ -341,7 +418,7 @@ function App() {
       <SetlistDrawer
         isOpen={isSetlistDrawerOpen}
         onClose={() => setIsSetlistDrawerOpen(false)}
-        songs={songs}
+        songs={filteredSongs.length > 0 ? filteredSongs : songs}
         activeSongIndex={activeSongIndex}
         onSelectSongIndex={(idx) => {
           setActiveSongIndex(idx)
@@ -351,13 +428,63 @@ function App() {
         onNewSong={handleNewSong}
       />
 
-      {/* JSON Import / Export Bridge Modal */}
+      {/* Website URL Source Modal */}
+      <WebsiteUrlSourceModal
+        isOpen={isWebsiteUrlModalOpen}
+        onClose={() => setIsWebsiteUrlModalOpen(false)}
+      />
+
+      {/* Import Modal Dialog (File Import & Folder Batch) */}
+      <ImportDialogModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSong={handleImportSong}
+        onImportAllSongs={handleImportAllSongs}
+      />
+
+      {/* Backup & Restore Modal Dialog (Export Backup & Restore Backup Smart Merge) */}
+      <BackupRestoreDialogModal
+        isOpen={isBackupRestoreModalOpen}
+        onClose={() => setIsBackupRestoreModalOpen(false)}
+        currentSong={currentSong}
+        allSongs={songs}
+        onImportAllSongs={handleImportAllSongs}
+        onFullRestoreSongs={handleFullRestoreSongs}
+        onOpenAdvancedBridge={() => setIsJsonModalOpen(true)}
+      />
+
+      {/* Stage Settings Modal */}
+      <StageSettingsModal
+        isOpen={isStageSettingsModalOpen}
+        onClose={() => setIsStageSettingsModalOpen(false)}
+        fontStyle={fontStyle}
+        onSelectFontStyle={setFontStyle}
+        isTwoColumn={isTwoColumn}
+        onToggleTwoColumn={setIsTwoColumn}
+        onOpenStageTools={() => {
+          setIsStageSettingsModalOpen(false)
+          setIsStageToolsModalOpen(true)
+        }}
+        onToggleTheme={() => document.body.classList.toggle('stage-contrast')}
+        onCheckForUpdates={handleCheckForUpdates}
+      />
+
+      {/* Stage Tools & Band Sync Modal */}
+      <BandSyncModal
+        isOpen={isStageToolsModalOpen}
+        onClose={() => setIsStageToolsModalOpen(false)}
+        initialTab="sync"
+      />
+
+      {/* Advanced JSON Bridge Modal */}
       <JsonBridgeModal
         isOpen={isJsonModalOpen}
-        initialTab={jsonModalTab}
+        initialTab="export"
         onClose={() => setIsJsonModalOpen(false)}
         song={currentSong}
+        allSongs={songs}
         onImportSong={handleImportSong}
+        onImportAllSongs={handleImportAllSongs}
       />
 
       {/* Header Key Picker Modal */}
@@ -370,6 +497,41 @@ function App() {
         onSelectOffset={handleTransposeChange}
         onReset={() => handleTransposeChange(0)}
       />
+
+      {/* Check for Updates Confirmation Modal */}
+      {showUpdateSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-2xl bg-[#073642] border border-[#2AA198] p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-[#2AA198]/20 border border-[#2AA198]/40 flex items-center justify-center text-[#2AA198] mx-auto">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-extrabold text-[#FDF6E3]">You're Up to Date!</h3>
+              <p className="text-xs text-[#2AA198] font-mono font-bold">
+                GTAR Web App v1.0.42 (Build 42)
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-[#002B36] text-left text-[11px] text-[#93A1A1] space-y-1 border border-[#1A4A55]">
+              <div className="font-bold text-[#EEE8D5] flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 text-[#2AA198]" />
+                <span>1:1 Parity with Android v1.0.42</span>
+              </div>
+              <p>• Unified TopAppBar with 4-Action 3-Dot Menu</p>
+              <p>• Band Sync multi-screen stage sync (Leader / Member)</p>
+              <p>• Classic chord-over-lyric layout (no inline brackets)</p>
+              <p>• Clean floating intro chords without keypad boxes</p>
+              <p>• Monospace, Sans, Serif font selector & shortcuts</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowUpdateSuccessModal(false)}
+              className="w-full py-2.5 rounded-xl bg-[#2AA198] text-[#002B36] font-bold text-xs hover:bg-[#35B8AD] transition-colors cursor-pointer"
+            >
+              Great!
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

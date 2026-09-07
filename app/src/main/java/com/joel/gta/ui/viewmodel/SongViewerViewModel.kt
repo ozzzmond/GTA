@@ -288,6 +288,19 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                         BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).readText()
                     } ?: throw IllegalStateException("Could not read file from storage.")
 
+                    // Check if file is a GTAR Backup JSON payload
+                    if (com.joel.gta.data.backup.BackupManager.isBackupJson(content)) {
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = SongViewerState.Empty
+                            android.widget.Toast.makeText(
+                                context,
+                                "GTAR Backup file detected! Please use 'Backup & Restore...' to restore songs & setlists.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        return@runCatching null
+                    }
+
                     // Check if file is a GTAR Setlist JSON import
                     if (com.joel.gta.data.setlist.SetlistExportImportManager.isSetlistJson(content)) {
                         val importResult = repository.importSetlist(content)
@@ -556,6 +569,8 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 repository.updateTransposeOffset(id, clamped)
             }
         }
+
+        broadcastTransposeIfHost(clamped)
     }
 
     fun resetTranspose() {
@@ -856,6 +871,13 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                     } ?: ""
 
                     if (rawContent.isNotBlank()) {
+                        // Under no circumstances should backup JSON or setlist JSON be inserted as raw songs
+                        if (com.joel.gta.data.backup.BackupManager.isBackupJson(rawContent) ||
+                            com.joel.gta.data.setlist.SetlistExportImportManager.isSetlistJson(rawContent)) {
+                            // Skip backup / setlist files in bulk folder song import
+                            continue
+                        }
+
                         val fileName = file.name?.substringBeforeLast('.') ?: "Untitled"
                         val parsed = SongParser.parse(rawContent, defaultTitle = fileName)
                         batchEntities.add(
@@ -1119,6 +1141,10 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 // Band Member mode: Auto-scroll according to Leader's position
                 bandScrollOffset.tryEmit(msg.scrollFraction)
             }
+            is SyncMessage.TransposeSync -> {
+                // Band Member mode: Synchronize transpose with Leader
+                handleIncomingTranspose(msg.transposeOffset)
+            }
             is SyncMessage.TempoSync -> {
                 // Tempo sync
             }
@@ -1256,6 +1282,29 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun broadcastTransposeIfHost(transposeOffset: Int) {
+        if (bandSyncState.value.role == BandSyncRole.HOST) {
+            bandSyncManager.broadcast(SyncMessage.TransposeSync(transposeOffset))
+        }
+    }
+
+    private fun handleIncomingTranspose(targetOffset: Int) {
+        val current = _uiState.value as? SongViewerState.Loaded ?: return
+        val clamped = targetOffset.coerceIn(-11, 11)
+        if (current.transposeOffset == clamped) return
+
+        val transposedSong = if (clamped == 0) {
+            current.originalSong
+        } else {
+            TransposeEngine.transposeSong(current.originalSong, clamped)
+        }
+
+        _uiState.value = current.copy(
+            song = transposedSong,
+            transposeOffset = clamped
+        )
+    }
+
     fun startBandHost(port: Int = 8765) {
         bandSyncManager.startHost(port)
     }
@@ -1296,14 +1345,24 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun restoreBackupFromUri(context: Context, uri: Uri, onResult: (RestoreSummary) -> Unit, onError: (String) -> Unit) {
+    fun restoreBackupFromUri(
+        context: Context,
+        uri: Uri,
+        wipeAndReplace: Boolean = false,
+        onResult: (RestoreSummary) -> Unit,
+        onError: (String) -> Unit
+    ) {
         viewModelScope.launch {
             try {
                 val jsonString = context.contentResolver.openInputStream(uri)?.use { stream ->
                     stream.bufferedReader(Charsets.UTF_8).readText()
                 } ?: throw IllegalArgumentException("Cannot open backup file")
 
-                val summary = repository.restoreBackup(jsonString)
+                val summary = if (wipeAndReplace) {
+                    repository.fullRestoreBackup(jsonString)
+                } else {
+                    repository.restoreBackup(jsonString)
+                }
                 onResult(summary)
             } catch (e: Exception) {
                 onError("Restore error: ${e.localizedMessage ?: "Invalid JSON backup"}")

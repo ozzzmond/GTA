@@ -99,6 +99,128 @@ object BackupManager {
     }
 
     /**
+     * Inspects a JSON string to determine if it is a GTAR Backup payload.
+     * Checks metadata.appName == "GTAR" or the presence of a "songs" JSON array.
+     */
+    fun isBackupJson(jsonString: String): Boolean {
+        val trimmed = jsonString.trim()
+        if (!trimmed.startsWith("{")) return false
+        return try {
+            val root = JSONObject(trimmed)
+            val meta = root.optJSONObject("metadata")
+            val appName = meta?.optString("appName", "")
+            appName.equals("GTAR", ignoreCase = true) || (root.has("songs") && root.optJSONArray("songs") != null)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Full Restore (Wipe & Replace) Strategy:
+     * - Drops/resets existing songs and setlists in Room DB.
+     * - Imports the complete backup (songs, setlists).
+     */
+    suspend fun fullRestoreWipeAndReplace(
+        jsonString: String,
+        songDao: SongDao,
+        setlistDao: SetlistDao
+    ): RestoreSummary = withContext(Dispatchers.IO) {
+        val root = JSONObject(jsonString)
+        val songsArray = root.optJSONArray("songs") ?: JSONArray()
+        val setlistsArray = root.optJSONArray("setlists") ?: JSONArray()
+
+        // 1. Wipe existing songs and setlists
+        setlistDao.deleteAllCrossRefs()
+        setlistDao.deleteAllSetlists()
+        songDao.deleteAllSongs()
+
+        var songsRestoredCount = 0
+        val resolvedSongIdMap = mutableMapOf<String, Long>()
+
+        // 2. Insert all songs from backup
+        for (i in 0 until songsArray.length()) {
+            val sObj = songsArray.getJSONObject(i)
+            val title = sObj.getString("title").trim()
+            val artist = sObj.optString("artist").takeIf { it.isNotBlank() }
+            val key = sObj.optString("key").takeIf { it.isNotBlank() }
+            val capo = sObj.optString("capo").takeIf { it.isNotBlank() }
+            val rawContent = sObj.optString("rawContent")
+            val format = sObj.optString("format", "TWO_LINE")
+            val isFavorite = sObj.optBoolean("isFavorite", false)
+            val transposeOffset = sObj.optInt("transposeOffset", 0)
+            val tags = sObj.optString("tags", "")
+            val isDeleted = sObj.optBoolean("isDeleted", false)
+            val createdAt = sObj.optLong("createdAt", System.currentTimeMillis())
+            val lastOpenedAt = sObj.optLong("lastOpenedAt", 0L)
+
+            val newEntity = SongEntity(
+                title = title,
+                artist = artist,
+                key = key,
+                capo = capo,
+                rawContent = rawContent,
+                format = format,
+                isFavorite = isFavorite,
+                transposeOffset = transposeOffset,
+                tags = tags,
+                isDeleted = isDeleted,
+                createdAt = createdAt,
+                lastOpenedAt = lastOpenedAt
+            )
+            val newId = songDao.insertSong(newEntity)
+            resolvedSongIdMap[normalizeKey(title, artist)] = newId
+            songsRestoredCount++
+        }
+
+        // 3. Insert all setlists and associate songs
+        var setlistsRestoredCount = 0
+        for (j in 0 until setlistsArray.length()) {
+            val setlistObj = setlistsArray.getJSONObject(j)
+            val name = setlistObj.getString("name").trim()
+            val createdAt = setlistObj.optLong("createdAt", System.currentTimeMillis())
+            val songsRefArray = setlistObj.optJSONArray("songs") ?: JSONArray()
+
+            val newSetlist = SetlistEntity(name = name, createdAt = createdAt)
+            val targetSetlistId = setlistDao.insertSetlist(newSetlist)
+            setlistsRestoredCount++
+
+            var nextPos = 0
+            for (k in 0 until songsRefArray.length()) {
+                val sRef = songsRefArray.getJSONObject(k)
+                val songTitle = sRef.getString("title").trim()
+                val songArtist = sRef.optString("artist").takeIf { it.isNotBlank() }
+
+                val songLookupKey = normalizeKey(songTitle, songArtist)
+                var resolvedSongId = resolvedSongIdMap[songLookupKey]
+
+                if (resolvedSongId == null) {
+                    resolvedSongId = resolvedSongIdMap.entries.firstOrNull {
+                        it.key.startsWith(songTitle.lowercase() + "|")
+                    }?.value
+                }
+
+                if (resolvedSongId != null) {
+                    setlistDao.addSongToSetlist(
+                        SetlistSongCrossRef(
+                            setlistId = targetSetlistId,
+                            songId = resolvedSongId,
+                            position = nextPos++
+                        )
+                    )
+                }
+            }
+        }
+
+        RestoreSummary(
+            songsRestored = songsRestoredCount,
+            songsUpdated = 0,
+            setlistsRestored = setlistsRestoredCount,
+            totalSongsInBackup = songsArray.length(),
+            message = "Successfully restored $songsRestoredCount songs and $setlistsRestoredCount setlists"
+        )
+    }
+
+    /**
      * Smart Merge Restore Strategy:
      * - Never drops or wipes existing records in Room DB.
      * - Matches songs by Title + Artist.

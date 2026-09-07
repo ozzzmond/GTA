@@ -166,7 +166,47 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
               </div>
             )
 
-          case 'LYRIC':
+          case 'LYRIC': {
+            // Defensive check: If lyric line contains bracketed chords (e.g. "When the [A]night"),
+            // automatically split to stacked chord-over-lyric layout matching Android 1:1
+            if (/\[[A-G][b#]?[^\]]*\]/.test(line.lyrics)) {
+              const [chordLine, lyricLine] = convertChordProToTwoLine(line.lyrics)
+              return (
+                <div key={idx} className="select-text">
+                  {chordLine.trim() && (
+                    <div
+                      style={{
+                        paddingTop: '4px',
+                        paddingBottom: '1px',
+                        fontSize: `${fontSizePx}px`,
+                        lineHeight: `${fontSizePx * 1.35}px`,
+                        letterSpacing: '0.8px',
+                        color: '#B58900',
+                      }}
+                      className={`${fontClass} font-bold whitespace-pre`}
+                    >
+                      {renderInteractiveChordLine(chordLine, onChordClick)}
+                    </div>
+                  )}
+                  {lyricLine && (
+                    <div
+                      style={{
+                        paddingTop: '1px',
+                        paddingBottom: '5px',
+                        fontSize: `${fontSizePx}px`,
+                        lineHeight: `${fontSizePx * 1.35}px`,
+                        letterSpacing: '0.8px',
+                        color: '#EEE8D5',
+                      }}
+                      className={`${fontClass} font-normal whitespace-pre`}
+                    >
+                      {lyricLine}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
             // Jetpack Compose LyricLine:
             // text = line.lyrics, textPrimary (#EEE8D5), letterSpacing = 0.8.sp, padding(top = 1.dp, bottom = 5.dp)
             return (
@@ -185,6 +225,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
                 {line.lyrics}
               </div>
             )
+          }
 
           case 'TAB':
             // Jetpack Compose TabLine:
