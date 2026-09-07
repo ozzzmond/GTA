@@ -87,6 +87,56 @@ export function isSectionHeader(line: string): boolean {
   return false
 }
 
+// Common English lyric words that should NEVER trigger chord line detection
+const COMMON_PROSE_WORDS = new Set([
+  'the', 'thousand', 'thousands', 'hallelujah', 'hallelujahs', 'and', 'with', 'from',
+  'that', 'this', 'what', 'when', 'where', 'why', 'how', 'who', 'whom', 'whose',
+  'there', 'here', 'your', 'yours', 'their', 'theirs', 'our', 'ours', 'mine',
+  'you', 'she', 'they', 'them', 'him', 'his', 'her', 'hers', 'its',
+  'will', 'would', 'shall', 'should', 'could', 'can', 'may', 'might', 'must',
+  'have', 'has', 'had', 'having', 'been', 'were', 'was', 'are', 'is',
+  'into', 'onto', 'upon', 'about', 'above', 'across', 'after', 'against',
+  'along', 'among', 'around', 'before', 'behind', 'below', 'beneath', 'beside',
+  'between', 'beyond', 'during', 'except', 'inside', 'outside', 'through',
+  'toward', 'under', 'until', 'without', 'because', 'cause', 'waiting', 'crying',
+  'singing', 'shouting', 'dancing', 'walking', 'running', 'looking', 'falling',
+  'standing', 'dreaming', 'sleeping', 'feeling', 'giving', 'taking', 'making',
+  'living', 'loving', 'broken', 'saving', 'holding', 'staying', 'praying',
+  'never', 'always', 'sometimes', 'forever', 'together', 'tonight', 'today',
+  'tomorrow', 'yesterday', 'morning', 'night', 'dark', 'light', 'shine',
+  'glory', 'holy', 'praise', 'worship', 'jesus', 'father', 'spirit', 'lord',
+  'heart', 'soul', 'mind', 'eyes', 'hands', 'voice', 'words', 'world', 'earth',
+  'heaven', 'grace', 'mercy', 'peace', 'truth', 'faith', 'hope', 'love'
+])
+
+/**
+ * Normalizes angle bracket chords into standard ChordPro brackets:
+ * e.g. "<C>", "<F>", "<G>", "<C#m>-<B>" -> "[C]", "[F]", "[G]", "[C#m]-[B]"
+ */
+export function normalizeAngleBrackets(text: string): string {
+  // 1. Compound hyphenated angle bracket chords like <C#m>-<B> or <C#m-B>
+  let res = text.replace(/<([A-G][b#]?[^>]*)-([A-G][b#]?[^>]*)>/gi, (match, c1, c2) => {
+    if (CHORD_TOKEN_REGEX.test(c1.trim()) && CHORD_TOKEN_REGEX.test(c2.trim())) {
+      return `[${c1.trim()}]-[${c2.trim()}]`
+    }
+    return match
+  })
+
+  // 2. Single angle bracket chords <C>, <F>, <G>, etc.
+  res = res.replace(/<([A-G][b#]?[^>]*)>/gi, (match, chord) => {
+    const trimmed = chord.trim()
+    if (CHORD_TOKEN_REGEX.test(trimmed)) {
+      return `[${trimmed}]`
+    }
+    if (/^[A-G][b#]?[^>]*\/[A-G][b#]?$/i.test(trimmed)) {
+      return `[${trimmed}]`
+    }
+    return match
+  })
+
+  return res
+}
+
 // Check if a line consists predominantly of chords
 export function isChordLine(line: string): boolean {
   const trimmed = line.trim()
@@ -127,6 +177,7 @@ export function isChordLine(line: string): boolean {
 
   let chordCount = 0
   let lyricCount = 0
+  let hasProseWord = false
 
   for (const t of processedTokens) {
     if (isDelimiterToken(t)) {
@@ -135,16 +186,45 @@ export function isChordLine(line: string): boolean {
     const clean = cleanChordWrapper(t)
     if (!clean) continue
 
+    const lower = clean.toLowerCase()
+    if (COMMON_PROSE_WORDS.has(lower)) {
+      hasProseWord = true
+      lyricCount++
+      continue
+    }
+
+    // Special case: "A" or "a" alone is the most common English article.
+    // Only treat it as a chord if ALL other tokens on this line are also chords.
+    if (clean === 'A' || clean === 'a') {
+      const otherTokens = processedTokens
+        .map((tok) => cleanChordWrapper(tok))
+        .filter((tok) => tok && tok !== 'A' && tok !== 'a' && !isDelimiterToken(tok))
+
+      if (otherTokens.length > 0 && otherTokens.some((tok) => !CHORD_TOKEN_REGEX.test(tok))) {
+        // Line has lyrics! "A" is an article, NOT a chord!
+        lyricCount++
+        continue
+      }
+    }
+
     if (CHORD_TOKEN_REGEX.test(clean)) {
       chordCount++
     } else {
+      // If it looks like normal prose (letters with length >= 4), flag as lyric
+      if (/^[a-zA-Z]{4,}$/.test(clean)) {
+        hasProseWord = true
+      }
       lyricCount++
     }
   }
 
+  // If the line contains known English prose words, it is a lyric line!
+  if (hasProseWord) return false
   if (chordCount === 0) return false
   if (lyricCount === 0) return true
-  return chordCount / (chordCount + lyricCount) >= 0.6
+
+  // Pure chord lines have practically 0 prose lyrics
+  return lyricCount <= 1 && chordCount / (chordCount + lyricCount) >= 0.85
 }
 
 // Extract distinct chord tokens from a chord line (handling brackets, delimiters, spacing)
@@ -189,12 +269,13 @@ interface BracketedMatch {
 }
 
 function findBracketedChords(line: string): BracketedMatch[] {
-  const regex = /\[([A-G][b#]?[^\]]*)\]/g
+  // Support both square brackets [C] and angle brackets <C>
+  const regex = /\[([A-G][b#]?[^\]]*)\]|<([A-G][b#]?[^>]*)>/g
   const matches: BracketedMatch[] = []
   let m: RegExpExecArray | null
 
   while ((m = regex.exec(line)) !== null) {
-    const candidate = m[1].trim()
+    const candidate = (m[1] || m[2] || '').trim()
     if (CHORD_TOKEN_REGEX.test(candidate)) {
       matches.push({
         chord: candidate,
@@ -317,13 +398,16 @@ export function convertChordProToTwoLine(line: string): [string, string] {
  * Parses raw song text into a structured ParsedGtarSong model matching Android v1.0.42.
  */
 export function parseGtarSong(rawText: string, transposeOffset: number = 0): ParsedGtarSong {
-  const lines = rawText.split('\n')
+  // Normalize angle bracket chords e.g. <C>, <F>, <G>, <C#m>-<B> before line-by-line parsing
+  const normalizedText = normalizeAngleBrackets(rawText)
+  const lines = normalizedText.split('\n')
 
   let title = 'Untitled Song'
   let artist = ''
   let key = ''
   let capo = ''
   let bpm = ''
+  let tags = ''
 
   const parsedLines: SongLine[] = []
   let chordProCount = 0
@@ -364,6 +448,11 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
         case 'tempo':
         case 'bpm':
           bpm = value
+          break
+        case 'tags':
+        case 'tag':
+        case 'genre':
+          tags = value
           break
         case 'c':
         case 'comment':
@@ -541,6 +630,41 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
     }
   }
 
+  // Deduplicate consecutive section headers (e.g. [Pre-Chorus] followed immediately by [Pre-Chorus 1])
+  const deduplicatedLines: SongLine[] = []
+  for (let i = 0; i < parsedLines.length; i++) {
+    const current = parsedLines[i]
+    if (current.type === 'SECTION_HEADER') {
+      let prevHeaderIdx = -1
+      for (let j = deduplicatedLines.length - 1; j >= 0; j--) {
+        if (deduplicatedLines[j].type === 'EMPTY') continue
+        if (deduplicatedLines[j].type === 'SECTION_HEADER') {
+          prevHeaderIdx = j
+        }
+        break
+      }
+
+      if (prevHeaderIdx !== -1) {
+        const prevHeader = deduplicatedLines[prevHeaderIdx] as { type: 'SECTION_HEADER'; title: string }
+        const normPrev = prevHeader.title.toLowerCase().replace(/[^a-z0-9]/g, '')
+        const normCurr = current.title.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+        if (normPrev === normCurr || normPrev.startsWith(normCurr) || normCurr.startsWith(normPrev)) {
+          // Keep the more detailed / specific title
+          if (current.title.length > prevHeader.title.length) {
+            prevHeader.title = current.title
+          }
+          // Remove empty lines between redundant headers
+          while (deduplicatedLines.length > prevHeaderIdx + 1) {
+            deduplicatedLines.pop()
+          }
+          continue
+        }
+      }
+    }
+    deduplicatedLines.push(current)
+  }
+
   const format: SongFormat =
     chordProCount > twoLineCount ? 'CHORD_PRO' : twoLineCount > 0 ? 'TWO_LINE' : 'PLAIN'
 
@@ -550,9 +674,26 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
     key,
     capo,
     bpm,
+    tags,
     format,
-    lines: parsedLines,
+    lines: deduplicatedLines,
   }
+}
+
+/**
+ * Standardizes chord notation to standard ChordPro bracket format:
+ * - Converts angle bracket chords <C>, <F#m>, <G11> to [C], [F#m], [G11]
+ * - Converts hyphenated angle brackets <C#m>-<B> or <C#m-B> to [C#m]-[B]
+ */
+export function standardizeChordProBrackets(text: string): string {
+  if (!text) return ''
+  let result = text
+  // Hyphenated bracketed chords
+  result = result.replace(/<([A-G][b#]?[^>]*)-([A-G][b#]?[^>]*)>/g, '[$1]-[$2]')
+  result = result.replace(/<([A-G][b#]?[^>]*)>-<([A-G][b#]?[^>]*)>/g, '[$1]-[$2]')
+  // Single angle bracket chords
+  result = result.replace(/<([A-G][b#]?[^>]*)>/g, '[$1]')
+  return result
 }
 
 /**

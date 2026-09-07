@@ -13,8 +13,8 @@ android {
         applicationId = "com.joel.gta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 48
-        versionName = "v1.0.47"
+        versionCode = 49
+        versionName = "v1.0.48"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

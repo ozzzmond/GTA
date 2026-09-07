@@ -79,6 +79,90 @@ export async function detectLanIp(): Promise<string | null> {
   })
 }
 
+export const RECENT_LEADERS_KEY = 'gtar_recent_leaders'
+export const MAX_RECENT_LEADERS = 5
+
+/**
+ * Automatically prepends "ws://" and appends ":8765" if the user types raw numbers/IPs.
+ */
+export function formatLeaderAddress(raw: string): string {
+  let val = raw.trim()
+  if (!val) return ''
+  // Strip trailing slashes
+  val = val.replace(/\/+$/, '')
+  // If protocol missing, default to ws://
+  if (!/^wss?:\/\//i.test(val)) {
+    val = `ws://${val}`
+  }
+  // If no port specified after host, append default :8765
+  const hostPart = val.replace(/^wss?:\/\//i, '')
+  if (!hostPart.includes(':')) {
+    val = `${val}:8765`
+  }
+  return val
+}
+
+/**
+ * Returns clean display string (e.g. "192.168.100.173:8765")
+ */
+export function formatLeaderDisplay(raw: string): string {
+  let val = raw.trim().replace(/^wss?:\/\//i, '').replace(/\/+$/, '')
+  if (val && !val.includes(':')) {
+    val = `${val}:8765`
+  }
+  return val
+}
+
+/**
+ * Retrieve recent leaders from localStorage (max 5 items, clean display format)
+ */
+export function getRecentLeaders(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(RECENT_LEADERS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => (typeof item === 'string' ? formatLeaderDisplay(item) : ''))
+        .filter((item) => item.length > 0)
+    }
+  } catch (e) {
+    console.warn('Failed to parse recent leaders:', e)
+  }
+  return []
+}
+
+/**
+ * Save a successfully connected leader address to recent history (de-duplicated, max 5)
+ */
+export function saveRecentLeader(address: string): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const clean = formatLeaderDisplay(address)
+    if (!clean) return getRecentLeaders()
+    const current = getRecentLeaders()
+    const updated = [clean, ...current.filter((item) => item !== clean)].slice(0, MAX_RECENT_LEADERS)
+    localStorage.setItem(RECENT_LEADERS_KEY, JSON.stringify(updated))
+    return updated
+  } catch (e) {
+    console.warn('Failed to save recent leader:', e)
+    return getRecentLeaders()
+  }
+}
+
+/**
+ * Clear the stored recent leaders from localStorage
+ */
+export function clearRecentLeaders(): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(RECENT_LEADERS_KEY)
+  } catch (e) {
+    console.warn('Failed to clear recent leaders:', e)
+  }
+}
+
 class BandSyncEngine {
   private channel: BroadcastChannel | null = null
   private role: BandSyncRole = 'OFF'
@@ -236,8 +320,9 @@ class BandSyncEngine {
     }
     this.wsLeaderIp = ipOnly
     this.wsPort = port
+    const formatted = `ws://${ipOnly}:${port}`
     if (typeof window !== 'undefined') {
-      localStorage.setItem('gtar_band_sync_leader_ip', leaderIp.trim())
+      localStorage.setItem('gtar_band_sync_leader_ip', formatted)
     }
 
     this.shouldReconnectWs = true
@@ -284,8 +369,10 @@ class BandSyncEngine {
       this.ws.onopen = () => {
         this.wsConnected = true
         this.wsConnecting = false
+        const fullHost = `${this.wsLeaderIp}:${this.wsPort || '8765'}`
+        saveRecentLeader(fullHost)
         if (typeof window !== 'undefined') {
-          localStorage.setItem('gtar_band_sync_leader_ip', this.wsLeaderIp)
+          localStorage.setItem('gtar_band_sync_leader_ip', `ws://${fullHost}`)
         }
         // Send join identifier
         const joinMsg = JSON.stringify({ type: 'JOIN', name: 'Web Member' })

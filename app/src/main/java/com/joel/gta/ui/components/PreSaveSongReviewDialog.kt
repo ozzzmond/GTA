@@ -1,7 +1,9 @@
 package com.joel.gta.ui.components
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,6 +12,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -443,9 +447,140 @@ private fun RawTextEditorField(
         mutableStateOf(TextFieldValue(text = text, selection = TextRange(text.length)))
     }
 
+    // Undo / Redo History Stacks
+    val undoStack = remember { mutableStateListOf<TextFieldValue>() }
+    val redoStack = remember { mutableStateListOf<TextFieldValue>() }
+
+    // Find & Replace State
+    var showFindReplace by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var replaceText by remember { mutableStateOf("") }
+    var currentMatchIndex by remember { mutableIntStateOf(0) }
+
     LaunchedEffect(text) {
         if (textFieldValue.text != text) {
             textFieldValue = textFieldValue.copy(text = text)
+        }
+    }
+
+    // Apply text update with undo history tracking
+    fun applyTextUpdate(newVal: TextFieldValue, recordHistory: Boolean = true) {
+        if (recordHistory && newVal.text != textFieldValue.text) {
+            undoStack.add(textFieldValue)
+            if (undoStack.size > 50) {
+                undoStack.removeAt(0)
+            }
+            redoStack.clear()
+        }
+        textFieldValue = newVal
+        if (newVal.text != text) {
+            onTextChanged(newVal.text)
+        }
+    }
+
+    fun undo() {
+        if (undoStack.isNotEmpty()) {
+            val prev = undoStack.removeAt(undoStack.lastIndex)
+            redoStack.add(textFieldValue)
+            textFieldValue = prev
+            onTextChanged(prev.text)
+        }
+    }
+
+    fun redo() {
+        if (redoStack.isNotEmpty()) {
+            val next = redoStack.removeAt(redoStack.lastIndex)
+            undoStack.add(textFieldValue)
+            textFieldValue = next
+            onTextChanged(next.text)
+        }
+    }
+
+    fun selectAll() {
+        if (textFieldValue.text.isNotEmpty()) {
+            textFieldValue = textFieldValue.copy(
+                selection = TextRange(0, textFieldValue.text.length)
+            )
+        }
+    }
+
+    // Find & Replace match calculation
+    val matches = remember(textFieldValue.text, findQuery) {
+        if (findQuery.isBlank()) {
+            emptyList<IntRange>()
+        } else {
+            val list = mutableListOf<IntRange>()
+            var index = 0
+            val fullText = textFieldValue.text
+            while (index < fullText.length) {
+                val found = fullText.indexOf(findQuery, startIndex = index, ignoreCase = true)
+                if (found == -1) break
+                list.add(found until (found + findQuery.length))
+                index = found + findQuery.length.coerceAtLeast(1)
+            }
+            list
+        }
+    }
+
+    LaunchedEffect(matches.size) {
+        if (matches.isNotEmpty() && currentMatchIndex >= matches.size) {
+            currentMatchIndex = 0
+        }
+    }
+
+    fun jumpToMatch(index: Int) {
+        if (matches.isNotEmpty() && index in matches.indices) {
+            currentMatchIndex = index
+            val range = matches[index]
+            textFieldValue = textFieldValue.copy(
+                selection = TextRange(range.first, range.last + 1)
+            )
+        }
+    }
+
+    fun nextMatch() {
+        if (matches.isNotEmpty()) {
+            val nextIdx = (currentMatchIndex + 1) % matches.size
+            jumpToMatch(nextIdx)
+        }
+    }
+
+    fun prevMatch() {
+        if (matches.isNotEmpty()) {
+            val prevIdx = if (currentMatchIndex - 1 < 0) matches.size - 1 else currentMatchIndex - 1
+            jumpToMatch(prevIdx)
+        }
+    }
+
+    fun replaceCurrent() {
+        if (matches.isNotEmpty() && currentMatchIndex in matches.indices) {
+            val range = matches[currentMatchIndex]
+            val currentText = textFieldValue.text
+            val newText = currentText.substring(0, range.first) + replaceText + currentText.substring(range.last + 1)
+            val newSelection = TextRange(range.first + replaceText.length)
+            applyTextUpdate(TextFieldValue(newText, newSelection))
+        }
+    }
+
+    fun replaceAll() {
+        if (findQuery.isNotBlank() && matches.isNotEmpty()) {
+            val regex = Regex(Regex.escape(findQuery), RegexOption.IGNORE_CASE)
+            val newText = textFieldValue.text.replace(regex, replaceText)
+            applyTextUpdate(TextFieldValue(newText, TextRange(0)))
+        }
+    }
+
+    fun toggleFindReplace() {
+        val willOpen = !showFindReplace
+        showFindReplace = willOpen
+        if (willOpen && !textFieldValue.selection.collapsed) {
+            val selected = textFieldValue.text.substring(
+                textFieldValue.selection.min,
+                textFieldValue.selection.max
+            ).trim()
+            if (selected.isNotBlank() && !selected.contains('\n')) {
+                findQuery = selected
+            }
         }
     }
 
@@ -454,7 +589,6 @@ private fun RawTextEditorField(
         val selection = textFieldValue.selection
 
         if (!selection.collapsed) {
-            // Wrap the selected range in brackets [selected]
             val min = selection.min
             val max = selection.max
             val selected = currentText.substring(min, max).trim()
@@ -465,18 +599,14 @@ private fun RawTextEditorField(
             }
             val newText = currentText.replaceRange(min, max, wrapped)
             val newSelection = TextRange(min, min + wrapped.length)
-            textFieldValue = TextFieldValue(text = newText, selection = newSelection)
-            onTextChanged(newText)
+            applyTextUpdate(TextFieldValue(text = newText, selection = newSelection))
         } else {
             val cursor = selection.start
             if (currentText.isEmpty()) {
-                val newText = "[]"
-                textFieldValue = TextFieldValue(text = newText, selection = TextRange(1))
-                onTextChanged(newText)
+                applyTextUpdate(TextFieldValue(text = "[]", selection = TextRange(1)))
                 return
             }
 
-            // Find word boundaries around cursor
             var start = cursor
             while (start > 0 && !currentText[start - 1].isWhitespace() && currentText[start - 1] !in "[]\n") {
                 start--
@@ -491,12 +621,10 @@ private fun RawTextEditorField(
                 val wrapped = if (word.startsWith("[") && word.endsWith("]")) word else "[$word]"
                 val newText = currentText.replaceRange(start, end, wrapped)
                 val newSelection = TextRange(start + wrapped.length)
-                textFieldValue = TextFieldValue(text = newText, selection = newSelection)
-                onTextChanged(newText)
+                applyTextUpdate(TextFieldValue(text = newText, selection = newSelection))
             } else {
                 val newText = currentText.substring(0, cursor) + "[]" + currentText.substring(cursor)
-                textFieldValue = TextFieldValue(text = newText, selection = TextRange(cursor + 1))
-                onTextChanged(newText)
+                applyTextUpdate(TextFieldValue(text = newText, selection = TextRange(cursor + 1)))
             }
         }
     }
@@ -516,35 +644,29 @@ private fun RawTextEditorField(
             }
             val newText = currentText.replaceRange(min, max, wrapped)
             val newSelection = TextRange(min, min + wrapped.length)
-            textFieldValue = TextFieldValue(text = newText, selection = newSelection)
-            onTextChanged(newText)
+            applyTextUpdate(TextFieldValue(text = newText, selection = newSelection))
         } else {
             val cursor = selection.start
-            // Find start and end of current line
             val lineStart = currentText.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)).let { if (it == -1) 0 else it + 1 }
             val lineEnd = currentText.indexOf('\n', cursor).let { if (it == -1) currentText.length else it }
             val lineContent = currentText.substring(lineStart, lineEnd).trim()
 
             if (lineContent.isNotEmpty() && !lineContent.startsWith("[") && !lineContent.endsWith("]")) {
-                // Wrap the whole line into a section header
                 val wrapped = "[$lineContent]"
                 val newText = currentText.substring(0, lineStart) + wrapped + currentText.substring(lineEnd)
                 val newSelection = TextRange(lineStart, lineStart + wrapped.length)
-                textFieldValue = TextFieldValue(text = newText, selection = newSelection)
-                onTextChanged(newText)
+                applyTextUpdate(TextFieldValue(text = newText, selection = newSelection))
             } else {
-                // Insert [Section] with "Section" selected so user can directly type custom tag name
                 val placeholder = "[Section]"
                 val newText = currentText.substring(0, cursor) + placeholder + currentText.substring(cursor)
                 val newSelection = TextRange(cursor + 1, cursor + 8)
-                textFieldValue = TextFieldValue(text = newText, selection = newSelection)
-                onTextChanged(newText)
+                applyTextUpdate(TextFieldValue(text = newText, selection = newSelection))
             }
         }
     }
 
     Column(modifier = modifier) {
-        // Quick Action Text Editing Bar ([Chords], [Section], Paste, Copy All, Clear)
+        // Quick Action Text Editing Toolbar with Undo, Redo, Select All, Find & Replace
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -555,16 +677,51 @@ private fun RawTextEditorField(
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = customColors.surfaceBackground,
-                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // 1. Undo
+                    IconButton(
+                        onClick = { undo() },
+                        enabled = undoStack.isNotEmpty(),
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "Undo",
+                            tint = if (undoStack.isNotEmpty()) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.35f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // 2. Redo
+                    IconButton(
+                        onClick = { redo() },
+                        enabled = redoStack.isNotEmpty(),
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = "Redo",
+                            tint = if (redoStack.isNotEmpty()) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.35f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
+
+                    // 3. [Chords]
                     TextButton(
                         onClick = { markSelectionAsChord() },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Icon(
                             Icons.Default.LibraryMusic,
@@ -572,7 +729,7 @@ private fun RawTextEditorField(
                             modifier = Modifier.size(15.dp),
                             tint = customColors.chordAccent
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             "[Chords]",
                             color = customColors.chordAccent,
@@ -583,9 +740,10 @@ private fun RawTextEditorField(
 
                     VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
 
+                    // 4. [Section]
                     TextButton(
                         onClick = { markSelectionAsSection() },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Icon(
                             Icons.Default.Bookmark,
@@ -593,7 +751,7 @@ private fun RawTextEditorField(
                             modifier = Modifier.size(15.dp),
                             tint = customColors.sectionHeader
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             "[Section]",
                             color = customColors.sectionHeader,
@@ -604,44 +762,267 @@ private fun RawTextEditorField(
 
                     VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
 
+                    // 5. Select All
+                    TextButton(
+                        onClick = { selectAll() },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.SelectAll,
+                            contentDescription = "Select All",
+                            modifier = Modifier.size(15.dp),
+                            tint = customColors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Select All", color = customColors.textPrimary, fontSize = 12.sp)
+                    }
+
+                    VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
+
+                    // 6. Find & Replace Toggle
+                    TextButton(
+                        onClick = { toggleFindReplace() },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            containerColor = if (showFindReplace) customColors.chordAccent.copy(alpha = 0.2f) else Color.Transparent
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.FindReplace,
+                            contentDescription = "Find & Replace",
+                            modifier = Modifier.size(15.dp),
+                            tint = if (showFindReplace) customColors.chordAccent else customColors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            "Find & Replace",
+                            color = if (showFindReplace) customColors.chordAccent else customColors.textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = if (showFindReplace) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+
+                    VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
+
+                    // 7. Paste
                     TextButton(
                         onClick = {
                             val clip = clipboardManager.getText()?.text
                             if (!clip.isNullOrBlank()) {
-                                onTextChanged(clip)
+                                val min = textFieldValue.selection.min
+                                val max = textFieldValue.selection.max
+                                val currentText = textFieldValue.text
+                                val newText = currentText.substring(0, min) + clip + currentText.substring(max)
+                                val newSelection = TextRange(min + clip.length)
+                                applyTextUpdate(TextFieldValue(newText, newSelection))
                             }
                         },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(15.dp), tint = customColors.chordAccent)
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text("Paste", color = customColors.chordAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
                     VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
 
+                    // 8. Copy All
                     TextButton(
                         onClick = {
-                            if (text.isNotBlank()) {
-                                clipboardManager.setText(AnnotatedString(text))
+                            if (textFieldValue.text.isNotBlank()) {
+                                clipboardManager.setText(AnnotatedString(textFieldValue.text))
                             }
                         },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp), tint = customColors.textSecondary)
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text("Copy All", color = customColors.textPrimary, fontSize = 12.sp)
                     }
 
                     VerticalDivider(modifier = Modifier.height(16.dp), color = customColors.divider)
 
+                    // 9. Clear
                     TextButton(
-                        onClick = { onTextChanged("") },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        onClick = {
+                            applyTextUpdate(TextFieldValue("", TextRange(0)))
+                        },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(15.dp), tint = customColors.textSecondary)
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text("Clear", color = customColors.textSecondary, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // Integrated Find & Replace Sleek Sub-bar (Above keyboard)
+        AnimatedVisibility(
+            visible = showFindReplace,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = customColors.surfaceBackground,
+                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent.copy(alpha = 0.5f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    // Row 1: Find Field + Match counter + Prev + Next + Close [X]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = findQuery,
+                            onValueChange = {
+                                findQuery = it
+                                currentMatchIndex = 0
+                            },
+                            placeholder = { Text("Find...", fontSize = 12.sp) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 40.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                color = customColors.textPrimary
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = customColors.textPrimary,
+                                unfocusedTextColor = customColors.textPrimary,
+                                focusedContainerColor = customColors.canvasBackground,
+                                unfocusedContainerColor = customColors.canvasBackground,
+                                focusedBorderColor = customColors.chordAccent,
+                                unfocusedBorderColor = customColors.divider,
+                                cursorColor = customColors.chordAccent,
+                                selectionColors = textSelectionColors
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+
+                        // Match Counter Badge: e.g. "3 of 8"
+                        if (findQuery.isNotBlank()) {
+                            Text(
+                                text = if (matches.isEmpty()) "0 of 0" else "${currentMatchIndex + 1} of ${matches.size}",
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = if (matches.isEmpty()) customColors.textSecondary else customColors.chordAccent
+                            )
+                        }
+
+                        // Prev match
+                        IconButton(
+                            onClick = { prevMatch() },
+                            enabled = matches.isNotEmpty(),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Previous Match",
+                                tint = if (matches.isNotEmpty()) customColors.textPrimary else customColors.textSecondary.copy(alpha = 0.35f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Next match
+                        IconButton(
+                            onClick = { nextMatch() },
+                            enabled = matches.isNotEmpty(),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Next Match",
+                                tint = if (matches.isNotEmpty()) customColors.textPrimary else customColors.textSecondary.copy(alpha = 0.35f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Close [X]
+                        IconButton(
+                            onClick = { showFindReplace = false },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Close Find & Replace",
+                                tint = customColors.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Row 2: Replace Field + [ Replace ] + [ Replace All ]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = replaceText,
+                            onValueChange = { replaceText = it },
+                            placeholder = { Text("Replace with...", fontSize = 12.sp) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 40.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                color = customColors.textPrimary
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = customColors.textPrimary,
+                                unfocusedTextColor = customColors.textPrimary,
+                                focusedContainerColor = customColors.canvasBackground,
+                                unfocusedContainerColor = customColors.canvasBackground,
+                                focusedBorderColor = customColors.chordAccent,
+                                unfocusedBorderColor = customColors.divider,
+                                cursorColor = customColors.chordAccent,
+                                selectionColors = textSelectionColors
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+
+                        FilledTonalButton(
+                            onClick = { replaceCurrent() },
+                            enabled = matches.isNotEmpty(),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = customColors.chordAccent.copy(alpha = 0.2f),
+                                contentColor = customColors.chordAccent
+                            )
+                        ) {
+                            Text("Replace", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { replaceAll() },
+                            enabled = matches.isNotEmpty(),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = customColors.chordAccent,
+                                contentColor = Color.Black
+                            )
+                        ) {
+                            Text("Replace All", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -652,6 +1033,13 @@ private fun RawTextEditorField(
                 OutlinedTextField(
                     value = textFieldValue,
                     onValueChange = { newValue ->
+                        if (newValue.text != textFieldValue.text) {
+                            undoStack.add(textFieldValue)
+                            if (undoStack.size > 50) {
+                                undoStack.removeAt(0)
+                            }
+                            redoStack.clear()
+                        }
                         textFieldValue = newValue
                         if (newValue.text != text) {
                             onTextChanged(newValue.text)

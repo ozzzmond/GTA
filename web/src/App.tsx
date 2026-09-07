@@ -966,10 +966,26 @@ function App() {
           if (meta.key) next.key = meta.key
           if (meta.capo) next.capo = meta.capo
           if (meta.bpm) next.bpm = meta.bpm
+          if (meta.tags) next.tags = meta.tags
         }
         return next
       })
     )
+  }
+
+  // Explicit save action from DesktopEditor
+  const handleSaveSongFromEditor = (updatedSong: ActiveSongState) => {
+    setSongs((prev) => {
+      const nextSongs = prev.map((s, idx) => (idx === activeSongIndex ? updatedSong : s))
+      try {
+        localStorage.setItem('gtar_songs_store', JSON.stringify(nextSongs))
+      } catch (err) {
+        console.error('Failed to persist songs store:', err)
+      }
+      return nextSongs
+    })
+    setToastMessage('Song saved successfully')
+    setTimeout(() => setToastMessage(null), 3500)
   }
 
   // Import single song
@@ -1172,6 +1188,8 @@ function App() {
           <DesktopEditor
             song={currentSong}
             onUpdateSong={handleUpdateSong}
+            onSaveSong={handleSaveSongFromEditor}
+            onClose={() => setActiveView('stage')}
             transposeOffset={currentSong.transposeOffset || 0}
           />
         ) : activeView === 'trash' ? (

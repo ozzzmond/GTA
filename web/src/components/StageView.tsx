@@ -85,17 +85,49 @@ export const StageView: React.FC<StageViewProps> = ({
   const isInSetlistMode = propIsInSetlistMode || queueMode === 'setlist'
   // Stage view configuration & controls (matching Jetpack Compose SongViewerScreen.kt)
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
-  const [scrollSpeed, setScrollSpeed] = useState(35) // continuous dp/s / px/s (10 to 150)
-  const [fontSizePx, setFontSizePx] = useState(20) // 13px to 36px
+  const [scrollSpeed, setScrollSpeed] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gtar_stage_scroll_speed')
+      if (saved) {
+        const val = parseInt(saved, 10)
+        if (!isNaN(val) && val >= 10 && val <= 150) return val
+      }
+    }
+    return 35
+  })
+  const [fontSizePx, setFontSizePx] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gtar_stage_font_size')
+      if (saved) {
+        const val = parseInt(saved, 10)
+        if (!isNaN(val) && val >= 12 && val <= 38) return val
+      }
+    }
+    return 20
+  })
   const [localFontStyle, setLocalFontStyle] = useState<'mono' | 'sans' | 'serif'>('mono')
-  const [localIsTwoColumn, setLocalIsTwoColumn] = useState(false)
+  const [localIsTwoColumn, setLocalIsTwoColumn] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gtar_stage_two_column') === 'true'
+    }
+    return false
+  })
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   const fontStyle = externalFontStyle !== undefined ? externalFontStyle : localFontStyle
   const setFontStyle = externalOnSelectFontStyle || setLocalFontStyle
 
   const isTwoColumn = externalIsTwoColumn !== undefined ? externalIsTwoColumn : localIsTwoColumn
-  const setIsTwoColumn = externalOnToggleTwoColumn || setLocalIsTwoColumn
+  const setIsTwoColumn = (enabled: boolean) => {
+    if (externalOnToggleTwoColumn) {
+      externalOnToggleTwoColumn(enabled)
+    } else {
+      setLocalIsTwoColumn(enabled)
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gtar_stage_two_column', String(enabled))
+    }
+  }
 
   // Modals & Drawers
   const [isKeyPickerOpen, setIsKeyPickerOpen] = useState(false)
@@ -287,9 +319,13 @@ export const StageView: React.FC<StageViewProps> = ({
 
   // Adjust scroll speed and broadcast if HOST
   const handleAdjustSpeed = (newSpeed: number) => {
-    setScrollSpeed(newSpeed)
+    const clamped = Math.max(10, Math.min(150, newSpeed))
+    setScrollSpeed(clamped)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gtar_stage_scroll_speed', String(clamped))
+    }
     if (syncState.role === 'HOST') {
-      bandSync.broadcastAutoScroll(isAutoScrolling, newSpeed)
+      bandSync.broadcastAutoScroll(isAutoScrolling, clamped)
     }
   }
 
@@ -469,7 +505,13 @@ export const StageView: React.FC<StageViewProps> = ({
           <div className="flex items-center bg-[#002B36] rounded-lg border border-[#1A4A55] p-0.5">
             <button
               type="button"
-              onClick={() => setFontSizePx((prev) => Math.max(13, prev - 1))}
+              onClick={() => {
+                const next = Math.max(12, fontSizePx - 1)
+                setFontSizePx(next)
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('gtar_stage_font_size', String(next))
+                }
+              }}
               className="px-2 py-1 text-xs font-extrabold text-[#EEE8D5] hover:text-[#2AA198] rounded cursor-pointer select-none"
               title="Decrease Font Size (A-)"
             >
@@ -480,7 +522,13 @@ export const StageView: React.FC<StageViewProps> = ({
             </span>
             <button
               type="button"
-              onClick={() => setFontSizePx((prev) => Math.min(36, prev + 1))}
+              onClick={() => {
+                const next = Math.min(38, fontSizePx + 1)
+                setFontSizePx(next)
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('gtar_stage_font_size', String(next))
+                }
+              }}
               className="px-2 py-1 text-xs font-extrabold text-[#EEE8D5] hover:text-[#2AA198] rounded cursor-pointer select-none"
               title="Increase Font Size (A+)"
             >
@@ -639,8 +687,8 @@ export const StageView: React.FC<StageViewProps> = ({
 
           {/* Song Lines Rendering: 1 Column or 2 Columns */}
           {isTwoColumn && col2Lines.length > 0 ? (
-            <div className="flex gap-6 lg:gap-10 items-start">
-              <div className="flex-1 min-w-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-10 items-start">
+              <div className="min-w-0">
                 <SongLineRenderer
                   lines={col1Lines}
                   fontSizePx={fontSizePx}
@@ -649,10 +697,7 @@ export const StageView: React.FC<StageViewProps> = ({
                 />
               </div>
 
-              {/* VerticalDivider (color = divider.copy(alpha = 0.5f), thickness = 1.dp) */}
-              <div className="w-[1px] bg-[#1A4A55]/50 self-stretch my-1" />
-
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 md:border-l md:border-[#1A4A55]/60 md:pl-6 lg:pl-10">
                 <SongLineRenderer
                   lines={col2Lines}
                   fontSizePx={fontSizePx}

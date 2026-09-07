@@ -2,7 +2,7 @@
  * GTAR Android Room Entity, Setlist & Stage Line Type Definitions (v1.0.47+ compatible)
  */
 
-export const GTAR_APP_VERSION = '1.0.47'
+export const GTAR_APP_VERSION = '1.0.48'
 export const GTAR_SETLIST_VERSION = 1
 export const GTAR_SETLIST_TYPE = 'GTAR_SETLIST'
 
@@ -109,6 +109,7 @@ export interface ActiveSongState {
   rawContent: string
   format: SongFormat
   transposeOffset: number
+  tags?: string
   isDeleted?: boolean
 }
 
@@ -173,6 +174,7 @@ export interface ParsedGtarSong {
   key: string
   capo: string
   bpm: string
+  tags?: string
   format: SongFormat
   lines: SongLine[]
 }

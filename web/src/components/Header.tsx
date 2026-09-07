@@ -30,6 +30,7 @@ import {
   type FetchedChordSheet,
 } from '../utils/onlineSearch'
 import { ChordPreviewModal } from './ChordPreviewModal'
+import { GtaLogoIcon } from './GtaLogoIcon'
 
 interface HeaderProps {
   activeView: 'songbook' | 'editor' | 'stage' | 'trash'
@@ -248,13 +249,7 @@ export const Header: React.FC<HeaderProps> = ({
             title="Return to Songbook Library Home"
           >
             <div className="w-9 h-9 rounded-xl bg-[#002B36] border border-[#2AA198]/40 group-hover:border-[#2AA198] flex items-center justify-center text-[#2AA198] group-hover:text-[#35B8AD] shadow-inner transition-colors">
-              <svg
-                className="w-5 h-5 fill-current"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M12 2C7.5 2 3.5 5.5 3.5 11c0 4.5 4.5 9.5 8.5 11 4-1.5 8.5-6.5 8.5-11 0-5.5-4-9-8.5-9zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 13.5c-2.8-1.5-6-5.4-6-8.5 0-3.9 2.7-6.5 6-6.5s6 2.6 6 6.5c0 3.1-3.2 7-6 8.5z" />
-              </svg>
+              <GtaLogoIcon className="w-5 h-5 fill-current" />
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5 leading-none">
@@ -267,13 +262,13 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation()
                     onCheckForUpdates?.()
                   }}
-                  title="Click to check for updates (v1.0.47)"
+                  title="Click to check for updates (v1.0.48)"
                   className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
                 >
                   {isCheckingUpdates && (
                     <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                   )}
-                  <span>v1.0.47</span>
+                  <span>v1.0.48</span>
                 </button>
               </div>
               <span className="hidden md:inline text-[10px] text-[#93A1A1] group-hover:text-[#EEE8D5] mt-0.5 font-medium leading-none transition-colors">
@@ -896,7 +891,7 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={Boolean(previewResult)}
         onClose={() => setPreviewResult(null)}
         result={previewResult}
-        onImportSong={(sheet, openStage) => {
+        onImportSong={(sheet: FetchedChordSheet, openStage?: boolean) => {
           if (onDirectImportOnlineSong) {
             onDirectImportOnlineSong(sheet, openStage)
           }

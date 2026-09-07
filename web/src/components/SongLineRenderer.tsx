@@ -34,21 +34,48 @@ function renderInteractiveChordLine(
         i++
       }
       const rawToken = text.substring(start, i)
-      const cleanToken = rawToken.replace(/^[[<({|,–—:;~]+|[\]>)}|,–—:;~]+$/g, '')
 
-      if (cleanToken && CHORD_TOKEN_REGEX.test(cleanToken)) {
-        elements.push(
-          <span
-            key={`chord-${start}`}
-            onClick={() => onChordClick?.(cleanToken)}
-            className="hover:text-[#2AA198] hover:underline cursor-pointer active:scale-95 transition-colors select-none"
-            title={`View ${cleanToken} fretboard diagram`}
-          >
-            {cleanToken}
-          </span>
-        )
+      // Handle hyphenated compound chords like "<C#m>-<B>" or "C#m-B"
+      if (rawToken.includes('-') || rawToken.includes('–') || rawToken.includes('—')) {
+        const subParts = rawToken.split(/([-–—])/)
+        for (let sIdx = 0; sIdx < subParts.length; sIdx++) {
+          const sub = subParts[sIdx]
+          if (sub === '-' || sub === '–' || sub === '—') {
+            elements.push(<span key={`sep-${start}-${sIdx}`}>{sub}</span>)
+            continue
+          }
+          const cleanSub = sub.replace(/^[[<({|,–—:;~]+|[\]>)}|,–—:;~]+$/g, '').trim()
+          if (cleanSub && CHORD_TOKEN_REGEX.test(cleanSub)) {
+            elements.push(
+              <span
+                key={`chord-${start}-${sIdx}`}
+                onClick={() => onChordClick?.(cleanSub)}
+                className="hover:text-[#2AA198] hover:underline cursor-pointer active:scale-95 transition-colors select-none"
+                title={`View ${cleanSub} fretboard diagram`}
+              >
+                {cleanSub}
+              </span>
+            )
+          } else {
+            elements.push(<span key={`tok-${start}-${sIdx}`}>{sub}</span>)
+          }
+        }
       } else {
-        elements.push(<span key={`tok-${start}`}>{rawToken}</span>)
+        const cleanToken = rawToken.replace(/^[[<({|,–—:;~]+|[\]>)}|,–—:;~]+$/g, '').trim()
+        if (cleanToken && CHORD_TOKEN_REGEX.test(cleanToken)) {
+          elements.push(
+            <span
+              key={`chord-${start}`}
+              onClick={() => onChordClick?.(cleanToken)}
+              className="hover:text-[#2AA198] hover:underline cursor-pointer active:scale-95 transition-colors select-none"
+              title={`View ${cleanToken} fretboard diagram`}
+            >
+              {cleanToken}
+            </span>
+          )
+        } else {
+          elements.push(<span key={`tok-${start}`}>{rawToken}</span>)
+        }
       }
     }
   }
@@ -167,9 +194,9 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
             )
 
           case 'LYRIC': {
-            // Defensive check: If lyric line contains bracketed chords (e.g. "When the [A]night"),
+            // Defensive check: If lyric line contains bracketed chords (e.g. "When the [A]night" or "<C>"),
             // automatically split to stacked chord-over-lyric layout matching Android 1:1
-            if (/\[[A-G][b#]?[^\]]*\]/.test(line.lyrics)) {
+            if (/\[[A-G][b#]?[^\]]*\]|<[A-G][b#]?[^>]*>/.test(line.lyrics)) {
               const [chordLine, lyricLine] = convertChordProToTwoLine(line.lyrics)
               return (
                 <div key={idx} className="select-text">

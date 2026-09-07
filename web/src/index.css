@@ -160,13 +160,14 @@ body.theme-paper-light .bg-\[\#002B36\] {
 }
 body.theme-paper-light .text-\[\#FDF6E3\],
 body.theme-paper-light .text-\[\#EEE8D5\] {
-  color: #111827 !important;
+  color: #0f172a !important;
 }
 body.theme-paper-light .text-\[\#93A1A1\] {
-  color: #4b5563 !important;
+  color: #334155 !important;
+  font-weight: 600 !important;
 }
 body.theme-paper-light .border-\[\#1A4A55\] {
-  border-color: #d2c3a3 !important;
+  border-color: #cbd5e1 !important;
 }
 
 /* Lyrics & Text in Paper Theme: deep dark charcoal/black */

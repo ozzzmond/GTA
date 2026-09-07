@@ -89,13 +89,20 @@ export function transposeChordToken(chord: string, semitones: number): string {
 export function transposeChordProText(text: string, semitones: number): string {
   if (semitones === 0) return text
 
-  return text.replace(/\[([A-Ga-g][#b]?[^\]]*)\]/g, (match, chord) => {
-    // Avoid transposing section headers inside brackets like [Verse 1]
-    if (/^(Intro|Verse|Chorus|Bridge|Pre-Chorus|Post-Chorus|Outro|Solo|Tab)/i.test(chord)) {
-      return match
-    }
-    return `[${transposeChordToken(chord, semitones)}]`
-  })
+  return text
+    .replace(/\[([A-Ga-g][#b]?[^\]]*)\]/g, (match, chord) => {
+      // Avoid transposing section headers inside brackets like [Verse 1]
+      if (/^(Intro|Verse|Chorus|Bridge|Pre-Chorus|Post-Chorus|Outro|Solo|Tab)/i.test(chord)) {
+        return match
+      }
+      return `[${transposeChordToken(chord, semitones)}]`
+    })
+    .replace(/<([A-Ga-g][#b]?[^>]*)>/g, (match, chord) => {
+      if (/^(Intro|Verse|Chorus|Bridge|Pre-Chorus|Post-Chorus|Outro|Solo|Tab)/i.test(chord)) {
+        return match
+      }
+      return `[${transposeChordToken(chord, semitones)}]`
+    })
 }
 
 /**
@@ -121,6 +128,16 @@ export function transposeChordLine(chordLine: string, semitones: number): string
       const prefix = rawToken.match(/^[[<({|,–—:;~]+/)?.[0] || ''
       const suffix = rawToken.match(/[\]>)}|,–—:;~]+$/)?.[0] || ''
       const cleanToken = rawToken.substring(prefix.length, rawToken.length - suffix.length)
+
+      if (cleanToken && cleanToken.includes('-')) {
+        const parts = cleanToken.split('-')
+        if (parts.length > 1 && parts.every((p) => /^[A-G][b#]?(?:m|maj|min|dim|aug|sus[24]?|add[249]|m7b5|M7|[0-9]{1,2}|alt)*(?:\/[A-G][b#]?)?$/i.test(p.trim()))) {
+          const transposed = parts.map((p) => transposeChordToken(p.trim(), semitones)).join('-')
+          const replacement = `${prefix}${transposed}${suffix}`
+          result += replacement
+          continue
+        }
+      }
 
       if (cleanToken && /^[A-G][b#]?(?:m|maj|min|dim|aug|sus[24]?|add[249]|m7b5|M7|[0-9]{1,2}|alt)*(?:\/[A-G][b#]?)?$/i.test(cleanToken)) {
         const transposed = transposeChordToken(cleanToken, semitones)
