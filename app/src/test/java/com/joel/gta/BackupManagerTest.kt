@@ -53,6 +53,9 @@ class BackupManagerTest {
         override suspend fun restoreSong(id: Long) {}
         override suspend fun permanentDeleteSong(id: Long) {}
         override suspend fun emptyTrash() {}
+        override suspend fun deleteAllSongs() {
+            songs.clear()
+        }
         override suspend fun updateLastOpened(id: Long, timestamp: Long) {}
         override suspend fun deleteSong(song: SongEntity) {}
     }
@@ -88,6 +91,12 @@ class BackupManagerTest {
 
         override suspend fun updatePosition(setlistId: Long, songId: Long, newPosition: Int) {}
         override suspend fun removeSongFromSetlist(setlistId: Long, songId: Long) {}
+        override suspend fun deleteAllSetlists() {
+            setlists.clear()
+        }
+        override suspend fun deleteAllCrossRefs() {
+            crossRefs.clear()
+        }
         override suspend fun deleteSetlist(setlist: SetlistEntity) {}
     }
 
