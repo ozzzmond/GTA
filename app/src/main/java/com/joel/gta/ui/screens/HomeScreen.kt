@@ -201,7 +201,8 @@ fun HomeScreen(
     var showBackupRestoreMenu by remember { mutableStateOf(false) }
     var showClearHistoryTopBarDialog by remember { mutableStateOf(false) }
     var showExportBackupDialog by remember { mutableStateOf(false) }
-    var showImportFromCloudDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var showBackupRestoreDialog by remember { mutableStateOf(false) }
 
     // SAF Document Picker launcher - accepts .txt, .chordtxt, or all text formats
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -402,7 +403,7 @@ fun HomeScreen(
                                 )
                                 HorizontalDivider(color = customColors.divider)
                                 DropdownMenuItem(
-                                    text = { Text("Import Single File (.txt / .chordpro / .json)") },
+                                    text = { Text("Import...") },
                                     leadingIcon = {
                                         Icon(
                                             imageVector = Icons.Default.FolderOpen,
@@ -412,80 +413,22 @@ fun HomeScreen(
                                     },
                                     onClick = {
                                         showBackupRestoreMenu = false
-                                        filePickerLauncher.launch(
-                                            arrayOf(
-                                                "text/plain",
-                                                "text/*",
-                                                "application/json",
-                                                "application/octet-stream",
-                                                "*/*"
-                                            )
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Import Song Folder (Batch)") },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.DriveFolderUpload,
-                                            contentDescription = null,
-                                            tint = customColors.chordAccent
-                                        )
-                                    },
-                                    onClick = {
-                                        showBackupRestoreMenu = false
-                                        folderPickerLauncher.launch(null)
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Import from Cloud") },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.CloudDownload,
-                                            contentDescription = null,
-                                            tint = customColors.chordAccent
-                                        )
-                                    },
-                                    onClick = {
-                                        showBackupRestoreMenu = false
-                                        showImportFromCloudDialog = true
+                                        showImportDialog = true
                                     }
                                 )
                                 HorizontalDivider(color = customColors.divider)
                                 DropdownMenuItem(
-                                    text = { Text("Export Backup") },
+                                    text = { Text("Backup & Restore...") },
                                     leadingIcon = {
                                         Icon(
-                                            imageVector = Icons.Default.CloudUpload,
+                                            imageVector = Icons.Default.Backup,
                                             contentDescription = null,
                                             tint = customColors.chordAccent
                                         )
                                     },
                                     onClick = {
                                         showBackupRestoreMenu = false
-                                        showExportBackupDialog = true
-                                    }
-                                )
-                                HorizontalDivider(color = customColors.divider)
-                                DropdownMenuItem(
-                                    text = { Text("Restore from Backup (Smart Merge)") },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.CloudDownload,
-                                            contentDescription = null,
-                                            tint = customColors.chordAccent
-                                        )
-                                    },
-                                    onClick = {
-                                        showBackupRestoreMenu = false
-                                        backupPickerLauncher.launch(
-                                            arrayOf(
-                                                "application/json",
-                                                "application/octet-stream",
-                                                "text/plain",
-                                                "*/*"
-                                            )
-                                        )
+                                        showBackupRestoreDialog = true
                                     }
                                 )
                                 HorizontalDivider(color = customColors.divider)
@@ -2051,6 +1994,259 @@ fun HomeScreen(
         )
     }
 
+    // Consolidated Import Dialog (Single File vs Folder Batch)
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            containerColor = customColors.surfaceBackground,
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.FolderOpen,
+                    contentDescription = null,
+                    tint = customColors.chordAccent,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Import",
+                    color = customColors.textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Choose an import method for your songs and chord charts:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = customColors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Option 1: Import File (.txt, .chordpro, .json)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showImportDialog = false
+                                filePickerLauncher.launch(
+                                    arrayOf(
+                                        "text/plain",
+                                        "text/*",
+                                        "application/json",
+                                        "application/octet-stream",
+                                        "*/*"
+                                    )
+                                )
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = customColors.canvasBackground,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Description,
+                                contentDescription = null,
+                                tint = customColors.chordAccent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Import File (.txt, .chordpro, .json)",
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textPrimary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = "Select single song or chord sheet from Local storage or Google Drive",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = customColors.textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Option 2: Import Folder (Batch)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showImportDialog = false
+                                folderPickerLauncher.launch(null)
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = customColors.canvasBackground,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DriveFolderUpload,
+                                contentDescription = null,
+                                tint = customColors.chordAccent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Import Folder (Batch)",
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textPrimary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = "Select folder to batch import all chord charts and songs",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = customColors.textSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            }
+        )
+    }
+
+    // Consolidated Backup & Restore Master Dialog
+    if (showBackupRestoreDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupRestoreDialog = false },
+            containerColor = customColors.surfaceBackground,
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Backup,
+                    contentDescription = null,
+                    tint = customColors.chordAccent,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Backup & Restore",
+                    color = customColors.textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Manage your GTAR songbook and setlists backup:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = customColors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Option 1: Export Backup
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showBackupRestoreDialog = false
+                                showExportBackupDialog = true
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = customColors.canvasBackground,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = null,
+                                tint = customColors.chordAccent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Export Backup",
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textPrimary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = "Save to Device (.json) or Share / Upload to Cloud / Drive",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = customColors.textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Option 2: Restore Backup (Smart Merge)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showBackupRestoreDialog = false
+                                backupPickerLauncher.launch(
+                                    arrayOf(
+                                        "application/json",
+                                        "application/octet-stream",
+                                        "text/plain",
+                                        "*/*"
+                                    )
+                                )
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = customColors.canvasBackground,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                tint = customColors.chordAccent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Restore Backup (Smart Merge)",
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textPrimary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = "Select backup .json file from Device or Google Drive",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = customColors.textSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showBackupRestoreDialog = false }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            }
+        )
+    }
+
     // Unified Export Backup Dialog (Save to Device vs Share to Cloud / Drive)
     if (showExportBackupDialog) {
         AlertDialog(
@@ -2080,7 +2276,7 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Option 1: Save to Device
+                    // Option 1: Save to Device (.json)
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2105,7 +2301,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Save to Device",
+                                    text = "Save to Device (.json)",
                                     fontWeight = FontWeight.Bold,
                                     color = customColors.textPrimary,
                                     style = MaterialTheme.typography.bodyMedium
@@ -2121,7 +2317,7 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Option 2: Share to Cloud / Drive
+                    // Option 2: Share / Upload to Cloud / Drive
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2146,7 +2342,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Share to Cloud / Drive",
+                                    text = "Share / Upload to Cloud / Drive",
                                     fontWeight = FontWeight.Bold,
                                     color = customColors.textPrimary,
                                     style = MaterialTheme.typography.bodyMedium
@@ -2164,140 +2360,6 @@ fun HomeScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showExportBackupDialog = false }) {
-                    Text("Cancel", color = customColors.textSecondary)
-                }
-            }
-        )
-    }
-
-    // Import from Cloud Dialog
-    if (showImportFromCloudDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportFromCloudDialog = false },
-            containerColor = customColors.surfaceBackground,
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.CloudDownload,
-                    contentDescription = null,
-                    tint = customColors.chordAccent,
-                    modifier = Modifier.size(28.dp)
-                )
-            },
-            title = {
-                Text(
-                    text = "Import from Cloud",
-                    color = customColors.textPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "Select what you want to pull directly from Google Drive or Cloud Storage:",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = customColors.textSecondary
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Option 1: Songs / Chord Sheets from Cloud
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showImportFromCloudDialog = false
-                                filePickerLauncher.launch(
-                                    arrayOf(
-                                        "text/plain",
-                                        "text/*",
-                                        "application/json",
-                                        "application/octet-stream",
-                                        "*/*"
-                                    )
-                                )
-                            },
-                        shape = RoundedCornerShape(12.dp),
-                        color = customColors.canvasBackground,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                tint = customColors.chordAccent,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Import Songs / Chords",
-                                    fontWeight = FontWeight.Bold,
-                                    color = customColors.textPrimary,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    text = "Pull .txt, .chordpro, or .json files from Google Drive / Cloud",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = customColors.textSecondary
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Option 2: Full Backup Restore from Cloud
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showImportFromCloudDialog = false
-                                backupPickerLauncher.launch(
-                                    arrayOf(
-                                        "application/json",
-                                        "application/octet-stream",
-                                        "text/plain",
-                                        "*/*"
-                                    )
-                                )
-                            },
-                        shape = RoundedCornerShape(12.dp),
-                        color = customColors.canvasBackground,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = null,
-                                tint = customColors.chordAccent,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Restore Full Backup (.json)",
-                                    fontWeight = FontWeight.Bold,
-                                    color = customColors.textPrimary,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    text = "Merge or restore your full GTAR backup from Google Drive / Cloud",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = customColors.textSecondary
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showImportFromCloudDialog = false }) {
                     Text("Cancel", color = customColors.textSecondary)
                 }
             }
