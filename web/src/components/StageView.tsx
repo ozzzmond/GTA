@@ -34,6 +34,10 @@ interface StageViewProps {
   songs: ActiveSongState[]
   activeSongIndex: number
   onSelectSongIndex: (index: number) => void
+  isInSetlistMode?: boolean
+  activeSetlistSongs?: ActiveSongState[]
+  activeSetlistSongIndex?: number
+  onSelectSetlistSongIndex?: (index: number) => void
   onOpenSetlistDrawer: () => void
   transposeOffset: number
   onTransposeChange: (offset: number) => void
@@ -59,6 +63,10 @@ export const StageView: React.FC<StageViewProps> = ({
   songs,
   activeSongIndex,
   onSelectSongIndex,
+  isInSetlistMode = false,
+  activeSetlistSongs = [],
+  activeSetlistSongIndex = 0,
+  onSelectSetlistSongIndex,
   onOpenSetlistDrawer,
   transposeOffset,
   onTransposeChange,
@@ -268,19 +276,27 @@ export const StageView: React.FC<StageViewProps> = ({
         return
       }
 
-      // ArrowRight or 'n': Next song in setlist
+      // ArrowRight or 'n': Next song in setlist or library
       if (e.key === 'ArrowRight' || e.key === 'n' || e.key === 'N') {
         e.preventDefault()
-        if (activeSongIndex < songs.length - 1) {
+        if (isInSetlistMode && onSelectSetlistSongIndex) {
+          if (activeSetlistSongIndex < activeSetlistSongs.length - 1) {
+            onSelectSetlistSongIndex(activeSetlistSongIndex + 1)
+          }
+        } else if (activeSongIndex < songs.length - 1) {
           onSelectSongIndex(activeSongIndex + 1)
         }
         return
       }
 
-      // ArrowLeft or 'p': Previous song in setlist
+      // ArrowLeft or 'p': Previous song in setlist or library
       if (e.key === 'ArrowLeft' || e.key === 'p' || e.key === 'P') {
         e.preventDefault()
-        if (activeSongIndex > 0) {
+        if (isInSetlistMode && onSelectSetlistSongIndex) {
+          if (activeSetlistSongIndex > 0) {
+            onSelectSetlistSongIndex(activeSetlistSongIndex - 1)
+          }
+        } else if (activeSongIndex > 0) {
           onSelectSongIndex(activeSongIndex - 1)
         }
         return
@@ -363,12 +379,14 @@ export const StageView: React.FC<StageViewProps> = ({
             type="button"
             onClick={onOpenSetlistDrawer}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#002B36] border border-[#1A4A55] text-[#EEE8D5] hover:border-[#2AA198] hover:text-[#2AA198] text-xs font-bold transition-all cursor-pointer shadow-sm"
-            title="Open Stage Setlist Drawer"
+            title={isInSetlistMode ? "Open Setlist Drawer" : "Open Songbook Library Drawer"}
           >
             <ListMusic className="w-4 h-4 text-[#2AA198]" />
-            <span className="hidden sm:inline">Setlist</span>
+            <span className="hidden sm:inline">{isInSetlistMode ? "Setlist" : "Library"}</span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#2AA198]/20 text-[#2AA198]">
-              {activeSongIndex + 1}/{songs.length}
+              {isInSetlistMode
+                ? `${activeSetlistSongIndex + 1}/${activeSetlistSongs.length || 1}`
+                : `${activeSongIndex + 1}/${songs.length}`}
             </span>
           </button>
 
@@ -653,13 +671,13 @@ export const StageView: React.FC<StageViewProps> = ({
       {/* 3. BOTTOM BAR (Gig Navigation Strip & Floating Glassmorphic Stage)   */}
       {/* =================================================================== */}
       <div className="absolute bottom-4 sm:bottom-6 right-4 sm:right-6 z-30 flex flex-col items-end gap-2.5 pointer-events-none">
-        {/* Gig Performance Navigation Strip (Only shown when multiple songs exist) */}
-        {songs.length > 1 && (
+        {/* Gig Performance Navigation Strip: ONLY shown in Setlist Mode when multiple songs exist in the setlist */}
+        {isInSetlistMode && activeSetlistSongs.length > 1 && (
           <div className="pointer-events-auto flex items-center justify-between gap-3 px-3 py-1.5 rounded-2xl bg-[#073642]/95 border border-[#B58900]/40 backdrop-blur-md shadow-xl text-xs font-mono">
             <button
               type="button"
-              disabled={activeSongIndex <= 0}
-              onClick={() => onSelectSongIndex(activeSongIndex - 1)}
+              disabled={activeSetlistSongIndex <= 0}
+              onClick={() => onSelectSetlistSongIndex && onSelectSetlistSongIndex(activeSetlistSongIndex - 1)}
               className="flex items-center gap-1 text-[#B58900] disabled:opacity-30 disabled:hover:text-[#B58900] font-bold hover:text-[#2AA198] transition-colors cursor-pointer"
               title="Previous Song in Setlist (ArrowLeft or 'p')"
             >
@@ -674,13 +692,13 @@ export const StageView: React.FC<StageViewProps> = ({
               title="Open Setlist Drawer"
             >
               <ListMusic className="w-3.5 h-3.5" />
-              SETLIST {activeSongIndex + 1}/{songs.length}
+              SETLIST {activeSetlistSongIndex + 1}/{activeSetlistSongs.length}
             </button>
 
             <button
               type="button"
-              disabled={activeSongIndex >= songs.length - 1}
-              onClick={() => onSelectSongIndex(activeSongIndex + 1)}
+              disabled={activeSetlistSongIndex >= activeSetlistSongs.length - 1}
+              onClick={() => onSelectSetlistSongIndex && onSelectSetlistSongIndex(activeSetlistSongIndex + 1)}
               className="flex items-center gap-1 text-[#B58900] disabled:opacity-30 disabled:hover:text-[#B58900] font-bold hover:text-[#2AA198] transition-colors cursor-pointer"
               title="Next Song in Setlist (ArrowRight or 'n')"
             >

@@ -238,4 +238,50 @@ class BackupManagerTest {
         val u2 = songDao.getSongByTitle("With or Without You")
         assertEquals(u2?.id, refs[1].songId)
     }
+
+    @Test
+    fun testBackupFileNameFormat() {
+        val fileName = BackupManager.generateBackupFileName()
+        assertTrue(
+            "Backup filename '$fileName' must match strictly 'gtar_backup_YYYYMMDD_HHmm.json'",
+            fileName.matches(Regex("^gtar_backup_\\d{8}_\\d{4}\\.json$"))
+        )
+    }
+
+    @Test
+    fun testFullRestoreWithZeroSetlistsDoesNotCreateSetlists() = runBlocking {
+        val songDao = FakeSongDao()
+        val setlistDao = FakeSetlistDao()
+
+        // Seed with existing data
+        songDao.insertSong(SongEntity(id = 1, title = "Old Song", rawContent = "lyrics"))
+        setlistDao.insertSetlist(SetlistEntity(id = 1, name = "Old Setlist"))
+
+        val backupJsonWithZeroSetlists = """
+        {
+          "metadata": {
+            "appName": "GTAR",
+            "appVersion": "1.0.44",
+            "exportTimestamp": 10000
+          },
+          "songs": [
+            { "title": "Song One", "artist": "Artist 1", "rawContent": "Chords 1" },
+            { "title": "Song Two", "artist": "Artist 2", "rawContent": "Chords 2" }
+          ],
+          "setlists": []
+        }
+        """.trimIndent()
+
+        val summary = BackupManager.fullRestoreWipeAndReplace(backupJsonWithZeroSetlists, songDao, setlistDao)
+        assertEquals(2, summary.songsRestored)
+        assertEquals(0, summary.setlistsRestored)
+
+        // Verify songs are in library
+        assertEquals(2, songDao.getAllSongsDirect().size)
+
+        // CRITICAL: Verify NO synthetic setlists were created for the library!
+        val remainingSetlists = setlistDao.getAllSetlistsDirect()
+        assertEquals(0, remainingSetlists.size)
+    }
 }
+

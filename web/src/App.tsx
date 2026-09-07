@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
 import { DesktopEditor } from './components/DesktopEditor'
@@ -159,6 +159,13 @@ Halle[F]lujah, Halle[C]lu---[G]--[C]jah`,
   },
 ]
 
+export interface WebSetlist {
+  id: string | number
+  name: string
+  createdAt?: number
+  songs: Array<{ title: string; artist?: string; id?: string | number }>
+}
+
 function App() {
   // Gated Authentication Wall (persisted in sessionStorage)
   const [isUnlocked, setIsUnlocked] = useState(() => {
@@ -168,17 +175,54 @@ function App() {
   // View state: Desktop Editor vs Stage View
   const [activeView, setActiveView] = useState<'editor' | 'stage'>('stage')
 
-  // Setlist of Songs
+  // Songbook Library of Songs (Strictly separated from setlists)
   const [songs, setSongs] = useState<ActiveSongState[]>(DEFAULT_SETLIST)
+  const [setlists, setSetlists] = useState<WebSetlist[]>([])
+  const [activeSetlistId, setActiveSetlistId] = useState<string | number | null>(null)
   const [activeSongIndex, setActiveSongIndex] = useState<number>(0)
+  const [activeSetlistSongIndex, setActiveSetlistSongIndex] = useState<number>(0)
   const [searchQuery, setSearchQuery] = useState<string>('')
 
   // Display Settings
   const [fontStyle, setFontStyle] = useState<SongFontStyleOption>('mono')
   const [isTwoColumn, setIsTwoColumn] = useState<boolean>(false)
 
+  // Active Setlist context
+  const activeSetlist = useMemo(() => {
+    return setlists.find((sl) => sl.id === activeSetlistId) || null
+  }, [setlists, activeSetlistId])
+
+  const isInSetlistMode = Boolean(activeSetlist)
+
+  // Resolved Setlist Songs
+  const activeSetlistSongs: ActiveSongState[] = useMemo(() => {
+    if (!activeSetlist) return []
+    return activeSetlist.songs.map((ref, idx) => {
+      const match = songs.find(
+        (s) =>
+          s.title.trim().toLowerCase() === ref.title.trim().toLowerCase() &&
+          (!ref.artist || (s.artist || '').trim().toLowerCase() === ref.artist.trim().toLowerCase())
+      )
+      return (
+        match || {
+          id: (ref.id as number) || Date.now() + idx,
+          title: ref.title,
+          artist: ref.artist || '',
+          key: 'G',
+          capo: 'No Capo',
+          bpm: '120',
+          format: 'CHORD_PRO',
+          transposeOffset: 0,
+          rawContent: `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
+        }
+      )
+    })
+  }, [activeSetlist, songs])
+
   // Current active song
-  const currentSong = songs[activeSongIndex] || DEFAULT_SETLIST[0]
+  const currentSong = isInSetlistMode
+    ? activeSetlistSongs[activeSetlistSongIndex] || activeSetlistSongs[0] || songs[0] || DEFAULT_SETLIST[0]
+    : songs[activeSongIndex] || DEFAULT_SETLIST[0]
 
   // Global Modals
   const [isWebsiteUrlModalOpen, setIsWebsiteUrlModalOpen] = useState(false)
@@ -215,9 +259,30 @@ function App() {
 
   // Transpose handler
   const handleTransposeChange = (newOffset: number) => {
-    setSongs((prev) =>
-      prev.map((s, idx) => (idx === activeSongIndex ? { ...s, transposeOffset: newOffset } : s))
-    )
+    if (isInSetlistMode) {
+      const target = activeSetlistSongs[activeSetlistSongIndex]
+      if (target) {
+        setSongs((prev) =>
+          prev.map((s) => (s.id === target.id ? { ...s, transposeOffset: newOffset } : s))
+        )
+      }
+    } else {
+      setSongs((prev) =>
+        prev.map((s, idx) => (idx === activeSongIndex ? { ...s, transposeOffset: newOffset } : s))
+      )
+    }
+  }
+
+  // Select a song from library (exits setlist mode)
+  const handleSelectLibrarySong = (idx: number) => {
+    setActiveSetlistId(null)
+    setActiveSongIndex(idx)
+  }
+
+  // Select a song from a setlist (enters setlist mode)
+  const handleSelectSetlistSong = (setlistId: string | number, songIdx: number) => {
+    setActiveSetlistId(setlistId)
+    setActiveSetlistSongIndex(songIdx)
   }
 
   // Delete song from library state with safe index adjustment
@@ -264,6 +329,7 @@ function App() {
     }
     setSongs((prev) => [blankSong, ...prev])
     setActiveSongIndex(0)
+    setActiveSetlistId(null)
     setActiveView('editor')
     setIsSetlistDrawerOpen(false)
   }
@@ -302,6 +368,7 @@ function App() {
     }
     setSongs((prev) => [newSong, ...prev])
     setActiveSongIndex(0)
+    setActiveSetlistId(null)
   }
 
   // Batch import all detected songs
@@ -322,11 +389,14 @@ function App() {
     setSongs((prev) => [...prev, ...completeSongs])
   }
 
-  // Full Restore (Wipe & Replace) multiple songs into library
-  const handleFullRestoreSongs = (importedSongs: Array<Partial<ActiveSongState>>) => {
+  // Full Restore (Wipe & Replace): Clear -> Insert songs -> Insert setlists -> Reset active playback queue
+  const handleFullRestore = (
+    importedSongs: Array<Partial<ActiveSongState>>,
+    importedSetlists: WebSetlist[]
+  ) => {
     if (importedSongs.length === 0) return
     const completeSongs: ActiveSongState[] = importedSongs.map((s, idx) => ({
-      id: Date.now() + idx,
+      id: s.id || Date.now() + idx,
       title: s.title || 'Imported Song',
       artist: s.artist || '',
       key: s.key || 'G',
@@ -337,8 +407,55 @@ function App() {
       rawContent: s.rawContent || '',
     }))
 
+    // 1. songs array ONLY populates the Songbook Library
     setSongs(completeSongs)
+    // 2. setlists array restores into setlists table/state
+    setSetlists(importedSetlists || [])
+    // 3. Reset active playback queue to first song or empty (never create an all-songs setlist)
+    setActiveSetlistId(null)
     setActiveSongIndex(0)
+    setActiveSetlistSongIndex(0)
+  }
+
+  // Smart Merge: Upsert songs by match (title + artist) -> Append setlists uniquely
+  const handleSmartMerge = (
+    importedSongs: Array<Partial<ActiveSongState>>,
+    importedSetlists: WebSetlist[]
+  ) => {
+    // 1. Upsert songs by match (title + artist)
+    setSongs((prev) => {
+      const existingMap = new Map(
+        prev.map((s) => [`${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`, s])
+      )
+      for (const item of importedSongs) {
+        const key = `${(item.title || '').trim().toLowerCase()}::${(item.artist || '').trim().toLowerCase()}`
+        if (!existingMap.has(key)) {
+          existingMap.set(key, {
+            id: item.id || Date.now() + existingMap.size,
+            title: item.title || 'Imported Song',
+            artist: item.artist || '',
+            key: item.key || 'G',
+            capo: item.capo || 'No Capo',
+            bpm: item.bpm || '120',
+            format: item.format || 'CHORD_PRO',
+            transposeOffset: item.transposeOffset || 0,
+            rawContent: item.rawContent || '',
+          })
+        }
+      }
+      return Array.from(existingMap.values())
+    })
+
+    // 2. Append setlists uniquely by name
+    if (importedSetlists && importedSetlists.length > 0) {
+      setSetlists((prev) => {
+        const existingNames = new Set(prev.map((sl) => sl.name.trim().toLowerCase()))
+        const newSetlists = importedSetlists.filter(
+          (sl) => !existingNames.has(sl.name.trim().toLowerCase())
+        )
+        return [...prev, ...newSetlists]
+      })
+    }
   }
 
   // Check for updates simulation
@@ -365,13 +482,13 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#002B36] text-[#EEE8D5]">
-      {/* Unified Android v1.0.42 Top Bar */}
+      {/* Unified Android v1.0.44 Top Bar */}
       <Header
         activeView={activeView}
         onViewChange={setActiveView}
         song={currentSong}
-        songsCount={songs.length}
-        activeSongIndex={activeSongIndex}
+        songsCount={isInSetlistMode ? activeSetlistSongs.length : songs.length}
+        activeSongIndex={isInSetlistMode ? activeSetlistSongIndex : activeSongIndex}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
         onOpenWebsiteUrlSource={() => setIsWebsiteUrlModalOpen(true)}
@@ -401,7 +518,11 @@ function App() {
             song={currentSong}
             songs={filteredSongs.length > 0 ? filteredSongs : songs}
             activeSongIndex={activeSongIndex}
-            onSelectSongIndex={setActiveSongIndex}
+            onSelectSongIndex={handleSelectLibrarySong}
+            isInSetlistMode={isInSetlistMode}
+            activeSetlistSongs={activeSetlistSongs}
+            activeSetlistSongIndex={activeSetlistSongIndex}
+            onSelectSetlistSongIndex={setActiveSetlistSongIndex}
             onOpenSetlistDrawer={() => setIsSetlistDrawerOpen(true)}
             transposeOffset={currentSong.transposeOffset || 0}
             onTransposeChange={handleTransposeChange}
@@ -421,7 +542,14 @@ function App() {
         songs={filteredSongs.length > 0 ? filteredSongs : songs}
         activeSongIndex={activeSongIndex}
         onSelectSongIndex={(idx) => {
-          setActiveSongIndex(idx)
+          handleSelectLibrarySong(idx)
+          setIsSetlistDrawerOpen(false)
+        }}
+        setlists={setlists}
+        activeSetlistId={activeSetlistId}
+        activeSetlistSongIndex={activeSetlistSongIndex}
+        onSelectSetlistSong={(setlistId, songIdx) => {
+          handleSelectSetlistSong(setlistId, songIdx)
           setIsSetlistDrawerOpen(false)
         }}
         onDeleteSong={handleDeleteSong}
@@ -448,8 +576,10 @@ function App() {
         onClose={() => setIsBackupRestoreModalOpen(false)}
         currentSong={currentSong}
         allSongs={songs}
+        setlists={setlists}
         onImportAllSongs={handleImportAllSongs}
-        onFullRestoreSongs={handleFullRestoreSongs}
+        onFullRestore={handleFullRestore}
+        onSmartMerge={handleSmartMerge}
         onOpenAdvancedBridge={() => setIsJsonModalOpen(true)}
       />
 

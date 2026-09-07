@@ -8,8 +8,11 @@ interface BackupRestoreDialogModalProps {
   onClose: () => void
   currentSong: ActiveSongState
   allSongs: ActiveSongState[]
+  setlists?: any[]
   onImportAllSongs: (songs: Array<Partial<ActiveSongState>>) => void
   onFullRestoreSongs?: (songs: Array<Partial<ActiveSongState>>) => void
+  onFullRestore?: (songs: Array<Partial<ActiveSongState>>, setlists: any[]) => void
+  onSmartMerge?: (songs: Array<Partial<ActiveSongState>>, setlists: any[]) => void
   onOpenAdvancedBridge?: () => void
 }
 
@@ -17,8 +20,11 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
   isOpen,
   onClose,
   allSongs,
+  setlists = [],
   onImportAllSongs,
   onFullRestoreSongs,
+  onFullRestore,
+  onSmartMerge,
   onOpenAdvancedBridge,
 }) => {
   const restoreFileInputRef = useRef<HTMLInputElement>(null)
@@ -40,7 +46,7 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
     }, 2200)
   }
 
-  // Generate complete Android v1.0.43 backup payload
+  // Generate complete Android v1.0.44 backup payload
   const backupPayload = generateGtarBackupPayload(
     allSongs.map((s, idx) => ({
       id: s.id || idx + 1,
@@ -54,24 +60,31 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
       transposeOffset: s.transposeOffset || 0,
       createdAt: Date.now(),
       lastOpenedAt: Date.now(),
-    }))
+    })),
+    setlists
   )
 
   const backupJsonString = JSON.stringify(backupPayload, null, 2)
 
-  // Download backup .json file
+  // Download backup .json file with strict gtar_backup_YYYYMMDD_HHmm.json formatting
   const handleDownloadBackup = () => {
     const blob = new Blob([backupJsonString], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    const dateStr = new Date().toISOString().split('T')[0]
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const MM = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    const HH = String(now.getHours()).padStart(2, '0')
+    const mm = String(now.getMinutes()).padStart(2, '0')
+    const fileName = `gtar_backup_${yyyy}${MM}${dd}_${HH}${mm}.json`
     a.href = url
-    a.download = `gtar_backup_${dateStr}.json`
+    a.download = fileName
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-    showFeedback('success', `Exported GTAR Backup with ${allSongs.length} songs!`)
+    showFeedback('success', `Exported backup as ${fileName}`)
   }
 
   // Copy backup to clipboard
@@ -94,7 +107,7 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
       const parsed = JSON.parse(text)
 
       if (!isValidGtarPayload(parsed)) {
-        showFeedback('error', 'Invalid GTAR JSON schema. Expected v1.0.43+ backup entity.')
+        showFeedback('error', 'Invalid GTAR JSON schema. Expected v1.0.44+ backup entity.')
         return
       }
 
@@ -103,7 +116,7 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
         incomingSongs.push(parsed)
       }
 
-      const parsedSetlists = Array.isArray(parsed.setlists) ? parsed.setlists.length : 0
+      const incomingSetlists: any[] = Array.isArray(parsed.setlists) ? parsed.setlists : []
 
       if (isWipeAndReplace) {
         const fullList: Array<Partial<ActiveSongState>> = incomingSongs.map((item) => ({
@@ -117,19 +130,21 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
           transposeOffset: item.transposeOffset || 0,
         }))
 
-        if (onFullRestoreSongs) {
+        if (onFullRestore) {
+          onFullRestore(fullList, incomingSetlists)
+        } else if (onFullRestoreSongs) {
           onFullRestoreSongs(fullList)
         } else {
           onImportAllSongs(fullList)
         }
-        showFeedback('success', `Successfully restored ${fullList.length} songs and ${parsedSetlists} setlists`)
+        showFeedback('success', `Successfully restored ${fullList.length} songs and ${incomingSetlists.length} setlists`)
       } else {
         // Smart Merge: detect duplicates by lowercase title & artist
-        const existingTitles = new Set(allSongs.map((s) => `${s.title.toLowerCase()}::${(s.artist || '').toLowerCase()}`))
+        const existingTitles = new Set(allSongs.map((s) => `${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`))
         const toMerge: Array<Partial<ActiveSongState>> = []
 
         for (const item of incomingSongs) {
-          const titleKey = `${(item.title || '').toLowerCase()}::${(item.artist || '').toLowerCase()}`
+          const titleKey = `${(item.title || '').trim().toLowerCase()}::${(item.artist || '').trim().toLowerCase()}`
           if (!existingTitles.has(titleKey)) {
             existingTitles.add(titleKey)
             toMerge.push({
@@ -145,10 +160,12 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
           }
         }
 
-        if (toMerge.length > 0) {
+        if (onSmartMerge) {
+          onSmartMerge(toMerge, incomingSetlists)
+        } else if (toMerge.length > 0) {
           onImportAllSongs(toMerge)
         }
-        showFeedback('success', `Successfully restored ${toMerge.length} songs and ${parsedSetlists} setlists`)
+        showFeedback('success', `Successfully merged ${toMerge.length} songs and ${incomingSetlists.length} setlists`)
       }
     } catch (err: any) {
       showFeedback('error', `Failed to parse backup JSON: ${err.message}`)

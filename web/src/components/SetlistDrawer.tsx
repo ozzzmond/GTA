@@ -19,6 +19,10 @@ interface SetlistDrawerProps {
   songs: ActiveSongState[]
   activeSongIndex: number
   onSelectSongIndex: (index: number) => void
+  setlists?: any[]
+  activeSetlistId?: string | number | null
+  activeSetlistSongIndex?: number
+  onSelectSetlistSong?: (setlistId: string | number, songIndex: number) => void
   onDeleteSong: (index: number) => void
   onNewSong: () => void
 }
@@ -29,11 +33,17 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
   songs,
   activeSongIndex,
   onSelectSongIndex,
+  setlists = [],
+  activeSetlistId = null,
+  activeSetlistSongIndex = 0,
+  onSelectSetlistSong,
   onDeleteSong,
   onNewSong,
 }) => {
+  const [drawerTab, setDrawerTab] = useState<'songbook' | 'setlists'>('songbook')
   const [searchQuery, setSearchQuery] = useState('')
   const [confirmDeleteIndex, setConfirmDeleteIndex] = useState<number | null>(null)
+  const [expandedSetlistId, setExpandedSetlistId] = useState<string | number | null>(activeSetlistId)
 
   if (!isOpen) return null
 
@@ -84,9 +94,13 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-[#FDF6E3]">Setlist Library</h2>
+                <h2 className="text-sm font-bold text-[#FDF6E3]">
+                  {drawerTab === 'songbook' ? 'Songbook Library' : 'Gig Setlists'}
+                </h2>
                 <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-[#2AA198]/20 text-[#2AA198] border border-[#2AA198]/30">
-                  {songs.length} {songs.length === 1 ? 'Song' : 'Songs'}
+                  {drawerTab === 'songbook'
+                    ? `${songs.length} ${songs.length === 1 ? 'Song' : 'Songs'}`
+                    : `${setlists.length} ${setlists.length === 1 ? 'Setlist' : 'Setlists'}`}
                 </span>
               </div>
               <p className="text-[10px] font-mono text-[#93A1A1]">Live Stage & Editor Switcher</p>
@@ -100,6 +114,32 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
             title="Close Drawer"
           >
             <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Tab Switcher: Songbook vs Setlists */}
+        <div className="flex border-b border-[#1A4A55] bg-[#002B36]/80 px-2 py-1 gap-1">
+          <button
+            type="button"
+            onClick={() => setDrawerTab('songbook')}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+              drawerTab === 'songbook'
+                ? 'bg-[#2AA198] text-[#002B36] shadow-sm'
+                : 'text-[#93A1A1] hover:text-[#EEE8D5]'
+            }`}
+          >
+            Songbook ({songs.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDrawerTab('setlists')}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+              drawerTab === 'setlists'
+                ? 'bg-[#B58900] text-[#002B36] shadow-sm'
+                : 'text-[#93A1A1] hover:text-[#EEE8D5]'
+            }`}
+          >
+            Setlists ({setlists.length})
           </button>
         </div>
 
@@ -127,9 +167,82 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
           </div>
         </div>
 
-        {/* Song List */}
+        {/* Tab Content: Songbook or Setlists */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {filteredSongs.length === 0 ? (
+          {drawerTab === 'setlists' ? (
+            setlists.length === 0 ? (
+              <div className="p-8 text-center text-xs font-mono text-[#93A1A1] space-y-2">
+                <div className="text-sm font-bold text-[#EEE8D5]">No Custom Setlists</div>
+                <div>Your songbook contains {songs.length} songs.</div>
+                <div className="text-[11px] text-[#2AA198]">
+                  Setlists stay completely separate from your full library.
+                </div>
+              </div>
+            ) : (
+              setlists.map((sl: any) => {
+                const isExpanded = expandedSetlistId === sl.id
+                const slSongs: any[] = sl.songs || []
+                return (
+                  <div
+                    key={sl.id || sl.name}
+                    className="border border-[#1A4A55] rounded-xl bg-[#002B36]/40 overflow-hidden"
+                  >
+                    <div
+                      onClick={() => setExpandedSetlistId(isExpanded ? null : sl.id)}
+                      className="p-3 flex items-center justify-between cursor-pointer hover:bg-[#002B36] transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-xs text-[#FDF6E3] truncate">{sl.name}</div>
+                        <div className="text-[11px] font-mono text-[#B58900]">
+                          {slSongs.length} {slSongs.length === 1 ? 'song' : 'songs'}
+                        </div>
+                      </div>
+                      <span className="text-xs text-[#93A1A1] font-mono">
+                        {isExpanded ? '▲' : '▼'}
+                      </span>
+                    </div>
+                    {isExpanded && (
+                      <div className="p-2 border-t border-[#1A4A55] bg-[#002B36]/80 space-y-1">
+                        {slSongs.length === 0 ? (
+                          <div className="p-3 text-center text-[11px] text-[#93A1A1]">Empty setlist</div>
+                        ) : (
+                          slSongs.map((sRef: any, sIdx: number) => {
+                            const isCurrentSetlistSong =
+                              activeSetlistId === sl.id && activeSetlistSongIndex === sIdx
+                            return (
+                              <div
+                                key={sIdx}
+                                onClick={() => {
+                                  if (onSelectSetlistSong) {
+                                    onSelectSetlistSong(sl.id, sIdx)
+                                  }
+                                  onClose()
+                                }}
+                                className={`p-2 rounded-lg text-xs flex items-center justify-between cursor-pointer ${
+                                  isCurrentSetlistSong
+                                    ? 'bg-[#B58900] text-[#002B36] font-bold'
+                                    : 'text-[#EEE8D5] hover:bg-[#073642]'
+                                }`}
+                              >
+                                <span className="truncate">
+                                  {sIdx + 1}. {sRef.title}
+                                </span>
+                                {sRef.artist && (
+                                  <span className="text-[10px] opacity-75 truncate max-w-[100px] ml-2">
+                                    {sRef.artist}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )
+          ) : filteredSongs.length === 0 ? (
             <div className="p-8 text-center text-xs font-mono text-[#93A1A1]">
               No songs matched &quot;{searchQuery}&quot;
             </div>

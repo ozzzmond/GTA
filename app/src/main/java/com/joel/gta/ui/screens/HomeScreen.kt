@@ -2200,14 +2200,7 @@ fun HomeScreen(
                             .clickable {
                                 showBackupRestoreDialog = false
                                 isWipeAndReplaceRestore = true
-                                backupPickerLauncher.launch(
-                                    arrayOf(
-                                        "application/json",
-                                        "application/octet-stream",
-                                        "text/plain",
-                                        "*/*"
-                                    )
-                                )
+                                backupPickerLauncher.launch(arrayOf("application/json"))
                             },
                         shape = RoundedCornerShape(12.dp),
                         color = customColors.canvasBackground,
@@ -2249,14 +2242,7 @@ fun HomeScreen(
                             .clickable {
                                 showBackupRestoreDialog = false
                                 isWipeAndReplaceRestore = false
-                                backupPickerLauncher.launch(
-                                    arrayOf(
-                                        "application/json",
-                                        "application/octet-stream",
-                                        "text/plain",
-                                        "*/*"
-                                    )
-                                )
+                                backupPickerLauncher.launch(arrayOf("application/json"))
                             },
                         shape = RoundedCornerShape(12.dp),
                         color = customColors.canvasBackground,

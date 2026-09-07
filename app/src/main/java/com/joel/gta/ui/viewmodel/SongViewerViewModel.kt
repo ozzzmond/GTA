@@ -1359,7 +1359,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 } ?: throw IllegalArgumentException("Cannot open backup file")
 
                 val summary = if (wipeAndReplace) {
-                    repository.fullRestoreBackup(jsonString)
+                    val res = repository.fullRestoreBackup(jsonString)
+                    _uiState.value = SongViewerState.Empty
+                    res
                 } else {
                     repository.restoreBackup(jsonString)
                 }

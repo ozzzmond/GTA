@@ -153,9 +153,11 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
     } else {
       const now = new Date(exportTimestamp)
       const yyyy = now.getFullYear()
-      const mm = String(now.getMonth() + 1).padStart(2, '0')
+      const MM = String(now.getMonth() + 1).padStart(2, '0')
       const dd = String(now.getDate()).padStart(2, '0')
-      filename = `gta_backup_${yyyy}${mm}${dd}.json`
+      const HH = String(now.getHours()).padStart(2, '0')
+      const mm = String(now.getMinutes()).padStart(2, '0')
+      filename = `gtar_backup_${yyyy}${MM}${dd}_${HH}${mm}.json`
     }
 
     const blob = new Blob([exportPayloadString], { type: 'application/json' })
@@ -280,7 +282,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
           <div className="flex items-center gap-2">
             <FileJson className="w-5 h-5 text-[#2AA198]" />
             <h2 className="text-base font-bold text-[#FDF6E3]">
-              GTAR JSON Bridge (v1.0.43+)
+              GTAR JSON Bridge (v1.0.44+)
             </h2>
           </div>
           <button
@@ -379,7 +381,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
                     <div>
                       <div className="font-bold text-xs text-[#FDF6E3]">Export Backup</div>
                       <div className="text-[11px] text-[#93A1A1] mt-0.5">
-                        Full GTAR v1.0.42 backup (.json)
+                        Full GTAR v1.0.44 backup (.json)
                       </div>
                     </div>
                   </button>

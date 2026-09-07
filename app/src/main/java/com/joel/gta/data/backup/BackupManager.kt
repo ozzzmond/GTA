@@ -30,8 +30,8 @@ data class RestoreSummary(
 object BackupManager {
 
     fun generateBackupFileName(): String {
-        val dateStr = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-        return "gta_backup_$dateStr.json"
+        val dateStr = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
+        return "gtar_backup_$dateStr.json"
     }
 
     /**
@@ -415,7 +415,7 @@ object BackupManager {
         return Intent(Intent.ACTION_SEND).apply {
             type = "application/json"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "GTAR Songbook Backup ($fileName)")
+            putExtra(Intent.EXTRA_SUBJECT, fileName)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
