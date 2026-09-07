@@ -11,6 +11,11 @@ import {
   Plus,
   Minus,
   Wifi,
+  Copy,
+  Check,
+  Loader2,
+  Share2,
+  Edit3,
 } from 'lucide-react'
 import { bandSync, type BandSyncState } from '../utils/bandSync'
 import { metronome, type MetronomeState } from '../utils/metronome'
@@ -19,6 +24,9 @@ interface BandSyncModalProps {
   isOpen: boolean
   onClose: () => void
   initialTab?: 'metronome' | 'tuner' | 'sync'
+  onPushSetlist?: () => { success: boolean; message: string }
+  activeSetlistName?: string
+  activeSetlistSongCount?: number
 }
 
 const GUITAR_STRINGS = [
@@ -34,6 +42,9 @@ export const BandSyncModal: React.FC<BandSyncModalProps> = ({
   isOpen,
   onClose,
   initialTab = 'sync',
+  onPushSetlist,
+  activeSetlistName,
+  activeSetlistSongCount = 0,
 }) => {
   const [activeTab, setActiveTab] = useState<'metronome' | 'tuner' | 'sync'>(initialTab)
   const [syncState, setSyncState] = useState<BandSyncState>(() => bandSync.getState())
@@ -42,6 +53,26 @@ export const BandSyncModal: React.FC<BandSyncModalProps> = ({
   const [audioCtx, setAudioCtx] = useState<AudioContext | null>(null)
   const [activeOsc, setActiveOsc] = useState<OscillatorNode | null>(null)
   const tapTimesRef = useRef<number[]>([])
+
+  // Band Sync local UI state
+  const [syncSubTab, setSyncSubTab] = useState<'leader' | 'member'>(() =>
+    syncState.role === 'CLIENT' ? 'member' : 'leader'
+  )
+  const [inputIp, setInputIp] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gtar_band_sync_leader_ip') || ''
+    }
+    return ''
+  })
+  const [customHostIpInput, setCustomHostIpInput] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gtar_band_sync_custom_host_ip') || ''
+    }
+    return ''
+  })
+  const [isEditingHostIp, setIsEditingHostIp] = useState(false)
+  const [hasCopiedLeaderInfo, setHasCopiedLeaderInfo] = useState(false)
+  const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null)
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -52,6 +83,31 @@ export const BandSyncModal: React.FC<BandSyncModalProps> = ({
     const unsub = bandSync.subscribe((st) => setSyncState(st))
     return unsub
   }, [])
+
+  // Keep subtab and input in sync with external role changes
+  useEffect(() => {
+    if (syncState.role === 'CLIENT') {
+      setSyncSubTab('member')
+    } else if (syncState.role === 'HOST') {
+      setSyncSubTab('leader')
+    }
+    if (syncState.wsLeaderIp && !inputIp) {
+      setInputIp(syncState.wsLeaderIp)
+    }
+  }, [syncState.role, syncState.wsLeaderIp])
+
+  const handleCopyLeaderInfo = () => {
+    const text = `GTAR Band Sync Info:\nWebSocket Endpoint: ${syncState.leaderEndpoint}\nRoom ID: ${syncState.roomId}\nPort: 8765`
+    if (navigator.clipboard) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          setHasCopiedLeaderInfo(true)
+          setTimeout(() => setHasCopiedLeaderInfo(false), 2000)
+        })
+        .catch(() => {})
+    }
+  }
 
   // Metronome subscription
   useEffect(() => {
@@ -326,28 +382,19 @@ export const BandSyncModal: React.FC<BandSyncModalProps> = ({
 
           {/* 3. BAND SYNC PANEL */}
           {activeTab === 'sync' && (
-            <div className="space-y-5">
-              {/* Role Selector Pills */}
-              <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-4">
+              {/* Role / Sub-Tab Switcher: Band Leader vs Band Member vs Off */}
+              <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#002B36] rounded-xl border border-[#1A4A55]">
                 <button
                   type="button"
-                  onClick={() => bandSync.setRole('OFF')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                    syncState.role === 'OFF'
-                      ? 'bg-[#002B36] border-[#93A1A1] text-[#FDF6E3]'
-                      : 'bg-[#073642] border-[#1A4A55] text-[#93A1A1] hover:text-[#FDF6E3]'
-                  }`}
-                >
-                  Off
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => bandSync.setRole('HOST')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    syncState.role === 'HOST'
-                      ? 'bg-[#B58900] border-[#B58900] text-[#002B36] font-extrabold shadow-md'
-                      : 'bg-[#073642] border-[#1A4A55] text-[#93A1A1] hover:text-[#B58900]'
+                  onClick={() => {
+                    setSyncSubTab('leader')
+                    bandSync.setRole('HOST')
+                  }}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    syncSubTab === 'leader'
+                      ? 'bg-[#B58900] text-[#002B36] font-extrabold shadow-sm'
+                      : 'text-[#93A1A1] hover:text-[#B58900]'
                   }`}
                 >
                   <Radio className="w-3.5 h-3.5" />
@@ -356,136 +403,323 @@ export const BandSyncModal: React.FC<BandSyncModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => bandSync.setRole('CLIENT')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    syncState.role === 'CLIENT'
-                      ? 'bg-[#2AA198] border-[#2AA198] text-[#002B36] font-extrabold shadow-md'
-                      : 'bg-[#073642] border-[#1A4A55] text-[#93A1A1] hover:text-[#2AA198]'
+                  onClick={() => {
+                    setSyncSubTab('member')
+                    if (syncState.role !== 'CLIENT') {
+                      bandSync.setRole('CLIENT')
+                    }
+                  }}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    syncSubTab === 'member'
+                      ? 'bg-[#2AA198] text-[#002B36] font-extrabold shadow-sm'
+                      : 'text-[#93A1A1] hover:text-[#2AA198]'
                   }`}
                 >
                   <Users className="w-3.5 h-3.5" />
                   <span>Band Member</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    bandSync.disconnectWebSocket()
+                    bandSync.setRole('OFF')
+                  }}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    syncState.role === 'OFF'
+                      ? 'bg-[#073642] text-[#FDF6E3] font-extrabold border border-[#93A1A1]/40'
+                      : 'text-[#93A1A1] hover:text-[#DC6E67]'
+                  }`}
+                >
+                  <span>Sync Off</span>
+                </button>
               </div>
 
-              {/* State Details */}
-              {syncState.role === 'OFF' && (
-                <div className="p-5 rounded-2xl bg-[#002B36] border border-[#1A4A55] text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-[#073642] border border-[#1A4A55] flex items-center justify-center text-[#B58900] mx-auto">
-                    <Wifi className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-sm font-bold text-[#FDF6E3]">
-                    Play Together (Multi-Device Stage Sync)
-                  </h3>
-                  <p className="text-xs text-[#93A1A1] leading-relaxed">
-                    Zero-latency song and scroll syncing for your whole band across browsers,
-                    tablets, laptops, and stage teleprompter screens without internet.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => bandSync.setRole('HOST')}
-                      className="py-2.5 rounded-xl bg-[#B58900] text-[#002B36] font-bold text-xs hover:bg-[#D4A017] transition-colors cursor-pointer"
-                    >
-                      Host as Leader
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => bandSync.setRole('CLIENT')}
-                      className="py-2.5 rounded-xl bg-[#002B36] border border-[#2AA198] text-[#2AA198] font-bold text-xs hover:bg-[#2AA198]/15 transition-colors cursor-pointer"
-                    >
-                      Join as Member
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {syncState.role === 'HOST' && (
-                <div className="p-5 rounded-2xl bg-[#002B36] border border-[#B58900] space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-pulse" />
-                    <span className="text-xs font-black uppercase text-[#10B981] tracking-wide">
-                      BAND LEADER MODE ACTIVE
-                    </span>
-                  </div>
-
-                  <div className="text-xs text-[#FDF6E3] font-semibold">
-                    Broadcasting on Stage Channel • Connected Members:{' '}
-                    <span className="text-[#B58900] font-bold">{syncState.connectedPeers}</span>
-                  </div>
-
-                  <p className="text-xs text-[#93A1A1] leading-relaxed">
-                    Whenever you select a song, change key, or scroll your Stage Viewer, all
-                    connected band members will synchronously follow your screen with zero latency.
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => bandSync.setRole('OFF')}
-                    className="w-full py-2.5 rounded-xl bg-[#DC6E67] text-white font-bold text-xs hover:bg-[#E53935] transition-colors cursor-pointer"
-                  >
-                    Stop Band Host
-                  </button>
-                </div>
-              )}
-
-              {syncState.role === 'CLIENT' && (
-                <div className="p-5 rounded-2xl bg-[#002B36] border border-[#2AA198] space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${syncState.wsConnected ? 'bg-[#22C55E]' : 'bg-[#EAB308]'} animate-pulse`} />
-                    <span className={`text-xs font-black uppercase ${syncState.wsConnected ? 'text-[#22C55E]' : 'text-[#EAB308]'} tracking-wide`}>
-                      {syncState.wsConnected ? 'CONNECTED TO STAGE LEADER' : 'CONNECT TO STAGE LEADER'}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-[#93A1A1] leading-relaxed">
-                    Connect directly to the Android Stage Leader tablet or phone over local Wi-Fi / Hotspot on port 8765.
-                  </p>
-
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-[#93A1A1] uppercase tracking-wider block">
-                      Leader Device IP Address
-                    </label>
+              {/* A. BAND LEADER TAB */}
+              {syncSubTab === 'leader' && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#002B36] border border-[#B58900] space-y-4 shadow-lg animate-fade-in">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={syncState.wsLeaderIp || ''}
-                        onChange={(e) => {
-                          const newIp = e.target.value
-                          bandSync.connectWebSocket(newIp)
-                        }}
-                        placeholder="e.g. 192.168.43.1"
-                        className="flex-1 px-3 py-2 rounded-xl bg-[#073642] border border-[#1A4A55] text-xs font-mono text-[#FDF6E3] focus:border-[#2AA198] outline-none"
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full ${
+                          syncState.role === 'HOST' ? 'bg-[#10B981] animate-pulse' : 'bg-[#93A1A1]'
+                        }`}
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (syncState.wsLeaderIp) {
-                            bandSync.connectWebSocket(syncState.wsLeaderIp)
-                          }
-                        }}
-                        className="px-3 py-2 rounded-xl bg-[#2AA198] text-[#002B36] font-bold text-xs hover:bg-[#20827a] transition-colors cursor-pointer"
+                      <span
+                        className={`text-xs font-black uppercase tracking-wide ${
+                          syncState.role === 'HOST' ? 'text-[#10B981]' : 'text-[#93A1A1]'
+                        }`}
                       >
-                        {syncState.wsConnected ? 'Reconnect' : 'Connect'}
-                      </button>
+                        {syncState.role === 'HOST'
+                          ? 'BAND LEADER ACTIVE (BROADCASTING)'
+                          : 'BAND LEADER (STANDBY)'}
+                      </span>
                     </div>
-                    {syncState.wsStatus && (
-                      <div className="text-[11px] font-mono text-[#2AA198] pt-1">
-                        {syncState.wsStatus}
+
+                    {syncState.role === 'HOST' && (
+                      <span className="px-2 py-0.5 rounded-md bg-[#10B981]/20 border border-[#10B981]/40 text-[#10B981] font-mono text-[10px] font-bold">
+                        LIVE
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Connection Details Card */}
+                  <div className="p-3.5 rounded-xl bg-[#073642] border border-[#1A4A55] space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[#93A1A1]">
+                        <span>Active WebSocket Endpoint</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingHostIp(!isEditingHostIp)}
+                          className="text-[#2AA198] hover:underline flex items-center gap-1 cursor-pointer font-sans"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>{isEditingHostIp ? 'Done' : 'Set LAN IP'}</span>
+                        </button>
+                      </div>
+                      <div className="mt-1">
+                        {isEditingHostIp ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={customHostIpInput}
+                              onChange={(e) => setCustomHostIpInput(e.target.value)}
+                              placeholder="e.g. 192.168.1.10"
+                              className="flex-1 px-3 py-1.5 rounded-lg bg-[#002B36] border border-[#2AA198] text-xs font-mono text-[#FDF6E3] focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                bandSync.setCustomHostIp(customHostIpInput)
+                                setIsEditingHostIp(false)
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-[#2AA198] text-[#002B36] font-bold text-xs cursor-pointer"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        ) : (
+                          <code className="block text-xs font-mono font-bold text-[#FDF6E3] bg-[#002B36] px-3 py-2 rounded-lg border border-[#1A4A55] truncate select-all">
+                            {syncState.leaderEndpoint}
+                          </code>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2.5 rounded-lg bg-[#002B36] border border-[#1A4A55]">
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-[#93A1A1]">
+                          Stage Room ID
+                        </div>
+                        <div className="text-xs font-mono font-bold text-[#2AA198] mt-0.5 truncate">
+                          {syncState.roomId}
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-[#002B36] border border-[#1A4A55]">
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-[#93A1A1]">
+                          Connected Clients
+                        </div>
+                        <div className="text-xs font-mono font-bold text-[#B58900] mt-0.5 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-[#B58900]" />
+                          <span>
+                            {syncState.connectedPeers} peer
+                            {syncState.connectedPeers !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 1-Click Copy Connection Link / Room Info Button */}
+                    <button
+                      type="button"
+                      onClick={handleCopyLeaderInfo}
+                      className="w-full py-2.5 px-3 rounded-xl bg-[#002B36] border border-[#2AA198] hover:bg-[#2AA198]/15 text-[#2AA198] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98"
+                    >
+                      {hasCopiedLeaderInfo ? (
+                        <>
+                          <Check className="w-4 h-4 text-[#10B981]" />
+                          <span className="text-[#10B981]">Connection Info Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          <span>Copy Connection Link / Room Info</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Push Setlist to Members (Band Leader Control) */}
+                  <div className="p-3.5 rounded-xl bg-[#073642] border border-[#B58900]/40 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-bold text-[#FDF6E3] flex items-center gap-1.5">
+                        <Share2 className="w-4 h-4 text-[#B58900]" />
+                        <span>Direct Setlist Sharing</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-[#B58900]">
+                        {activeSetlistName ? `"${activeSetlistName}" (${activeSetlistSongCount} songs)` : 'No active setlist'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#93A1A1] leading-relaxed">
+                      Push the active setlist and full song data directly to all connected band members with smart merge.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onPushSetlist) {
+                          const res = onPushSetlist()
+                          setPushStatusMessage(res.message)
+                          setTimeout(() => setPushStatusMessage(null), 4000)
+                        }
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-[#B58900] hover:bg-[#D4A017] text-[#002B36] font-black text-xs transition-colors cursor-pointer shadow-md flex items-center justify-center gap-2"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>Push Setlist to Members</span>
+                    </button>
+                    {pushStatusMessage && (
+                      <div className="p-2 rounded-lg bg-[#002B36] border border-[#B58900] text-center text-xs font-bold text-[#B58900] animate-fade-in">
+                        {pushStatusMessage}
                       </div>
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      bandSync.disconnectWebSocket()
-                      bandSync.setRole('OFF')
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-[#073642] border border-[#1A4A55] text-[#93A1A1] hover:text-[#DC6E67] font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    Disconnect
-                  </button>
+                  {/* Stage Broadcast Explanation */}
+                  <div className="text-[11px] text-[#93A1A1] leading-relaxed space-y-1">
+                    <p className="font-semibold text-[#EEE8D5]">
+                      • Real-Time Stage Peer Status:{' '}
+                      <span className="text-[#10B981]">
+                        {syncState.role === 'HOST'
+                          ? `Broadcasting to ${syncState.connectedPeers} stage peer(s)`
+                          : 'Host standby'}
+                      </span>
+                    </p>
+                    <p>
+                      Band members on phones, tablets, or laptops will immediately mirror your active
+                      song selection, transposed key, and autoscrolling.
+                    </p>
+                  </div>
+
+                  {/* Host Toggle */}
+                  {syncState.role !== 'HOST' ? (
+                    <button
+                      type="button"
+                      onClick={() => bandSync.setRole('HOST')}
+                      className="w-full py-2.5 rounded-xl bg-[#B58900] text-[#002B36] font-extrabold text-xs hover:bg-[#D4A017] transition-colors cursor-pointer shadow-md"
+                    >
+                      Start Broadcasting as Band Leader
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => bandSync.setRole('OFF')}
+                      className="w-full py-2.5 rounded-xl bg-[#DC6E67] text-white font-bold text-xs hover:bg-[#E53935] transition-colors cursor-pointer"
+                    >
+                      Stop Band Host
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* B. BAND MEMBER TAB */}
+              {syncSubTab === 'member' && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#002B36] border border-[#2AA198] space-y-4 shadow-lg animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full ${
+                          syncState.wsStatus === 'Connected to Leader (synced)'
+                            ? 'bg-[#10B981] animate-pulse'
+                            : syncState.wsStatus === 'Connecting...'
+                            ? 'bg-[#EAB308] animate-ping'
+                            : 'bg-[#93A1A1]'
+                        }`}
+                      />
+                      <span className="text-xs font-black uppercase text-[#FDF6E3] tracking-wide">
+                        BAND MEMBER SYNC
+                      </span>
+                    </div>
+
+                    {/* Explicit Connection States: Disconnected | Connecting... | Connected to Leader (synced) */}
+                    <div
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 ${
+                        syncState.wsStatus === 'Connected to Leader (synced)'
+                          ? 'bg-[#10B981]/20 border border-[#10B981]/40 text-[#10B981]'
+                          : syncState.wsStatus === 'Connecting...'
+                          ? 'bg-[#EAB308]/20 border border-[#EAB308]/40 text-[#EAB308]'
+                          : 'bg-[#073642] border border-[#1A4A55] text-[#93A1A1]'
+                      }`}
+                    >
+                      {syncState.wsStatus === 'Connecting...' && (
+                        <Loader2 className="w-3 h-3 animate-spin text-[#EAB308]" />
+                      )}
+                      <span>{syncState.wsStatus}</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-[#93A1A1] leading-relaxed">
+                    Connect directly to the Android Stage Leader or web host over local Wi-Fi or hotspot.
+                  </p>
+
+                  {/* Leader IP / Address input */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-[#93A1A1] uppercase tracking-wider block">
+                      Leader IP / Address
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={inputIp}
+                          onChange={(e) => setInputIp(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && inputIp.trim()) {
+                              bandSync.connectWebSocket(inputIp.trim())
+                            }
+                          }}
+                          placeholder="e.g. 192.168.1.50"
+                          className="w-full px-3 py-2.5 pr-14 rounded-xl bg-[#073642] border border-[#1A4A55] text-xs font-mono text-[#FDF6E3] focus:border-[#2AA198] outline-none"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-[#93A1A1] pointer-events-none select-none">
+                          :8765
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!inputIp.trim()}
+                        onClick={() => {
+                          if (inputIp.trim()) {
+                            bandSync.connectWebSocket(inputIp.trim())
+                          }
+                        }}
+                        className="px-4 py-2.5 rounded-xl bg-[#2AA198] text-[#002B36] font-extrabold text-xs hover:bg-[#35B8AD] disabled:opacity-50 transition-colors cursor-pointer shadow-md"
+                      >
+                        {syncState.wsStatus === 'Connecting...'
+                          ? 'Connecting...'
+                          : syncState.wsStatus === 'Connected to Leader (synced)'
+                          ? 'Reconnect'
+                          : 'Connect'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[#93A1A1] font-mono">
+                      Default port is <span className="text-[#2AA198]">:8765</span>. Last successful address is automatically saved in local storage.
+                    </p>
+                  </div>
+
+                  {/* Disconnect button if active */}
+                  {(syncState.wsStatus !== 'Disconnected' || syncState.role === 'CLIENT') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        bandSync.disconnectWebSocket()
+                        bandSync.setRole('OFF')
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-[#073642] border border-[#1A4A55] text-[#93A1A1] hover:text-[#DC6E67] hover:border-[#DC6E67]/50 font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      Disconnect
+                    </button>
+                  )}
                 </div>
               )}
             </div>

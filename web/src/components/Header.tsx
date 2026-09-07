@@ -23,6 +23,9 @@ interface HeaderProps {
   song: ActiveSongState
   songsCount?: number
   activeSongIndex?: number
+  queueMode?: 'library' | 'setlist'
+  activeSetlistSongsCount?: number
+  activeSetlistSongIndex?: number
   searchQuery: string
   onSearchQueryChange: (query: string) => void
   onOpenWebsiteUrlSource: () => void
@@ -41,6 +44,9 @@ export const Header: React.FC<HeaderProps> = ({
   onViewChange,
   songsCount,
   activeSongIndex,
+  queueMode = 'library',
+  activeSetlistSongsCount,
+  activeSetlistSongIndex,
   searchQuery,
   onSearchQueryChange,
   onOpenWebsiteUrlSource,
@@ -74,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="h-16 border-b border-[#1A4A55] bg-[#073642] px-3 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 select-none z-30 sticky top-0 shadow-md">
       {/* =================================================================== */}
-      {/* 1. LEFT: App Branding & v1.0.44 Badge (1:1 Android TopAppBar)        */}
+      {/* 1. LEFT: App Branding & v1.0.45 Badge (1:1 Android TopAppBar)        */}
       {/* =================================================================== */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <div className="flex items-center gap-2">
@@ -87,13 +93,13 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onCheckForUpdates}
-                title="Click to check for updates (v1.0.44)"
+                title="Click to check for updates (v1.0.45)"
                 className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
               >
                 {isCheckingUpdates && (
                   <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                 )}
-                <span>v1.0.44</span>
+                <span>v1.0.45</span>
               </button>
             </div>
             <span className="hidden md:inline text-[10px] text-[#93A1A1] mt-0.5 font-medium leading-none">
@@ -107,16 +113,31 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenSetlistDrawer}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#002B36] border border-[#1A4A55] text-[#EEE8D5] hover:border-[#2AA198] hover:text-[#2AA198] text-xs font-bold transition-all cursor-pointer shadow-sm ml-1"
-            title="Open Songbook Library Drawer"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#002B36] border text-xs font-bold transition-all cursor-pointer shadow-sm ml-1 ${
+              queueMode === 'setlist'
+                ? 'border-[#B58900] text-[#B58900] hover:bg-[#B58900]/10'
+                : 'border-[#1A4A55] text-[#EEE8D5] hover:border-[#2AA198] hover:text-[#2AA198]'
+            }`}
+            title={
+              queueMode === 'setlist'
+                ? 'Active Setlist (Open Drawer)'
+                : 'Songbook Library (Open Drawer)'
+            }
           >
-            <ListMusic className="w-4 h-4 text-[#2AA198]" />
-            <span className="hidden lg:inline">Library</span>
-            {songsCount !== undefined && (
-              <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-[#2AA198]/20 text-[#2AA198]">
+            <ListMusic
+              className={`w-4 h-4 ${queueMode === 'setlist' ? 'text-[#B58900]' : 'text-[#2AA198]'}`}
+            />
+            <span className="hidden lg:inline">{queueMode === 'setlist' ? 'Setlist' : 'Library'}</span>
+            {queueMode === 'setlist' && activeSetlistSongsCount !== undefined ? (
+              <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-[#B58900]/25 text-[#B58900] font-bold">
+                {activeSetlistSongIndex !== undefined ? activeSetlistSongIndex + 1 : 1}/
+                {activeSetlistSongsCount}
+              </span>
+            ) : songsCount !== undefined ? (
+              <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-[#2AA198]/20 text-[#2AA198] font-bold">
                 {activeSongIndex !== undefined ? activeSongIndex + 1 : 1}/{songsCount}
               </span>
-            )}
+            ) : null}
           </button>
         )}
 

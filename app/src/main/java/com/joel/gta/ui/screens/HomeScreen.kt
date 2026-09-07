@@ -106,6 +106,7 @@ fun HomeScreen(
     onStartBandClient: () -> Unit = {},
     onConnectBandHost: (String) -> Unit = {},
     onStopBandSync: () -> Unit = {},
+    onPushSetlistToMembers: () -> Unit = {},
     deletedSongs: List<SongEntity> = emptyList(),
     onRestoreSong: (Long) -> Unit = {},
     onPermanentDeleteSong: (Long) -> Unit = {},
@@ -1556,7 +1557,8 @@ fun HomeScreen(
             onStartBandHost = onStartBandHost,
             onStartBandClient = onStartBandClient,
             onConnectBandHost = onConnectBandHost,
-            onStopBandSync = onStopBandSync
+            onStopBandSync = onStopBandSync,
+            onPushSetlistToMembers = onPushSetlistToMembers
         )
     }
 

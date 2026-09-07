@@ -189,6 +189,102 @@ class SongRepository(private val database: GtaDatabase) {
         com.joel.gta.data.setlist.SetlistExportImportManager.importSetlist(jsonString, songDao, setlistDao)
     }
 
+    suspend fun getAllSetlistsWithSongsDirect(): List<SetlistWithSongs> = withContext(Dispatchers.IO) {
+        val setlists = setlistDao.getAllSetlistsWithSongsDirect()
+        val allRefs = setlistDao.getCrossRefsForSetlist(0L) // placeholder or map by each setlist
+        setlists.map { slWithSongs ->
+            val refs = setlistDao.getCrossRefsForSetlist(slWithSongs.setlist.id)
+            val songMap = slWithSongs.songs.associateBy { it.id }
+            val sorted = refs.mapNotNull { songMap[it.songId] }
+            val remaining = slWithSongs.songs.filter { it.id !in sorted.map { s -> s.id } }
+            slWithSongs.copy(songs = sorted + remaining)
+        }
+    }
+
+    data class SyncSetlistReceiveResult(
+        val setlist: SetlistEntity,
+        val songs: List<SongEntity>,
+        val songsAdded: Int,
+        val songsExisting: Int
+    )
+
+    /**
+     * Reconstructs and activates a setlist received from the Band Leader over Band Sync:
+     * - Smart Merge: If song already exists (match title + artist case-insensitively), do not overwrite or duplicate.
+     * - If song is missing, cleanly insert it into Member's local library.
+     * - Reconstructs the received setlist locally with exact queue order.
+     */
+    suspend fun syncReceivedSetlist(
+        setlistName: String,
+        receivedSongs: List<com.joel.gta.data.sync.SyncMessage.SetlistSongItem>
+    ): SyncSetlistReceiveResult = withContext(Dispatchers.IO) {
+        val cleanName = setlistName.trim().ifBlank { "Synced Setlist" }
+        
+        // Find existing setlist or create new
+        val existingSetlists = setlistDao.getAllSetlistsDirect()
+        val existingSetlist = existingSetlists.find { it.name.trim().equals(cleanName, ignoreCase = true) }
+        val targetSetlistId = if (existingSetlist != null) {
+            setlistDao.clearSongsFromSetlist(existingSetlist.id)
+            existingSetlist.id
+        } else {
+            setlistDao.insertSetlist(SetlistEntity(name = cleanName, createdAt = System.currentTimeMillis()))
+        }
+        val targetSetlist = existingSetlist ?: SetlistEntity(id = targetSetlistId, name = cleanName, createdAt = System.currentTimeMillis())
+
+        val allLocalSongs = songDao.getAllSongsDirect()
+        val localSongMap = allLocalSongs.associateBy { 
+            "${it.title.trim().lowercase()}::${(it.artist ?: "").trim().lowercase()}" 
+        }.toMutableMap()
+
+        val resolvedSongs = mutableListOf<SongEntity>()
+        var songsAdded = 0
+        var songsExisting = 0
+
+        receivedSongs.forEachIndexed { index, item ->
+            val matchKey = "${item.title.trim().lowercase()}::${(item.artist ?: "").trim().lowercase()}"
+            val existing = localSongMap[matchKey]
+
+            val finalSong: SongEntity = if (existing != null) {
+                songsExisting++
+                existing
+            } else {
+                songsAdded++
+                val parsed = com.joel.gta.data.parser.SongParser.parse(item.rawContent, defaultTitle = item.title)
+                val newEntity = SongEntity(
+                    title = item.title,
+                    artist = item.artist ?: parsed.artist,
+                    key = item.key ?: parsed.key,
+                    capo = item.capo ?: parsed.capo,
+                    rawContent = item.rawContent,
+                    format = item.format,
+                    transposeOffset = 0,
+                    tags = "",
+                    lastOpenedAt = System.currentTimeMillis()
+                )
+                val newId = songDao.insertSong(newEntity)
+                val inserted = newEntity.copy(id = newId)
+                localSongMap[matchKey] = inserted
+                inserted
+            }
+
+            setlistDao.addSongToSetlist(
+                SetlistSongCrossRef(
+                    setlistId = targetSetlistId,
+                    songId = finalSong.id,
+                    position = index
+                )
+            )
+            resolvedSongs.add(finalSong)
+        }
+
+        SyncSetlistReceiveResult(
+            setlist = targetSetlist,
+            songs = resolvedSongs,
+            songsAdded = songsAdded,
+            songsExisting = songsExisting
+        )
+    }
+
     suspend fun insertSearch(query: String) = withContext(Dispatchers.IO) {
         searchHistoryDao.insertSearch(query)
     }

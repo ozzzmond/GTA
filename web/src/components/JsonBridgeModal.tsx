@@ -282,7 +282,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
           <div className="flex items-center gap-2">
             <FileJson className="w-5 h-5 text-[#2AA198]" />
             <h2 className="text-base font-bold text-[#FDF6E3]">
-              GTAR JSON Bridge (v1.0.44+)
+              GTAR JSON Bridge (v1.0.45+)
             </h2>
           </div>
           <button
@@ -381,7 +381,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
                     <div>
                       <div className="font-bold text-xs text-[#FDF6E3]">Export Backup</div>
                       <div className="text-[11px] text-[#93A1A1] mt-0.5">
-                        Full GTAR v1.0.44 backup (.json)
+                        Full GTAR v1.0.45 backup (.json)
                       </div>
                     </div>
                   </button>

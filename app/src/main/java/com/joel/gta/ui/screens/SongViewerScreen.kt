@@ -116,6 +116,7 @@ fun SongViewerScreen(
     onStartBandClient: () -> Unit = {},
     onConnectBandHost: (String) -> Unit = {},
     onStopBandSync: () -> Unit = {},
+    onPushSetlistToMembers: () -> Unit = {},
     songEntityId: Long? = null,
     rawContent: String = "",
     tags: String = "",
@@ -1515,7 +1516,8 @@ fun SongViewerScreen(
             onStartBandHost = onStartBandHost,
             onStartBandClient = onStartBandClient,
             onConnectBandHost = onConnectBandHost,
-            onStopBandSync = onStopBandSync
+            onStopBandSync = onStopBandSync,
+            onPushSetlistToMembers = onPushSetlistToMembers
         )
     }
 

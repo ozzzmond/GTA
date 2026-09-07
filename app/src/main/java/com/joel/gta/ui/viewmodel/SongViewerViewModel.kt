@@ -1148,6 +1148,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
             is SyncMessage.TempoSync -> {
                 // Tempo sync
             }
+            is SyncMessage.SetlistSync -> {
+                handleIncomingSetlistSync(msg)
+            }
             else -> {}
         }
     }
@@ -1319,6 +1322,98 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
 
     fun stopBandSync() {
         bandSyncManager.stopAll()
+    }
+
+    private fun handleIncomingSetlistSync(msg: SyncMessage.SetlistSync) {
+        viewModelScope.launch {
+            val result = repository.syncReceivedSetlist(msg.setlistName, msg.songs)
+            withContext(Dispatchers.Main) {
+                // Show requested toast format
+                val toastText = "Synced Setlist '${result.setlist.name}' received from Leader (${result.songsAdded} songs added, ${result.songsExisting} existing)"
+                android.widget.Toast.makeText(getApplication(), toastText, android.widget.Toast.LENGTH_LONG).show()
+
+                // Reconstruct/activate received setlist on Member's device immediately
+                if (result.songs.isNotEmpty()) {
+                    openSongFromSetlist(
+                        setlist = result.setlist,
+                        songs = result.songs,
+                        index = 0
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Pushes the currently active setlist (or selected setlist) with complete song data
+     * to all connected Band Members.
+     */
+    fun pushSetlistToMembers(onResult: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            val currentState = _uiState.value as? SongViewerState.Loaded
+            val activeSetlistId = currentState?.setlistId
+            val activeSetlistName = currentState?.setlistName
+            val currentSetlistSongs = currentState?.setlistSongs ?: emptyList()
+
+            // If in active setlist mode on stage
+            if (activeSetlistId != null && activeSetlistName != null && currentSetlistSongs.isNotEmpty()) {
+                val songItems = currentSetlistSongs.map { s ->
+                    SyncMessage.SetlistSongItem(
+                        title = s.title,
+                        artist = s.artist,
+                        key = s.key,
+                        capo = s.capo,
+                        bpm = null,
+                        format = s.format,
+                        rawContent = s.rawContent
+                    )
+                }
+                val setlistSyncMsg = SyncMessage.SetlistSync(
+                    setlistName = activeSetlistName,
+                    songs = songItems
+                )
+                bandSyncManager.broadcast(setlistSyncMsg)
+                val status = "Pushed setlist '$activeSetlistName' (${songItems.size} songs) to band members"
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(getApplication(), status, android.widget.Toast.LENGTH_SHORT).show()
+                    onResult(status)
+                }
+                return@launch
+            }
+
+            // Fallback: check if any setlists exist in repository
+            val allSetlists = repository.getAllSetlistsWithSongsDirect()
+            if (allSetlists.isNotEmpty()) {
+                val target = allSetlists.first()
+                val songItems = target.songs.map { s ->
+                    SyncMessage.SetlistSongItem(
+                        title = s.title,
+                        artist = s.artist,
+                        key = s.key,
+                        capo = s.capo,
+                        bpm = null,
+                        format = s.format,
+                        rawContent = s.rawContent
+                    )
+                }
+                val setlistSyncMsg = SyncMessage.SetlistSync(
+                    setlistName = target.setlist.name,
+                    songs = songItems
+                )
+                bandSyncManager.broadcast(setlistSyncMsg)
+                val status = "Pushed setlist '${target.setlist.name}' (${songItems.size} songs) to band members"
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(getApplication(), status, android.widget.Toast.LENGTH_SHORT).show()
+                    onResult(status)
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    val status = "No active setlist to push. Please select or create a setlist first."
+                    android.widget.Toast.makeText(getApplication(), status, android.widget.Toast.LENGTH_SHORT).show()
+                    onResult(status)
+                }
+            }
+        }
     }
 
     fun exportBackup(context: Context, onShareReady: (Intent) -> Unit) {

@@ -107,7 +107,7 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
       const parsed = JSON.parse(text)
 
       if (!isValidGtarPayload(parsed)) {
-        showFeedback('error', 'Invalid GTAR JSON schema. Expected v1.0.44+ backup entity.')
+        showFeedback('error', 'Invalid GTAR JSON schema. Expected v1.0.45+ backup entity.')
         return
       }
 

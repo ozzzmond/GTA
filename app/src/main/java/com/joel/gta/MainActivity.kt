@@ -148,6 +148,7 @@ class MainActivity : ComponentActivity() {
                             onStartBandClient = { viewModel.startBandClient() },
                             onConnectBandHost = { hostAddress -> viewModel.connectToBandHost(hostAddress) },
                             onStopBandSync = { viewModel.stopBandSync() },
+                            onPushSetlistToMembers = { viewModel.pushSetlistToMembers() },
                             onOpenSampleTwoLine = {
                                 viewModel.loadSampleSong(useChordPro = false)
                             },
@@ -319,6 +320,7 @@ class MainActivity : ComponentActivity() {
                             onStartBandClient = { viewModel.startBandClient() },
                             onConnectBandHost = { hostAddress -> viewModel.connectToBandHost(hostAddress) },
                             onStopBandSync = { viewModel.stopBandSync() },
+                            onPushSetlistToMembers = { viewModel.pushSetlistToMembers() },
                             songEntityId = state.songEntityId,
                             rawContent = state.rawContent,
                             tags = state.tags,
@@ -414,7 +416,8 @@ class MainActivity : ComponentActivity() {
                         onStartBandHost = { viewModel.startBandHost() },
                         onStartBandClient = { viewModel.startBandClient() },
                         onConnectBandHost = { hostAddress -> viewModel.connectToBandHost(hostAddress) },
-                        onStopBandSync = { viewModel.stopBandSync() }
+                        onStopBandSync = { viewModel.stopBandSync() },
+                        onPushSetlistToMembers = { viewModel.pushSetlistToMembers() }
                     )
                 }
 

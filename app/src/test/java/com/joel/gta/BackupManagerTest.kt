@@ -91,6 +91,9 @@ class BackupManagerTest {
 
         override suspend fun updatePosition(setlistId: Long, songId: Long, newPosition: Int) {}
         override suspend fun removeSongFromSetlist(setlistId: Long, songId: Long) {}
+        override suspend fun clearSongsFromSetlist(setlistId: Long) {
+            crossRefs.removeAll { it.setlistId == setlistId }
+        }
         override suspend fun deleteAllSetlists() {
             setlists.clear()
         }

@@ -58,7 +58,8 @@ fun StageToolsDialog(
     onStartBandHost: () -> Unit = {},
     onStartBandClient: () -> Unit = {},
     onConnectBandHost: (String) -> Unit = {},
-    onStopBandSync: () -> Unit = {}
+    onStopBandSync: () -> Unit = {},
+    onPushSetlistToMembers: () -> Unit = {}
 ) {
     val customColors = LocalGtaColors.current
     var selectedTab by remember { mutableStateOf(initialTab) }
@@ -188,7 +189,8 @@ fun StageToolsDialog(
                             onStartHost = onStartBandHost,
                             onStartClient = onStartBandClient,
                             onConnectHost = onConnectBandHost,
-                            onStopSync = onStopBandSync
+                            onStopSync = onStopBandSync,
+                            onPushSetlistToMembers = onPushSetlistToMembers
                         )
                     }
                 }
@@ -1026,7 +1028,8 @@ private fun BandSyncPanel(
     onStartHost: () -> Unit,
     onStartClient: () -> Unit,
     onConnectHost: (String) -> Unit,
-    onStopSync: () -> Unit
+    onStopSync: () -> Unit,
+    onPushSetlistToMembers: () -> Unit = {}
 ) {
     val customColors = LocalGtaColors.current
     var manualIpInput by remember { mutableStateOf("192.168.43.1") }
@@ -1223,6 +1226,19 @@ private fun BandSyncPanel(
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = onPushSetlistToMembers,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = customColors.chordAccent, contentColor = Color.Black),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Push Setlist to Members", fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Button(
                             onClick = onStopSync,

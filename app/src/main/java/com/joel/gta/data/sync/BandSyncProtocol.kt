@@ -63,6 +63,25 @@ sealed class SyncMessage {
     ) : SyncMessage()
 
     /**
+     * Sent by the Band Leader to push an entire setlist with complete song data
+     * directly to all connected Band Members.
+     */
+    data class SetlistSongItem(
+        val title: String,
+        val artist: String? = null,
+        val key: String? = null,
+        val capo: String? = null,
+        val bpm: String? = null,
+        val format: String = "CHORD_PRO",
+        val rawContent: String = ""
+    )
+
+    data class SetlistSync(
+        val setlistName: String,
+        val songs: List<SetlistSongItem>
+    ) : SyncMessage()
+
+    /**
      * Keepalive heartbeat to maintain socket liveness.
      */
     object Heartbeat : SyncMessage()
@@ -75,6 +94,7 @@ sealed class SyncMessage {
         private const val TYPE_TEMPO = "TEMPO"
         private const val TYPE_JOIN = "JOIN"
         private const val TYPE_PING = "PING"
+        const val TYPE_SETLIST_SYNC = "SETLIST_SYNC"
 
         /**
          * Serializes a SyncMessage into a single-line JSON string suitable for line-based streaming.
@@ -124,6 +144,24 @@ sealed class SyncMessage {
                 is ClientJoin -> {
                     json.put("type", TYPE_JOIN)
                     json.put("name", message.clientName)
+                }
+                is SetlistSync -> {
+                    json.put("type", TYPE_SETLIST_SYNC)
+                    json.put("setlistName", message.setlistName)
+                    val arr = org.json.JSONArray()
+                    for (s in message.songs) {
+                        val sObj = JSONObject().apply {
+                            put("title", s.title)
+                            put("artist", s.artist ?: "")
+                            put("key", s.key ?: "")
+                            put("capo", s.capo ?: "")
+                            put("bpm", s.bpm ?: "")
+                            put("format", s.format)
+                            put("rawContent", s.rawContent)
+                        }
+                        arr.put(sObj)
+                    }
+                    json.put("songs", arr)
                 }
                 is Heartbeat -> {
                     json.put("type", TYPE_PING)
@@ -184,6 +222,38 @@ sealed class SyncMessage {
                         clientName = json.optString("name", "Band Member")
                     )
                     TYPE_PING -> Heartbeat
+                    TYPE_SETLIST_SYNC -> {
+                        val setlistName = json.optString("setlistName", "Band Setlist").ifBlank { "Band Setlist" }
+                        val arr = json.optJSONArray("songs") ?: org.json.JSONArray()
+                        val songList = mutableListOf<SetlistSongItem>()
+                        for (i in 0 until arr.length()) {
+                            val sObj = arr.getJSONObject(i)
+                            val title = sObj.optString("title", "Untitled Song").ifBlank { "Untitled Song" }
+                            val artist = sObj.optString("artist").takeIf { it.isNotBlank() }
+                            val key = sObj.optString("key").takeIf { it.isNotBlank() }
+                            val capo = sObj.optString("capo").takeIf { it.isNotBlank() }
+                            val bpm = sObj.optString("bpm").takeIf { it.isNotBlank() }
+                            val format = sObj.optString("format", "CHORD_PRO")
+                            val rawContent = when {
+                                sObj.has("rawContent") -> sObj.getString("rawContent")
+                                sObj.has("content") -> sObj.getString("content")
+                                sObj.has("chordsContent") -> sObj.getString("chordsContent")
+                                else -> ""
+                            }
+                            songList.add(
+                                SetlistSongItem(
+                                    title = title,
+                                    artist = artist,
+                                    key = key,
+                                    capo = capo,
+                                    bpm = bpm,
+                                    format = format,
+                                    rawContent = rawContent
+                                )
+                            )
+                        }
+                        SetlistSync(setlistName = setlistName, songs = songList)
+                    }
                     else -> null
                 }
             } catch (e: Exception) {

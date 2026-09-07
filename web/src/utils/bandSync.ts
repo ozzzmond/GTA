@@ -7,21 +7,27 @@
 export type BandSyncRole = 'OFF' | 'HOST' | 'CLIENT'
 
 export interface BandSyncMessage {
-  type: 'SONG_SYNC' | 'SCROLL_SYNC' | 'AUTOSCROLL_SYNC' | 'HEARTBEAT'
+  type: 'SONG_SYNC' | 'SCROLL_SYNC' | 'AUTOSCROLL_SYNC' | 'SETLIST_SYNC' | 'HEARTBEAT'
   senderId: string
   role: BandSyncRole
   payload: any
   timestamp: number
 }
 
+export type ConnectionStatus = 'Disconnected' | 'Connecting...' | 'Connected to Leader (synced)'
+
 export interface BandSyncState {
   role: BandSyncRole
   connectedPeers: number
   isLive: boolean
   lastMessage?: string
-  wsConnected?: boolean
-  wsLeaderIp?: string
-  wsStatus?: string
+  wsConnected: boolean
+  wsConnecting: boolean
+  wsLeaderIp: string
+  customHostIp: string
+  wsStatus: ConnectionStatus
+  roomId: string
+  leaderEndpoint: string
 }
 
 type SyncListener = (state: BandSyncState) => void
@@ -40,15 +46,28 @@ class BandSyncEngine {
   // Live WebSocket Connection to Android Stage Leader (port 8765)
   private ws: WebSocket | null = null
   private wsLeaderIp: string = ''
+  private wsPort: string = '8765'
   private wsConnected: boolean = false
+  private wsConnecting: boolean = false
   private wsReconnectTimer: number | null = null
   private shouldReconnectWs: boolean = false
+
+  private customHostIp: string = ''
 
   constructor() {
     this.initChannel()
     if (typeof window !== 'undefined') {
       this.wsLeaderIp = localStorage.getItem('gtar_band_sync_leader_ip') || ''
+      this.customHostIp = localStorage.getItem('gtar_band_sync_custom_host_ip') || ''
     }
+  }
+
+  public setCustomHostIp(ip: string) {
+    this.customHostIp = ip.trim()
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gtar_band_sync_custom_host_ip', this.customHostIp)
+    }
+    this.notify()
   }
 
   private initChannel() {
@@ -90,35 +109,67 @@ class BandSyncEngine {
       }
     })
 
+    let status: ConnectionStatus = 'Disconnected'
+    if (this.wsConnected) {
+      status = 'Connected to Leader (synced)'
+    } else if (this.wsConnecting || this.shouldReconnectWs) {
+      status = 'Connecting...'
+    } else {
+      status = 'Disconnected'
+    }
+
+    const host =
+      this.customHostIp ||
+      (typeof window !== 'undefined' && window.location.hostname
+        ? window.location.hostname
+        : '127.0.0.1')
+    const leaderEndpoint =
+      host === 'localhost' || host === '127.0.0.1'
+        ? 'ws://127.0.0.1:8765'
+        : `ws://${host}:8765`
+
     return {
       role: this.role,
-      connectedPeers: activeCount,
+      connectedPeers: this.role === 'HOST' ? activeCount : this.wsConnected ? 1 : 0,
       isLive: this.role !== 'OFF',
       wsConnected: this.wsConnected,
+      wsConnecting: this.wsConnecting,
       wsLeaderIp: this.wsLeaderIp,
-      wsStatus: this.wsConnected
-        ? `Connected to Android Leader (ws://${this.wsLeaderIp}:8765)`
-        : this.shouldReconnectWs
-        ? `Connecting to ws://${this.wsLeaderIp}:8765...`
-        : 'WebSocket disconnected',
+      customHostIp: this.customHostIp,
+      wsStatus: status,
+      roomId: 'gtar_stage_band_sync',
+      leaderEndpoint,
     }
   }
 
   public connectWebSocket(leaderIp: string) {
-    const cleanIp = leaderIp.trim()
-    if (!cleanIp) return
-    this.wsLeaderIp = cleanIp
+    let clean = leaderIp.trim()
+    if (!clean) return
+    clean = clean.replace(/^(ws:\/\/|wss:\/\/|http:\/\/|https:\/\/)/i, '')
+    let ipOnly = clean
+    let port = '8765'
+    if (clean.includes(':')) {
+      const parts = clean.split(':')
+      ipOnly = parts[0]
+      port = parts[1] || '8765'
+    }
+    this.wsLeaderIp = ipOnly
+    this.wsPort = port
     if (typeof window !== 'undefined') {
-      localStorage.setItem('gtar_band_sync_leader_ip', cleanIp)
+      localStorage.setItem('gtar_band_sync_leader_ip', ipOnly)
     }
 
     this.shouldReconnectWs = true
+    this.wsConnecting = true
+    this.wsConnected = false
     this.setRole('CLIENT')
     this.initWebSocketConnection()
   }
 
   public disconnectWebSocket() {
     this.shouldReconnectWs = false
+    this.wsConnecting = false
+    this.wsConnected = false
     if (this.wsReconnectTimer) {
       clearTimeout(this.wsReconnectTimer)
       this.wsReconnectTimer = null
@@ -129,7 +180,6 @@ class BandSyncEngine {
       } catch {}
       this.ws = null
     }
-    this.wsConnected = false
     this.notify()
   }
 
@@ -143,12 +193,19 @@ class BandSyncEngine {
       this.ws = null
     }
 
-    const wsUrl = `ws://${this.wsLeaderIp}:8765`
+    const wsUrl = `ws://${this.wsLeaderIp}:${this.wsPort || '8765'}`
+    this.wsConnecting = true
+    this.notify()
+
     try {
       this.ws = new WebSocket(wsUrl)
 
       this.ws.onopen = () => {
         this.wsConnected = true
+        this.wsConnecting = false
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('gtar_band_sync_leader_ip', this.wsLeaderIp)
+        }
         // Send join identifier
         const joinMsg = JSON.stringify({ type: 'JOIN', name: 'Web Member' })
         this.ws?.send(joinMsg)
@@ -168,10 +225,13 @@ class BandSyncEngine {
 
       this.ws.onclose = () => {
         this.wsConnected = false
-        this.notify()
         if (this.shouldReconnectWs) {
+          this.wsConnecting = true
           this.scheduleWsReconnect()
+        } else {
+          this.wsConnecting = false
         }
+        this.notify()
       }
 
       this.ws.onerror = () => {
@@ -180,10 +240,13 @@ class BandSyncEngine {
       }
     } catch (err) {
       this.wsConnected = false
-      this.notify()
       if (this.shouldReconnectWs) {
+        this.wsConnecting = true
         this.scheduleWsReconnect()
+      } else {
+        this.wsConnecting = false
       }
+      this.notify()
     }
   }
 
@@ -237,6 +300,18 @@ class BandSyncEngine {
         role: 'HOST',
         payload: {
           transposeOffset: data.transposeOffset ?? data.offset ?? 0,
+        },
+        timestamp: Date.now(),
+      }
+      this.dispatchSyncMessage(msg)
+    } else if (data.type === 'SETLIST_SYNC') {
+      const msg: BandSyncMessage = {
+        type: 'SETLIST_SYNC',
+        senderId: 'android_leader',
+        role: 'HOST',
+        payload: {
+          setlistName: data.setlistName || 'Band Setlist',
+          songs: Array.isArray(data.songs) ? data.songs : [],
         },
         timestamp: Date.now(),
       }
@@ -345,6 +420,12 @@ class BandSyncEngine {
   public broadcastAutoScroll(isAutoScrolling: boolean, scrollSpeed: number) {
     if (this.role === 'HOST') {
       this.broadcastMessage('AUTOSCROLL_SYNC', { isAutoScrolling, scrollSpeed })
+    }
+  }
+
+  public broadcastSetlist(setlistName: string, songs: any[]) {
+    if (this.role === 'HOST') {
+      this.broadcastMessage('SETLIST_SYNC', { setlistName, songs })
     }
   }
 

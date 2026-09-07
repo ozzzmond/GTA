@@ -159,6 +159,19 @@ Halle[F]lujah, Halle[C]lu---[G]--[C]jah`,
   },
 ]
 
+const DEFAULT_SAMPLE_SETLISTS: WebSetlist[] = [
+  {
+    id: 'gig-set-1',
+    name: 'Acoustic Gig Set',
+    songs: [
+      { title: 'Stand By Me', artist: 'Ben E. King' },
+      { title: 'Ang Huling El Bimbo', artist: 'Eraserheads' },
+      { title: 'Hotel California', artist: 'Eagles' },
+      { title: 'Hallelujah', artist: 'Leonard Cohen' },
+    ],
+  },
+]
+
 export interface WebSetlist {
   id: string | number
   name: string
@@ -177,10 +190,11 @@ function App() {
 
   // Songbook Library of Songs (Strictly separated from setlists)
   const [songs, setSongs] = useState<ActiveSongState[]>(DEFAULT_SETLIST)
-  const [setlists, setSetlists] = useState<WebSetlist[]>([])
-  const [activeSetlistId, setActiveSetlistId] = useState<string | number | null>(null)
+  const [setlists, setSetlists] = useState<WebSetlist[]>(DEFAULT_SAMPLE_SETLISTS)
+  const [activeSetlistId, setActiveSetlistId] = useState<string | number | null>('gig-set-1')
   const [activeSongIndex, setActiveSongIndex] = useState<number>(0)
   const [activeSetlistSongIndex, setActiveSetlistSongIndex] = useState<number>(0)
+  const [queueMode, setQueueMode] = useState<'library' | 'setlist'>('library')
   const [searchQuery, setSearchQuery] = useState<string>('')
 
   // Display Settings
@@ -191,8 +205,6 @@ function App() {
   const activeSetlist = useMemo(() => {
     return setlists.find((sl) => sl.id === activeSetlistId) || null
   }, [setlists, activeSetlistId])
-
-  const isInSetlistMode = Boolean(activeSetlist)
 
   // Resolved Setlist Songs
   const activeSetlistSongs: ActiveSongState[] = useMemo(() => {
@@ -219,9 +231,15 @@ function App() {
     })
   }, [activeSetlist, songs])
 
-  // Current active song
+  const isInSetlistMode =
+    queueMode === 'setlist' && Boolean(activeSetlist) && activeSetlistSongs.length > 0
+
+  // Current active song strictly honoring current active scope
   const currentSong = isInSetlistMode
-    ? activeSetlistSongs[activeSetlistSongIndex] || activeSetlistSongs[0] || songs[0] || DEFAULT_SETLIST[0]
+    ? activeSetlistSongs[activeSetlistSongIndex] ||
+      activeSetlistSongs[0] ||
+      songs[0] ||
+      DEFAULT_SETLIST[0]
     : songs[activeSongIndex] || DEFAULT_SETLIST[0]
 
   // Global Modals
@@ -235,6 +253,7 @@ function App() {
   const [isSetlistDrawerOpen, setIsSetlistDrawerOpen] = useState(false)
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
   const [showUpdateSuccessModal, setShowUpdateSuccessModal] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   // Band Sync: listen to leader song sync events when client
   useEffect(() => {
@@ -251,6 +270,70 @@ function App() {
           if (typeof msg.payload.transposeOffset === 'number') {
             handleTransposeChange(msg.payload.transposeOffset)
           }
+        } else if (msg.type === 'SETLIST_SYNC' && msg.payload) {
+          const incomingSetlistName = msg.payload.setlistName || 'Band Setlist'
+          const incomingSongs: any[] = Array.isArray(msg.payload.songs) ? msg.payload.songs : []
+
+          let addedCount = 0
+          let existingCount = 0
+
+          // Smart Merge: do not overwrite or duplicate existing (match title + artist)
+          setSongs((prevSongs) => {
+            const songMap = new Map(
+              prevSongs.map((s) => [
+                `${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`,
+                s,
+              ])
+            )
+
+            const newSongsToAppend: ActiveSongState[] = []
+            for (const item of incomingSongs) {
+              const key = `${(item.title || '').trim().toLowerCase()}::${(item.artist || '').trim().toLowerCase()}`
+              if (songMap.has(key)) {
+                existingCount++
+              } else {
+                addedCount++
+                const newSong: ActiveSongState = {
+                  id: Date.now() + Math.floor(Math.random() * 10000) + newSongsToAppend.length,
+                  title: item.title || 'Untitled Song',
+                  artist: item.artist || '',
+                  key: item.key || 'G',
+                  capo: item.capo || 'No Capo',
+                  bpm: item.bpm || '120',
+                  format: item.format || 'CHORD_PRO',
+                  transposeOffset: 0,
+                  rawContent: item.rawContent || '',
+                }
+                songMap.set(key, newSong)
+                newSongsToAppend.push(newSong)
+              }
+            }
+            return [...prevSongs, ...newSongsToAppend]
+          })
+
+          // Reconstruct/activate received setlist on Member device immediately
+          const newSetlistId = `synced-set-${Date.now()}`
+          const syncedSetlist: WebSetlist = {
+            id: newSetlistId,
+            name: incomingSetlistName,
+            songs: incomingSongs.map((s) => ({ title: s.title, artist: s.artist })),
+          }
+
+          setSetlists((prevSetlists) => {
+            const filtered = prevSetlists.filter(
+              (sl) => sl.name.trim().toLowerCase() !== incomingSetlistName.trim().toLowerCase()
+            )
+            return [...filtered, syncedSetlist]
+          })
+
+          setActiveSetlistId(newSetlistId)
+          setActiveSetlistSongIndex(0)
+          setQueueMode('setlist')
+
+          // Toast: "Synced Setlist '[Name]' received from Leader (X songs added, Y existing)"
+          const toast = `Synced Setlist '${incomingSetlistName}' received from Leader (${addedCount} songs added, ${existingCount} existing)`
+          setToastMessage(toast)
+          setTimeout(() => setToastMessage(null), 5000)
         }
       }
     })
@@ -273,16 +356,125 @@ function App() {
     }
   }
 
-  // Select a song from library (exits setlist mode)
+  // Select a song from library (switches queue scope to full library)
   const handleSelectLibrarySong = (idx: number) => {
-    setActiveSetlistId(null)
     setActiveSongIndex(idx)
+    setQueueMode('library')
   }
 
-  // Select a song from a setlist (enters setlist mode)
+  // Select a song from a setlist (switches queue scope to active setlist)
   const handleSelectSetlistSong = (setlistId: string | number, songIdx: number) => {
     setActiveSetlistId(setlistId)
     setActiveSetlistSongIndex(songIdx)
+    setQueueMode('setlist')
+  }
+
+  // Toggle stage playback queue mode between Library and Setlist
+  const handleToggleQueueMode = (mode: 'library' | 'setlist') => {
+    if (mode === 'setlist') {
+      if (!activeSetlistId && setlists.length > 0) {
+        setActiveSetlistId(setlists[0].id)
+        setActiveSetlistSongIndex(0)
+      }
+      setQueueMode('setlist')
+    } else {
+      setQueueMode('library')
+    }
+  }
+
+  // Direct select active setlist
+  const handleSelectSetlist = (setlistId: string | number) => {
+    setActiveSetlistId(setlistId)
+    setActiveSetlistSongIndex(0)
+    setQueueMode('setlist')
+  }
+
+  // Reorder song in a setlist
+  const handleReorderSetlistSong = (
+    setlistId: string | number,
+    songIndex: number,
+    moveUp: boolean
+  ) => {
+    setSetlists((prev) =>
+      prev.map((sl) => {
+        if (sl.id !== setlistId) return sl
+        const targetIndex = moveUp ? songIndex - 1 : songIndex + 1
+        if (targetIndex < 0 || targetIndex >= sl.songs.length) return sl
+        const updatedSongs = [...sl.songs]
+        const [moved] = updatedSongs.splice(songIndex, 1)
+        updatedSongs.splice(targetIndex, 0, moved)
+        return { ...sl, songs: updatedSongs }
+      })
+    )
+    if (activeSetlistId === setlistId) {
+      if (activeSetlistSongIndex === songIndex) {
+        setActiveSetlistSongIndex(moveUp ? songIndex - 1 : songIndex + 1)
+      } else if (activeSetlistSongIndex === (moveUp ? songIndex - 1 : songIndex + 1)) {
+        setActiveSetlistSongIndex(songIndex)
+      }
+    }
+  }
+
+  // Remove song from a setlist
+  const handleRemoveSetlistSong = (setlistId: string | number, songIndex: number) => {
+    setSetlists((prev) =>
+      prev.map((sl) => {
+        if (sl.id !== setlistId) return sl
+        return {
+          ...sl,
+          songs: sl.songs.filter((_, idx) => idx !== songIndex),
+        }
+      })
+    )
+    if (activeSetlistId === setlistId) {
+      if (activeSetlistSongIndex >= songIndex && activeSetlistSongIndex > 0) {
+        setActiveSetlistSongIndex(activeSetlistSongIndex - 1)
+      }
+    }
+  }
+
+  // Delete setlist
+  const handleDeleteSetlist = (setlistId: string | number) => {
+    setSetlists((prev) => prev.filter((sl) => sl.id !== setlistId))
+    if (activeSetlistId === setlistId) {
+      setActiveSetlistId(null)
+      setQueueMode('library')
+    }
+  }
+
+  // Band Leader Action: Push Setlist to Members
+  const handlePushSetlistToMembers = (): { success: boolean; message: string } => {
+    const targetSetlist = activeSetlist || setlists[0]
+    if (!targetSetlist || targetSetlist.songs.length === 0) {
+      const msg = 'No setlist available to push. Please create or select a setlist first.'
+      setToastMessage(msg)
+      setTimeout(() => setToastMessage(null), 4000)
+      return { success: false, message: msg }
+    }
+
+    // Resolve complete song data from library
+    const payloadSongs = targetSetlist.songs.map((ref) => {
+      const matched = songs.find(
+        (s) =>
+          s.title.trim().toLowerCase() === ref.title.trim().toLowerCase() &&
+          (!ref.artist || (s.artist || '').trim().toLowerCase() === ref.artist.trim().toLowerCase())
+      )
+      return {
+        title: ref.title,
+        artist: ref.artist || matched?.artist || '',
+        key: matched?.key || 'G',
+        capo: matched?.capo || 'No Capo',
+        bpm: matched?.bpm || '120',
+        format: matched?.format || 'CHORD_PRO',
+        rawContent: matched?.rawContent || `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
+      }
+    })
+
+    bandSync.broadcastSetlist(targetSetlist.name, payloadSongs)
+    const successMsg = `Pushed setlist '${targetSetlist.name}' (${payloadSongs.length} songs) to band members!`
+    setToastMessage(successMsg)
+    setTimeout(() => setToastMessage(null), 4000)
+    return { success: true, message: successMsg }
   }
 
   // Delete song from library state with safe index adjustment
@@ -487,8 +679,11 @@ function App() {
         activeView={activeView}
         onViewChange={setActiveView}
         song={currentSong}
-        songsCount={isInSetlistMode ? activeSetlistSongs.length : songs.length}
-        activeSongIndex={isInSetlistMode ? activeSetlistSongIndex : activeSongIndex}
+        songsCount={filteredSongs.length > 0 ? filteredSongs.length : songs.length}
+        activeSongIndex={activeSongIndex}
+        queueMode={queueMode}
+        activeSetlistSongsCount={activeSetlistSongs.length}
+        activeSetlistSongIndex={activeSetlistSongIndex}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
         onOpenWebsiteUrlSource={() => setIsWebsiteUrlModalOpen(true)}
@@ -519,10 +714,15 @@ function App() {
             songs={filteredSongs.length > 0 ? filteredSongs : songs}
             activeSongIndex={activeSongIndex}
             onSelectSongIndex={handleSelectLibrarySong}
+            queueMode={queueMode}
+            onToggleQueueMode={handleToggleQueueMode}
             isInSetlistMode={isInSetlistMode}
             activeSetlistSongs={activeSetlistSongs}
             activeSetlistSongIndex={activeSetlistSongIndex}
             onSelectSetlistSongIndex={setActiveSetlistSongIndex}
+            activeSetlistName={activeSetlist?.name}
+            setlists={setlists}
+            onSelectSetlist={handleSelectSetlist}
             onOpenSetlistDrawer={() => setIsSetlistDrawerOpen(true)}
             transposeOffset={currentSong.transposeOffset || 0}
             onTransposeChange={handleTransposeChange}
@@ -552,6 +752,9 @@ function App() {
           handleSelectSetlistSong(setlistId, songIdx)
           setIsSetlistDrawerOpen(false)
         }}
+        onReorderSetlistSong={handleReorderSetlistSong}
+        onRemoveSetlistSong={handleRemoveSetlistSong}
+        onDeleteSetlist={handleDeleteSetlist}
         onDeleteSong={handleDeleteSong}
         onNewSong={handleNewSong}
       />
@@ -604,6 +807,9 @@ function App() {
         isOpen={isStageToolsModalOpen}
         onClose={() => setIsStageToolsModalOpen(false)}
         initialTab="sync"
+        onPushSetlist={handlePushSetlistToMembers}
+        activeSetlistName={activeSetlist?.name}
+        activeSetlistSongCount={activeSetlistSongs.length}
       />
 
       {/* Advanced JSON Bridge Modal */}
@@ -638,13 +844,13 @@ function App() {
             <div className="space-y-1">
               <h3 className="text-base font-extrabold text-[#FDF6E3]">You're Up to Date!</h3>
               <p className="text-xs text-[#2AA198] font-mono font-bold">
-                GTAR Web App v1.0.42 (Build 42)
+                GTAR Web App v1.0.45 (Build 46)
               </p>
             </div>
             <div className="p-3 rounded-xl bg-[#002B36] text-left text-[11px] text-[#93A1A1] space-y-1 border border-[#1A4A55]">
               <div className="font-bold text-[#EEE8D5] flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-[#2AA198]" />
-                <span>1:1 Parity with Android v1.0.42</span>
+                <span>1:1 Parity with Android v1.0.45</span>
               </div>
               <p>• Unified TopAppBar with 4-Action 3-Dot Menu</p>
               <p>• Band Sync multi-screen stage sync (Leader / Member)</p>
@@ -659,6 +865,16 @@ function App() {
             >
               Great!
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Global Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="px-4 py-2.5 rounded-xl bg-[#002B36] border border-[#2AA198] text-[#FDF6E3] text-xs font-bold shadow-2xl flex items-center gap-2 max-w-md text-center">
+            <span className="w-2 h-2 rounded-full bg-[#10B981] shrink-0 animate-pulse" />
+            <span>{toastMessage}</span>
           </div>
         </div>
       )}

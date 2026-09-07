@@ -9,7 +9,10 @@ import {
   CheckCircle2,
   Trash2,
   Plus,
-  AlertTriangle
+  AlertTriangle,
+  ChevronUp,
+  ChevronDown,
+  PlayCircle,
 } from 'lucide-react'
 import type { ActiveSongState } from '../types/gtar'
 
@@ -23,6 +26,9 @@ interface SetlistDrawerProps {
   activeSetlistId?: string | number | null
   activeSetlistSongIndex?: number
   onSelectSetlistSong?: (setlistId: string | number, songIndex: number) => void
+  onReorderSetlistSong?: (setlistId: string | number, songIndex: number, moveUp: boolean) => void
+  onRemoveSetlistSong?: (setlistId: string | number, songIndex: number) => void
+  onDeleteSetlist?: (setlistId: string | number) => void
   onDeleteSong: (index: number) => void
   onNewSong: () => void
 }
@@ -37,6 +43,9 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
   activeSetlistId = null,
   activeSetlistSongIndex = 0,
   onSelectSetlistSong,
+  onReorderSetlistSong,
+  onRemoveSetlistSong,
+  onDeleteSetlist,
   onDeleteSong,
   onNewSong,
 }) => {
@@ -185,26 +194,70 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
                 return (
                   <div
                     key={sl.id || sl.name}
-                    className="border border-[#1A4A55] rounded-xl bg-[#002B36]/40 overflow-hidden"
+                    className="border border-[#1A4A55] rounded-xl bg-[#002B36]/60 overflow-hidden shadow-sm transition-all"
                   >
-                    <div
-                      onClick={() => setExpandedSetlistId(isExpanded ? null : sl.id)}
-                      className="p-3 flex items-center justify-between cursor-pointer hover:bg-[#002B36] transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-xs text-[#FDF6E3] truncate">{sl.name}</div>
-                        <div className="text-[11px] font-mono text-[#B58900]">
-                          {slSongs.length} {slSongs.length === 1 ? 'song' : 'songs'}
+                    {/* Setlist Header Card */}
+                    <div className="p-3 flex items-center justify-between gap-2">
+                      <div
+                        onClick={() => setExpandedSetlistId(isExpanded ? null : sl.id)}
+                        className="min-w-0 flex-1 flex items-center gap-2.5 cursor-pointer select-none"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-[#073642] border border-[#B58900]/40 flex items-center justify-center text-[#B58900] shrink-0">
+                          <ListMusic className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-xs text-[#FDF6E3] truncate">{sl.name}</div>
+                          <div className="text-[10px] font-mono text-[#93A1A1]">
+                            {slSongs.length} {slSongs.length === 1 ? 'track' : 'tracks'} • Tap to expand
+                          </div>
                         </div>
                       </div>
-                      <span className="text-xs text-[#93A1A1] font-mono">
-                        {isExpanded ? '▲' : '▼'}
-                      </span>
+
+                      {/* Header Actions: Quick Play Setlist, Toggle Expand, Delete Setlist */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {slSongs.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onSelectSetlistSong) {
+                                onSelectSetlistSong(sl.id, 0)
+                              }
+                              onClose()
+                            }}
+                            className="p-1.5 rounded-lg text-[#B58900] hover:text-[#D4A017] hover:bg-[#B58900]/15 transition-colors cursor-pointer"
+                            title="Start Gig / Play Setlist from Beginning"
+                          >
+                            <PlayCircle className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedSetlistId(isExpanded ? null : sl.id)}
+                          className="p-1.5 rounded-lg text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642] transition-colors cursor-pointer"
+                          title={isExpanded ? 'Collapse' : 'Expand'}
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                        {onDeleteSetlist && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteSetlist(sl.id)}
+                            className="p-1.5 rounded-lg text-[#93A1A1] hover:text-[#DC6E67] hover:bg-[#DC6E67]/15 transition-colors cursor-pointer"
+                            title="Delete Setlist"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Smoothly Expanded Cascading Songs List (1:1 Android SetlistCard) */}
                     {isExpanded && (
-                      <div className="p-2 border-t border-[#1A4A55] bg-[#002B36]/80 space-y-1">
+                      <div className="p-2 border-t border-[#1A4A55] bg-[#002B36]/90 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
                         {slSongs.length === 0 ? (
-                          <div className="p-3 text-center text-[11px] text-[#93A1A1]">Empty setlist</div>
+                          <div className="p-4 text-center text-[11px] font-mono text-[#93A1A1]">
+                            No songs in this setlist. Add songs from your songbook!
+                          </div>
                         ) : (
                           slSongs.map((sRef: any, sIdx: number) => {
                             const isCurrentSetlistSong =
@@ -218,20 +271,80 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
                                   }
                                   onClose()
                                 }}
-                                className={`p-2 rounded-lg text-xs flex items-center justify-between cursor-pointer ${
+                                className={`p-2 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition-all ${
                                   isCurrentSetlistSong
-                                    ? 'bg-[#B58900] text-[#002B36] font-bold'
-                                    : 'text-[#EEE8D5] hover:bg-[#073642]'
+                                    ? 'bg-[#073642] border-[#B58900] shadow-sm'
+                                    : 'bg-[#002B36] border-[#1A4A55]/60 hover:border-[#2AA198] hover:bg-[#073642]/60'
                                 }`}
                               >
-                                <span className="truncate">
-                                  {sIdx + 1}. {sRef.title}
-                                </span>
-                                {sRef.artist && (
-                                  <span className="text-[10px] opacity-75 truncate max-w-[100px] ml-2">
-                                    {sRef.artist}
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  {/* Track Number Badge */}
+                                  <div
+                                    className={`w-6 h-6 rounded-md flex items-center justify-center font-mono text-[10px] font-black shrink-0 ${
+                                      isCurrentSetlistSong
+                                        ? 'bg-[#B58900] text-[#002B36]'
+                                        : 'bg-[#073642] text-[#B58900]'
+                                    }`}
+                                  >
+                                    {sIdx + 1}
+                                  </div>
+
+                                  {/* Song Details */}
+                                  <div className="min-w-0 flex-1">
+                                    <div
+                                      className={`text-xs font-semibold truncate ${
+                                        isCurrentSetlistSong ? 'text-[#FDF6E3] font-bold' : 'text-[#EEE8D5]'
+                                      }`}
+                                    >
+                                      {sRef.title}
+                                    </div>
+                                    <div className="text-[10px] text-[#93A1A1] truncate">
+                                      {[sRef.artist, sRef.key ? `Key: ${sRef.key}` : null]
+                                        .filter(Boolean)
+                                        .join(' • ')}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Reorder Steppers [ ▲ ] [ ▼ ] and Remove [ ✕ ] */}
+                                <div
+                                  className="flex items-center gap-0.5 shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {onReorderSetlistSong && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        disabled={sIdx === 0}
+                                        onClick={() => onReorderSetlistSong(sl.id, sIdx, true)}
+                                        className="p-1 rounded text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642] disabled:opacity-20 disabled:hover:bg-transparent cursor-pointer"
+                                        title="Move Song Up"
+                                      >
+                                        <ChevronUp className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={sIdx === slSongs.length - 1}
+                                        onClick={() => onReorderSetlistSong(sl.id, sIdx, false)}
+                                        className="p-1 rounded text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642] disabled:opacity-20 disabled:hover:bg-transparent cursor-pointer"
+                                        title="Move Song Down"
+                                      >
+                                        <ChevronDown className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {onRemoveSetlistSong && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onRemoveSetlistSong(sl.id, sIdx)}
+                                      className="p-1 rounded text-[#93A1A1] hover:text-[#DC6E67] hover:bg-[#DC6E67]/15 transition-colors cursor-pointer ml-0.5"
+                                      title="Remove from setlist"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             )
                           })

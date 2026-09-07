@@ -364,15 +364,49 @@ class BandSyncManager(private val context: Context) {
     }
 
     private fun getLocalIpAddress(): String? {
+        // 1. Try WifiManager IP formatted as IPv4
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val ipInt = wifiManager?.connectionInfo?.ipAddress ?: 0
+            if (ipInt != 0) {
+                val ipStr = String.format(
+                    java.util.Locale.US,
+                    "%d.%d.%d.%d",
+                    ipInt and 0xff,
+                    ipInt shr 8 and 0xff,
+                    ipInt shr 16 and 0xff,
+                    ipInt shr 24 and 0xff
+                )
+                if (ipStr != "0.0.0.0" && ipStr != "127.0.0.1") {
+                    return ipStr
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. Scan NetworkInterfaces prioritizing wlan/ap/en and excluding loopback/link-local/127.0.0.1
         return try {
-            val en = java.net.NetworkInterface.getNetworkInterfaces()
-            while (en.hasMoreElements()) {
-                val intf = en.nextElement()
-                val enumIpAddr = intf.inetAddresses
-                while (enumIpAddr.hasMoreElements()) {
-                    val inetAddress = enumIpAddr.nextElement()
-                    if (!inetAddress.isLoopbackAddress && inetAddress is java.net.Inet4Address) {
-                        return inetAddress.hostAddress
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()?.toList() ?: emptyList()
+            // Priority: interfaces named wlan, ap, eth, or en
+            val prioritized = interfaces.sortedByDescending { intf ->
+                val name = intf.name.lowercase()
+                when {
+                    name.startsWith("wlan") -> 4
+                    name.startsWith("ap") -> 3
+                    name.startsWith("eth") || name.startsWith("en") -> 2
+                    else -> 1
+                }
+            }
+
+            for (intf in prioritized) {
+                if (!intf.isUp || intf.isLoopback) continue
+                val addrs = intf.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress && !addr.isLinkLocalAddress) {
+                        val host = addr.hostAddress ?: continue
+                        if (host != "127.0.0.1" && !host.startsWith("169.254.")) {
+                            return host
+                        }
                     }
                 }
             }
