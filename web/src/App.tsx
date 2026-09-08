@@ -3,6 +3,7 @@ import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
 import { DesktopEditor } from './components/DesktopEditor'
 import { StageView } from './components/StageView'
+import { StagePresentationView } from './components/StagePresentationView'
 import { SongbookHomeView } from './components/SongbookHomeView'
 import { TrashView } from './components/TrashView'
 import { JsonBridgeModal } from './components/JsonBridgeModal'
@@ -24,6 +25,7 @@ import { bandSync } from './utils/bandSync'
 import { extractDirectives } from './utils/chordSheetParser'
 import type { ActiveSongState } from './types/gtar'
 import type { FetchedChordSheet } from './utils/onlineSearch'
+import { exportAllDataJson } from './utils/jsonBackup'
 import { Check, Sparkles } from 'lucide-react'
 
 // Modern GTAR v1.0.42 Default Stage Setlist
@@ -190,6 +192,16 @@ export interface WebSetlist {
 }
 
 function App() {
+  const isPresentationRoute =
+    typeof window !== 'undefined' &&
+    (window.location.pathname.includes('/stage/present') ||
+      window.location.search.includes('view=present') ||
+      window.location.hash.includes('present'))
+
+  if (isPresentationRoute) {
+    return <StagePresentationView />
+  }
+
   // Gated Authentication Wall (persisted in sessionStorage)
   const [isUnlocked, setIsUnlocked] = useState(() => {
     return sessionStorage.getItem('gtar_authenticated') === 'true'
@@ -734,6 +746,13 @@ function App() {
       ? setlists.find((s) => String(s.id) === String(targetSetlistId)) || activeSetlist || setlists[0]
       : activeSetlist || setlists[0]
 
+    if (bandSync.getState().role !== 'HOST') {
+      const msg = 'Followers cannot broadcast setlists. Only the Band Leader can push setlists.'
+      setToastMessage(msg)
+      setTimeout(() => setToastMessage(null), 4000)
+      return { success: false, message: msg }
+    }
+
     if (!targetSetlist || targetSetlist.songs.length === 0) {
       const msg = 'No setlist available to push. Please create or select a setlist first.'
       setToastMessage(msg)
@@ -1131,6 +1150,38 @@ function App() {
     }
   }
 
+  // Direct import single setlist (.json)
+  const handleImportSingleSetlist = (
+    importedSetlist: WebSetlist,
+    newSongs: ActiveSongState[]
+  ) => {
+    if (newSongs && newSongs.length > 0) {
+      setSongs((prev) => {
+        const existing = new Set(
+          prev.map((s) => `${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`)
+        )
+        const toAdd = newSongs.filter(
+          (s) => !existing.has(`${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`)
+        )
+        return [...toAdd, ...prev]
+      })
+    }
+    setSetlists((prev) => {
+      const finalSl: WebSetlist = {
+        ...importedSetlist,
+        id: prev.some((s) => String(s.id) === String(importedSetlist.id))
+          ? `sl_${Date.now()}`
+          : importedSetlist.id,
+        name: importedSetlist.name || 'Imported Setlist',
+        createdAt: importedSetlist.createdAt || Date.now(),
+        songs: importedSetlist.songs || [],
+      }
+      return [...prev, finalSl]
+    })
+    setToastMessage(`Imported setlist "${importedSetlist.name}" (${importedSetlist.songs?.length || 0} songs)!`)
+    setTimeout(() => setToastMessage(null), 4000)
+  }
+
   // Check for updates simulation
   const handleCheckForUpdates = () => {
     setIsCheckingUpdates(true)
@@ -1221,6 +1272,7 @@ function App() {
             }}
             onPushSetlistToBandSync={handlePushSetlistToMembers}
             onShareSetlist={handleShareSetlist}
+            onImportSingleSetlist={handleImportSingleSetlist}
           />
         ) : activeView === 'editor' ? (
           <DesktopEditor
@@ -1289,6 +1341,9 @@ function App() {
         onDeleteSong={handleDeleteSong}
         onNewSong={handleNewSong}
         onNewSetlist={handleNewSetlist}
+        onImportSingleSetlist={handleImportSingleSetlist}
+        onSmartMerge={handleSmartMerge}
+        onExportAllData={() => exportAllDataJson(songs, setlists)}
       />
 
       {/* Stage Color Theme Modal */}
@@ -1350,6 +1405,11 @@ function App() {
           setIsThemeModalOpen(true)
         }}
         onCheckForUpdates={handleCheckForUpdates}
+        onExportAllData={() => exportAllDataJson(songs, setlists)}
+        onOpenBackupRestoreModal={() => {
+          setIsStageSettingsModalOpen(false)
+          setIsBackupRestoreModalOpen(true)
+        }}
       />
 
       {/* Stage Tools & Band Sync Modal */}

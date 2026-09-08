@@ -1,0 +1,26 @@
+{
+  "name": "GTAR Live Stage Companion",
+  "short_name": "GTAR",
+  "description": "Professional Live Stage Teleprompter, Chord Transposer, BandSync, and Setlist Companion for Musicians",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#002B36",
+  "theme_color": "#0f172a",
+  "categories": ["music", "entertainment", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

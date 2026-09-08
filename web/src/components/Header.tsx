@@ -21,6 +21,7 @@ import {
   Plus,
   Loader2,
   Trash2,
+  Download,
 } from 'lucide-react'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 import {
@@ -98,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeSetlistSongs = [],
   onSelectSetlistSong,
   onSelectSetlist,
-  onPushSetlistToBandSync,
+  onPushSetlistToBandSync: _onPushSetlistToBandSync,
   onShareSetlist,
   onDirectImportOnlineSong,
 }) => {
@@ -109,6 +110,43 @@ export const Header: React.FC<HeaderProps> = ({
   const [isSearchingOnline, setIsSearchingOnline] = useState(false)
   const [previewResult, setPreviewResult] = useState<OnlineChordResult | null>(null)
   const [importingId, setImportingId] = useState<string | number | null>(null)
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null)
+  const [isAppInstalled, setIsAppInstalled] = useState(false)
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault()
+      setDeferredInstallPrompt(e)
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+
+    if (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches) {
+      setIsAppInstalled(true)
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    }
+  }, [])
+
+  const handleTriggerInstall = async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt()
+      const choice = await deferredInstallPrompt.userChoice
+      if (choice.outcome === 'accepted') {
+        setDeferredInstallPrompt(null)
+        setIsAppInstalled(true)
+      }
+    } else {
+      alert(
+        'To install GTAR as a Standalone Stage App:\n\n' +
+        '• Chrome/Edge: Click the Install icon in the address bar (or Menu > Install app)\n' +
+        '• iOS Safari: Tap Share and select "Add to Home Screen"\n' +
+        '• Android: Tap browser menu (⋮) and select "Install app" or "Add to Home Screen"'
+      )
+    }
+  }
 
   const overflowMenuRef = useRef<HTMLDivElement>(null)
   const setlistDropdownRef = useRef<HTMLDivElement>(null)
@@ -352,22 +390,6 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
-                      {/* Push to BandSync Button */}
-                      {onPushSetlistToBandSync && currentActiveSetlist && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onPushSetlistToBandSync(currentActiveSetlist.id)
-                          }}
-                          className="px-2 py-0.5 rounded-lg bg-[#2AA198]/20 hover:bg-[#2AA198] text-[#2AA198] hover:text-[#002B36] font-bold text-[10px] flex items-center gap-1 border border-[#2AA198]/40 transition-colors cursor-pointer"
-                          title="Broadcast this setlist directly to connected band members via BandSync"
-                        >
-                          <Radio className="w-3 h-3" />
-                          <span>Sync Band</span>
-                        </button>
-                      )}
-
                       {/* Share / Export Setlist */}
                       {onShareSetlist && currentActiveSetlist && (
                         <button
@@ -782,6 +804,19 @@ export const Header: React.FC<HeaderProps> = ({
         {/* 3. RIGHT: Stage Controls & Unified 3-Dots Overflow Menu             */}
         {/* =================================================================== */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* PWA Install App Button (when available and not standalone) */}
+          {deferredInstallPrompt && !isAppInstalled && (
+            <button
+              type="button"
+              onClick={handleTriggerInstall}
+              title="Install GTAR as Standalone Stage App"
+              className="px-2.5 py-1.5 rounded-xl bg-[#10B981]/20 hover:bg-[#10B981] text-[#10B981] hover:text-[#002B36] border border-[#10B981]/50 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 animate-pulse"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Install App</span>
+            </button>
+          )}
+
           {/* Stage Tools / Band Sync Button */}
           <button
             type="button"
@@ -816,6 +851,24 @@ export const Header: React.FC<HeaderProps> = ({
 
             {showOverflowMenu && (
               <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl py-2 z-50 animate-scale-in">
+                {/* 0. Install App (PWA) */}
+                {!isAppInstalled && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOverflowMenu(false)
+                        handleTriggerInstall()
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs text-[#10B981] hover:bg-[#002B36] transition-colors flex items-center gap-3 cursor-pointer"
+                    >
+                      <Download className="w-4 h-4 text-[#10B981]" />
+                      <span className="font-semibold">Install App (PWA)</span>
+                    </button>
+                    <div className="h-[1px] bg-[#1A4A55]/60 my-1" />
+                  </>
+                )}
+
                 {/* 1. Stage Settings */}
                 <button
                   type="button"

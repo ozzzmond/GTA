@@ -11,6 +11,8 @@ import {
   Check,
   X,
   Radio,
+  Download,
+  Upload,
 } from 'lucide-react'
 
 export type SongFontStyleOption = 'mono' | 'sans' | 'serif'
@@ -25,6 +27,9 @@ interface StageSettingsModalProps {
   onOpenStageTools: () => void
   onToggleTheme: () => void
   onCheckForUpdates: () => void
+  onExportAllData?: () => void
+  onOpenBackupRestoreModal?: () => void
+  onInstallApp?: () => void
 }
 
 export const StageSettingsModal: React.FC<StageSettingsModalProps> = ({
@@ -37,6 +42,9 @@ export const StageSettingsModal: React.FC<StageSettingsModalProps> = ({
   onOpenStageTools,
   onToggleTheme,
   onCheckForUpdates,
+  onExportAllData,
+  onOpenBackupRestoreModal,
+  onInstallApp,
 }) => {
   const [keepScreenAwake, setKeepScreenAwake] = useState(false)
   const [wakeLockSentinel, setWakeLockSentinel] = useState<any>(null)
@@ -318,22 +326,87 @@ export const StageSettingsModal: React.FC<StageSettingsModalProps> = ({
             </button>
           </div>
 
-          {/* Section 3: App Information & Update Check */}
+          {/* Section 3: Local Setlist & Library Backup / Restore (JSON) */}
+          <div className="space-y-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[#B58900]">
+              LOCAL DATA BACKUP & RESTORE
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onExportAllData) {
+                    onExportAllData()
+                  }
+                  showToast('Exported full library backup JSON')
+                }}
+                className="p-3 rounded-xl bg-[#002B36] border border-[#1A4A55] hover:border-[#2AA198] transition-all flex items-center gap-2.5 cursor-pointer group"
+                title="Export complete songbook, setlists, and stage customizations"
+              >
+                <div className="w-8 h-8 rounded-lg bg-[#073642] flex items-center justify-center text-[#2AA198]">
+                  <Download className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <div className="text-xs font-bold text-[#FDF6E3] group-hover:text-[#2AA198]">
+                    Export All Data (JSON)
+                  </div>
+                  <div className="text-[10px] text-[#93A1A1]">Songs, setlists & themes</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onClose()
+                  onOpenBackupRestoreModal?.()
+                }}
+                className="p-3 rounded-xl bg-[#002B36] border border-[#1A4A55] hover:border-[#B58900] transition-all flex items-center gap-2.5 cursor-pointer group"
+                title="Import and restore from backup file"
+              >
+                <div className="w-8 h-8 rounded-lg bg-[#073642] flex items-center justify-center text-[#B58900]">
+                  <Upload className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <div className="text-xs font-bold text-[#FDF6E3] group-hover:text-[#B58900]">
+                    Import Data (JSON)
+                  </div>
+                  <div className="text-[10px] text-[#93A1A1]">Merge or overwrite backup</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Section 4: PWA Offline Stage App & Information */}
           <div className="p-4 rounded-xl bg-[#002B36]/60 border border-[#1A4A55]/70 text-center space-y-2">
-            <div className="text-xs font-extrabold text-[#FDF6E3]">GTAR Stage Suite</div>
+            <div className="text-xs font-extrabold text-[#FDF6E3]">GTAR Live Stage Companion</div>
             <div className="text-[11px] font-mono font-bold text-[#2AA198]">
-              Version 1.0.47 (Build 48)
+              Version 1.0.49 (Build 50)
             </div>
             <div className="text-[10px] text-[#93A1A1]">
-              Pro Gig Teleprompter & Chord Companion for Live Musicians
+              Offline-First Stage Teleprompter & Chord Companion for Live Musicians
             </div>
+
+            {onInstallApp && (
+              <button
+                type="button"
+                onClick={() => {
+                  onInstallApp()
+                }}
+                className="w-full py-2 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] hover:bg-[#10B981] hover:text-[#002B36] text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 mt-1"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Install App as Standalone PWA</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {
                 onCheckForUpdates()
                 showToast('Checking for updates...')
               }}
-              className="mt-2 w-full py-2 rounded-lg border border-[#2AA198]/50 text-[#2AA198] text-xs font-bold hover:bg-[#2AA198]/10 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              className="mt-1 w-full py-2 rounded-lg border border-[#2AA198]/50 text-[#2AA198] text-xs font-bold hover:bg-[#2AA198]/10 transition-colors cursor-pointer flex items-center justify-center gap-2"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Check for Updates</span>

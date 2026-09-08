@@ -681,6 +681,11 @@ class BandSyncEngine {
   }
 
   public broadcastSetlist(setlistName: string, songs: any[]) {
+    // Members must purely be receivers/followers and never broadcast setlists to the Leader over WebSocket
+    if (this.role !== 'HOST') {
+      console.warn('BandSync: Followers/members cannot broadcast setlists to the Leader.')
+      return
+    }
     const formattedSongs = songs.map((s) => ({
       title: s.title || '',
       artist: s.artist || '',

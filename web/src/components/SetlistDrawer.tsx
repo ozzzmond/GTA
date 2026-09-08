@@ -13,8 +13,11 @@ import {
   ChevronUp,
   ChevronDown,
   PlayCircle,
+  Download,
+  Upload,
 } from 'lucide-react'
 import type { ActiveSongState } from '../types/gtar'
+import { exportAllDataJson, exportSingleSetlistJson, parseBackupJson } from '../utils/jsonBackup'
 
 interface SetlistDrawerProps {
   isOpen: boolean
@@ -32,6 +35,9 @@ interface SetlistDrawerProps {
   onDeleteSong: (index: number) => void
   onNewSong: () => void
   onNewSetlist?: () => void
+  onImportSingleSetlist?: (setlist: any, songs: ActiveSongState[]) => void
+  onSmartMerge?: (songs: Array<Partial<ActiveSongState>>, setlists: any[]) => void
+  onExportAllData?: () => void
 }
 
 export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
@@ -50,11 +56,76 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
   onDeleteSong,
   onNewSong,
   onNewSetlist,
+  onImportSingleSetlist,
+  onSmartMerge,
+  onExportAllData,
 }) => {
   const [drawerTab, setDrawerTab] = useState<'songbook' | 'setlists'>('songbook')
   const [searchQuery, setSearchQuery] = useState('')
   const [confirmDeleteIndex, setConfirmDeleteIndex] = useState<number | null>(null)
   const [expandedSetlistId, setExpandedSetlistId] = useState<string | number | null>(activeSetlistId)
+  const [drawerToast, setDrawerToast] = useState<string | null>(null)
+  const setlistFileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const showDrawerToast = (msg: string) => {
+    setDrawerToast(msg)
+    setTimeout(() => setDrawerToast(null), 3500)
+  }
+
+  const handleExportSingle = (sl: any) => {
+    try {
+      const fileName = exportSingleSetlistJson(sl, songs)
+      showDrawerToast(`Exported "${sl.name}" as ${fileName}`)
+    } catch (err: any) {
+      showDrawerToast(`Export failed: ${err.message}`)
+    }
+  }
+
+  const handleExportAll = () => {
+    try {
+      if (onExportAllData) {
+        onExportAllData()
+      } else {
+        const fileName = exportAllDataJson(songs, setlists)
+        showDrawerToast(`Exported backup as ${fileName}`)
+      }
+    } catch (err: any) {
+      showDrawerToast(`Export failed: ${err.message}`)
+    }
+  }
+
+  const handleSetlistFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const parsed = parseBackupJson(text)
+
+      if (!parsed.isValid) {
+        showDrawerToast(parsed.error || 'Invalid or corrupted JSON file.')
+        return
+      }
+
+      if (parsed.isSingleSetlist && parsed.setlists.length > 0) {
+        if (onImportSingleSetlist) {
+          onImportSingleSetlist(parsed.setlists[0], parsed.songs)
+        } else if (onSmartMerge) {
+          onSmartMerge(parsed.songs, parsed.setlists)
+        }
+        showDrawerToast(`Imported setlist "${parsed.singleSetlistName}" (${parsed.songs.length} tracks)!`)
+      } else {
+        if (onSmartMerge) {
+          onSmartMerge(parsed.songs, parsed.setlists)
+        }
+        showDrawerToast(`Imported ${parsed.songs.length} songs and ${parsed.setlists.length} setlists!`)
+      }
+    } catch (err: any) {
+      showDrawerToast(`Import error: ${err.message}`)
+    }
+
+    if (e.target) e.target.value = ''
+  }
 
   if (!isOpen) return null
 
@@ -178,80 +249,142 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
           </div>
         </div>
 
+        {/* Hidden file input for Setlist .json import */}
+        <input
+          ref={setlistFileInputRef}
+          type="file"
+          accept=".json,application/json"
+          onChange={handleSetlistFileChange}
+          className="hidden"
+        />
+
+        {/* Transient feedback toast */}
+        {drawerToast && (
+          <div className="mx-3 my-1 px-3 py-1.5 rounded-lg bg-[#2AA198] text-[#002B36] text-xs font-bold font-mono animate-fade-in flex items-center justify-between">
+            <span>{drawerToast}</span>
+            <button
+              type="button"
+              onClick={() => setDrawerToast(null)}
+              className="text-[#002B36] hover:opacity-75"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Tab Content: Songbook or Setlists */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {drawerTab === 'setlists' ? (
-            setlists.length === 0 ? (
-              <div className="p-8 text-center text-xs font-mono text-[#93A1A1] space-y-2">
-                <div className="text-sm font-bold text-[#EEE8D5]">No Custom Setlists</div>
-                <div>Your songbook contains {songs.length} songs.</div>
-                <div className="text-[11px] text-[#2AA198]">
-                  Setlists stay completely separate from your full library.
+            <div className="space-y-2">
+              {/* Setlists Control Bar: Import Setlist (.json) & Export All (JSON) */}
+              <div className="flex items-center justify-between gap-1.5 pb-2 border-b border-[#1A4A55]/60 mb-2">
+                <span className="text-[10px] font-mono font-bold text-[#93A1A1] uppercase tracking-wider">
+                  Gig Setlists ({setlists.length})
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setlistFileInputRef.current?.click()}
+                    className="px-2 py-1 rounded-lg bg-[#2AA198]/15 hover:bg-[#2AA198] text-[#2AA198] hover:text-[#002B36] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#2AA198]/30"
+                    title="Import a single setlist (.json) into your library"
+                  >
+                    <Upload className="w-3 h-3" />
+                    <span>Import Setlist</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportAll}
+                    className="px-2 py-1 rounded-lg bg-[#002B36] hover:bg-[#1A4A55] text-[#93A1A1] hover:text-[#FDF6E3] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#1A4A55]"
+                    title="Export All Data (JSON)"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Export All</span>
+                  </button>
                 </div>
               </div>
-            ) : (
-              setlists.map((sl: any) => {
-                const isExpanded = expandedSetlistId === sl.id
-                const slSongs: any[] = sl.songs || []
-                return (
-                  <div
-                    key={sl.id || sl.name}
-                    className="border border-[#1A4A55] rounded-xl bg-[#002B36]/60 overflow-hidden shadow-sm transition-all"
-                  >
-                    {/* Setlist Header Card */}
-                    <div className="p-3 flex items-center justify-between gap-2">
-                      <div
-                        onClick={() => setExpandedSetlistId(isExpanded ? null : sl.id)}
-                        className="min-w-0 flex-1 flex items-center gap-2.5 cursor-pointer select-none"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-[#073642] border border-[#B58900]/40 flex items-center justify-center text-[#B58900] shrink-0">
-                          <ListMusic className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-bold text-xs text-[#FDF6E3] truncate">{sl.name}</div>
-                          <div className="text-[10px] font-mono text-[#93A1A1]">
-                            {slSongs.length} {slSongs.length === 1 ? 'track' : 'tracks'} • Tap to expand
+
+              {setlists.length === 0 ? (
+                <div className="p-8 text-center text-xs font-mono text-[#93A1A1] space-y-2">
+                  <div className="text-sm font-bold text-[#EEE8D5]">No Custom Setlists</div>
+                  <div>Your songbook contains {songs.length} songs.</div>
+                  <div className="text-[11px] text-[#2AA198]">
+                    Setlists stay completely separate from your full library.
+                  </div>
+                </div>
+              ) : (
+                setlists.map((sl: any) => {
+                  const isExpanded = expandedSetlistId === sl.id
+                  const slSongs: any[] = sl.songs || []
+                  return (
+                    <div
+                      key={sl.id || sl.name}
+                      className="border border-[#1A4A55] rounded-xl bg-[#002B36]/60 overflow-hidden shadow-sm transition-all"
+                    >
+                      {/* Setlist Header Card */}
+                      <div className="p-3 flex items-center justify-between gap-2">
+                        <div
+                          onClick={() => setExpandedSetlistId(isExpanded ? null : sl.id)}
+                          className="min-w-0 flex-1 flex items-center gap-2.5 cursor-pointer select-none"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-[#073642] border border-[#B58900]/40 flex items-center justify-center text-[#B58900] shrink-0">
+                            <ListMusic className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-xs text-[#FDF6E3] truncate">{sl.name}</div>
+                            <div className="text-[10px] font-mono text-[#93A1A1]">
+                              {slSongs.length} {slSongs.length === 1 ? 'track' : 'tracks'} • Tap to expand
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Header Actions: Quick Play Setlist, Toggle Expand, Delete Setlist */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        {slSongs.length > 0 && (
+                        {/* Header Actions: Quick Play Setlist, Export Setlist (.json), Toggle Expand, Delete Setlist */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {slSongs.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onSelectSetlistSong) {
+                                  onSelectSetlistSong(sl.id, 0)
+                                }
+                                onClose()
+                              }}
+                              className="p-1.5 rounded-lg text-[#B58900] hover:text-[#D4A017] hover:bg-[#B58900]/15 transition-colors cursor-pointer"
+                              title="Start Gig / Play Setlist from Beginning"
+                            >
+                              <PlayCircle className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => {
-                              if (onSelectSetlistSong) {
-                                onSelectSetlistSong(sl.id, 0)
-                              }
-                              onClose()
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleExportSingle(sl)
                             }}
-                            className="p-1.5 rounded-lg text-[#B58900] hover:text-[#D4A017] hover:bg-[#B58900]/15 transition-colors cursor-pointer"
-                            title="Start Gig / Play Setlist from Beginning"
+                            className="p-1.5 rounded-lg text-[#93A1A1] hover:text-[#2AA198] hover:bg-[#073642] transition-colors cursor-pointer"
+                            title="Export Setlist (.json)"
                           >
-                            <PlayCircle className="w-4 h-4" />
+                            <Download className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setExpandedSetlistId(isExpanded ? null : sl.id)}
-                          className="p-1.5 rounded-lg text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642] transition-colors cursor-pointer"
-                          title={isExpanded ? 'Collapse' : 'Expand'}
-                        >
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </button>
-                        {onDeleteSetlist && (
                           <button
                             type="button"
-                            onClick={() => onDeleteSetlist(sl.id)}
-                            className="p-1.5 rounded-lg text-[#93A1A1] hover:text-[#DC6E67] hover:bg-[#DC6E67]/15 transition-colors cursor-pointer"
-                            title="Delete Setlist"
+                            onClick={() => setExpandedSetlistId(isExpanded ? null : sl.id)}
+                            className="p-1.5 rounded-lg text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642] transition-colors cursor-pointer"
+                            title={isExpanded ? 'Collapse' : 'Expand'}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           </button>
-                        )}
+                          {onDeleteSetlist && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteSetlist(sl.id)}
+                              className="p-1.5 rounded-lg text-[#93A1A1] hover:text-[#DC6E67] hover:bg-[#DC6E67]/15 transition-colors cursor-pointer"
+                              title="Delete Setlist"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
                     {/* Smoothly Expanded Cascading Songs List (1:1 Android SetlistCard) */}
                     {isExpanded && (
@@ -353,10 +486,11 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
                         )}
                       </div>
                     )}
-                  </div>
-                )
-              })
-            )
+                    </div>
+                  )
+                })
+              )}
+            </div>
           ) : filteredSongs.length === 0 ? (
             <div className="p-8 text-center text-xs font-mono text-[#93A1A1]">
               No songs matched &quot;{searchQuery}&quot;

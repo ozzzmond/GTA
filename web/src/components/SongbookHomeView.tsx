@@ -11,8 +11,12 @@ import {
   Share2,
   Search,
   X,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { GtaLogoIcon } from './GtaLogoIcon'
+import { bandSync } from '../utils/bandSync'
+import { exportSingleSetlistJson, parseBackupJson } from '../utils/jsonBackup'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 
 interface SongbookHomeViewProps {
@@ -29,6 +33,7 @@ interface SongbookHomeViewProps {
   onSelectSetlistSong?: (setlistId: string | number, songIdx: number) => void
   onPushSetlistToBandSync?: (setlistId: string | number) => void
   onShareSetlist?: (setlist: WebSetlist) => void
+  onImportSingleSetlist?: (setlist: any, songs: ActiveSongState[]) => void
 }
 
 export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
@@ -45,9 +50,30 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
   onSelectSetlistSong,
   onPushSetlistToBandSync,
   onShareSetlist,
+  onImportSingleSetlist,
 }) => {
   const [confirmDeleteIdx, setConfirmDeleteIdx] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const setlistFileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const handleSetlistImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const parsed = parseBackupJson(text)
+      if (parsed.isValid && parsed.setlists.length > 0) {
+        onImportSingleSetlist?.(parsed.setlists[0], parsed.songs)
+      } else {
+        alert(parsed.error || 'Failed to parse setlist file.')
+      }
+    } catch (err: any) {
+      alert(`Import error: ${err.message}`)
+    }
+
+    if (e.target) e.target.value = ''
+  }
 
   type SortOption = 'title' | 'artist' | 'key' | 'date'
   const [sortBy, setSortBy] = useState<SortOption>(() => {
@@ -204,6 +230,15 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
       {/* 2. Active Setlists Quick Row (if available) */}
       {setlists.length > 0 && (
         <div className="mb-8">
+          {/* Hidden file input for Setlist .json import */}
+          <input
+            ref={setlistFileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleSetlistImportFile}
+            className="hidden"
+          />
+
           <div className="flex items-center justify-between mb-3 px-1">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-[#B58900]" />
@@ -214,10 +249,19 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={onOpenSetlists}
-                className="text-xs font-bold text-[#2AA198] hover:underline flex items-center gap-1 cursor-pointer"
+                onClick={() => setlistFileInputRef.current?.click()}
+                className="text-xs font-bold text-[#2AA198] hover:bg-[#2AA198]/15 px-2.5 py-1 rounded-lg border border-[#2AA198]/40 flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Import single setlist (.json) into your library"
               >
-                <span>Manage Setlists</span>
+                <Upload className="w-3.5 h-3.5" />
+                <span>Import Setlist</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenSetlists}
+                className="text-xs font-bold text-[#93A1A1] hover:text-[#FDF6E3] flex items-center gap-1 cursor-pointer"
+              >
+                <span>Manage</span>
                 <ArrowRight className="w-3 h-3" />
               </button>
             </div>
@@ -250,33 +294,50 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
                   </div>
                 </div>
 
-                {/* Setlist Action Controls: Push to BandSync & Share/Export */}
+                {/* Setlist Action Controls: Push to BandSync (Leader only), Export (.json) & Share */}
                 <div className="flex items-center justify-between gap-1.5 mt-3 pt-2.5 border-t border-[#1A4A55]/60">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPushSetlistToBandSync?.(sl.id)
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#2AA198]/15 hover:bg-[#2AA198] text-[#2AA198] hover:text-[#002B36] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#2AA198]/30"
-                    title="Broadcast setlist to connected band members via BandSync"
-                  >
-                    <Radio className="w-3 h-3" />
-                    <span>Push BandSync</span>
-                  </button>
+                  {bandSync.getState().role === 'HOST' && onPushSetlistToBandSync && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onPushSetlistToBandSync?.(sl.id)
+                      }}
+                      className="px-2 py-1 rounded-lg bg-[#2AA198]/15 hover:bg-[#2AA198] text-[#2AA198] hover:text-[#002B36] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#2AA198]/30"
+                      title="Broadcast setlist to connected band members via BandSync"
+                    >
+                      <Radio className="w-3 h-3" />
+                      <span>Push BandSync</span>
+                    </button>
+                  )}
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onShareSetlist?.(sl)
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#002B36] hover:bg-[#1A4A55] text-[#93A1A1] hover:text-[#FDF6E3] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#1A4A55]"
-                    title="Share / Export setlist as JSON"
-                  >
-                    <Share2 className="w-3 h-3" />
-                    <span>Share</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        exportSingleSetlistJson(sl, songs)
+                      }}
+                      className="px-2 py-1 rounded-lg bg-[#002B36] hover:bg-[#1A4A55] text-[#93A1A1] hover:text-[#2AA198] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#1A4A55]"
+                      title="Export single setlist as .json file"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Export (.json)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onShareSetlist?.(sl)
+                      }}
+                      className="px-2 py-1 rounded-lg bg-[#002B36] hover:bg-[#1A4A55] text-[#93A1A1] hover:text-[#FDF6E3] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#1A4A55]"
+                      title="Share / Export setlist as JSON"
+                    >
+                      <Share2 className="w-3 h-3" />
+                      <span>Share</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

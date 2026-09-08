@@ -18,11 +18,13 @@ import {
   Wifi,
   BookOpen,
   ArrowLeft,
+  Cast,
 } from 'lucide-react'
 import { transposeKey, formatTransposeOffset } from '../utils/chordTransposer'
 import { parseGtarSong, splitSongLinesForColumns } from '../utils/songParser'
 import { metronome } from '../utils/metronome'
 import { bandSync, type BandSyncState } from '../utils/bandSync'
+import { stageCast } from '../utils/stageCast'
 import { getChordVoicing, type ChordVoicing } from '../utils/chordDictionary'
 import { SongLineRenderer } from './SongLineRenderer'
 import { KeyPickerModal } from './KeyPickerModal'
@@ -299,13 +301,17 @@ export const StageView: React.FC<StageViewProps> = ({
     }
   }, [isAutoScrolling, scrollSpeed])
 
-  // Broadcast scroll position when HOST
+  // Broadcast scroll position to Stage Cast teleprompter & BandSync when HOST
   const handleContainerScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget
+    const maxScroll = target.scrollHeight - target.clientHeight
+    const fraction = maxScroll > 0 ? target.scrollTop / maxScroll : 0
+
+    // Mirror to Stage Cast teleprompter screen in real time
+    stageCast.broadcastScroll(target.scrollTop, fraction)
+
     if (syncState.role === 'HOST') {
-      const target = e.currentTarget
-      const maxScroll = target.scrollHeight - target.clientHeight
       if (maxScroll > 0) {
-        const fraction = target.scrollTop / maxScroll
         bandSync.broadcastScroll(fraction, target.scrollTop)
       }
     }
@@ -440,6 +446,36 @@ export const StageView: React.FC<StageViewProps> = ({
   const [col1Lines, col2Lines] = isTwoColumn
     ? splitSongLinesForColumns(parsedSong.lines)
     : [parsedSong.lines, []]
+
+  // Mirror stage state to secondary screen / Cast Presentation window in real-time
+  useEffect(() => {
+    stageCast.broadcastState({
+      song,
+      effectiveKey,
+      transposeOffset,
+      fontSizePx,
+      fontStyle,
+      isTwoColumn,
+    })
+  }, [song, effectiveKey, transposeOffset, fontSizePx, fontStyle, isTwoColumn])
+
+  useEffect(() => {
+    // Listen for REQUEST_STATE from external teleprompter window
+    return stageCast.subscribe(
+      () => {},
+      () => {},
+      () => {
+        stageCast.broadcastState({
+          song,
+          effectiveKey,
+          transposeOffset,
+          fontSizePx,
+          fontStyle,
+          isTwoColumn,
+        })
+      }
+    )
+  }, [song, effectiveKey, transposeOffset, fontSizePx, fontStyle, isTwoColumn])
 
   const handleChordClick = (chordName: string) => {
     const voicing = getChordVoicing(chordName)
@@ -658,6 +694,26 @@ export const StageView: React.FC<StageViewProps> = ({
               </>
             )}
           </button>
+          {/* Cast / Pop-out Screen (Mirror distraction-free stage teleprompter to external display) */}
+          <button
+            type="button"
+            onClick={() => {
+              stageCast.broadcastState({
+                song,
+                effectiveKey,
+                transposeOffset,
+                fontSizePx,
+                fontStyle,
+                isTwoColumn,
+              })
+              stageCast.openPresentationWindow()
+            }}
+            className="p-2 rounded-lg bg-[#002B36] border border-[#1A4A55] text-[#EEE8D5] hover:text-[#2AA198] hover:border-[#2AA198] transition-colors cursor-pointer"
+            title="Cast / Pop-out Screen (Open distraction-free fullscreen teleprompter on secondary monitor or TV)"
+          >
+            <Cast className="w-4 h-4" />
+          </button>
+
           {/* Stage Focus Mode (Fullscreen) */}
           <button
             type="button"
