@@ -17,6 +17,7 @@ import {
   Users,
   Wifi,
   BookOpen,
+  ArrowLeft,
 } from 'lucide-react'
 import { transposeKey, formatTransposeOffset } from '../utils/chordTransposer'
 import { parseGtarSong, splitSongLinesForColumns } from '../utils/songParser'
@@ -51,6 +52,7 @@ interface StageViewProps {
   isTwoColumn?: boolean
   onToggleTwoColumn?: (enabled: boolean) => void
   onOpenBandSync?: () => void
+  onBack?: () => void
 }
 
 /**
@@ -81,6 +83,7 @@ export const StageView: React.FC<StageViewProps> = ({
   isTwoColumn: externalIsTwoColumn,
   onToggleTwoColumn: externalOnToggleTwoColumn,
   onOpenBandSync,
+  onBack,
 }) => {
   const isInSetlistMode = propIsInSetlistMode || queueMode === 'setlist'
   // Stage view configuration & controls (matching Jetpack Compose SongViewerScreen.kt)
@@ -460,8 +463,19 @@ export const StageView: React.FC<StageViewProps> = ({
       {/* 1. TOP APP BAR (Exact 1:1 Jetpack Compose SongViewerScreen.kt)       */}
       {/* =================================================================== */}
       <div className="border-b border-[#1A4A55] bg-[#073642] px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3 z-20 shadow-md">
-        {/* Left Side: Song Title & Artist */}
-        <div className="flex items-center gap-3">
+        {/* Left Side: Back Navigation Button + Song Title & Artist */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer text-[#EEE8D5] hover:text-[#2AA198] flex items-center justify-center -ml-1 select-none active:scale-95"
+              title="Back to Songbook Library"
+              aria-label="Back to Songbook Library"
+            >
+              <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
+            </button>
+          )}
           <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-extrabold text-[#EEE8D5] tracking-tight leading-tight truncate max-w-[240px] sm:max-w-xs md:max-w-md">
               {song.title || 'Untitled Song'}

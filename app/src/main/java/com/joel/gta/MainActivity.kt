@@ -149,6 +149,7 @@ class MainActivity : ComponentActivity() {
                             onConnectBandHost = { hostAddress -> viewModel.connectToBandHost(hostAddress) },
                             onStopBandSync = { viewModel.stopBandSync() },
                             onPushSetlistToMembers = { viewModel.pushSetlistToMembers() },
+                            onPushSpecificSetlistToMembers = { setlistWithSongs -> viewModel.pushSetlistToMembers(setlistWithSongs) },
                             onOpenSampleTwoLine = {
                                 viewModel.loadSampleSong(useChordPro = false)
                             },

@@ -12,7 +12,13 @@ import { WebsiteUrlSourceModal } from './components/WebsiteUrlSourceModal'
 import { ImportDialogModal } from './components/ImportDialogModal'
 import { BackupRestoreDialogModal } from './components/BackupRestoreDialogModal'
 import { StageSettingsModal, type SongFontStyleOption } from './components/StageSettingsModal'
-import { ThemeModal, type ThemeMode } from './components/ThemeModal'
+import {
+  ThemeModal,
+  type ThemeMode,
+  type CustomThemeColors,
+  DEFAULT_CUSTOM_COLORS,
+  applyCustomThemeStyles,
+} from './components/ThemeModal'
 import { BandSyncModal } from './components/BandSyncModal'
 import { bandSync } from './utils/bandSync'
 import { extractDirectives } from './utils/chordSheetParser'
@@ -251,6 +257,19 @@ function App() {
     return 'solarized-dark'
   })
 
+  // Custom Stage Theme Colors (persisted in localStorage)
+  const [customThemeColors, setCustomThemeColors] = useState<CustomThemeColors>(() => {
+    try {
+      const saved = localStorage.getItem('gtar_custom_theme_colors')
+      if (saved) {
+        return { ...DEFAULT_CUSTOM_COLORS, ...JSON.parse(saved) }
+      }
+    } catch (e) {
+      console.error('Failed to load custom theme colors from localStorage', e)
+    }
+    return DEFAULT_CUSTOM_COLORS
+  })
+
   const [activeSetlistId, setActiveSetlistId] = useState<string | number | null>(() => {
     try {
       const saved = localStorage.getItem('gtar_active_setlist_id')
@@ -337,10 +356,15 @@ function App() {
       'theme-solarized-dark',
       'theme-amber-stage',
       'theme-oled-black',
-      'theme-paper-light'
+      'theme-paper-light',
+      'theme-custom'
     )
     document.body.classList.add(`theme-${stageTheme}`)
-  }, [stageTheme])
+
+    if (stageTheme === 'custom') {
+      applyCustomThemeStyles(customThemeColors)
+    }
+  }, [stageTheme, customThemeColors])
 
   // Active Setlist context
   const activeSetlist = useMemo(() => {
@@ -468,19 +492,26 @@ function App() {
               )
               if (libIdx !== -1) {
                 setActiveSongIndex(libIdx)
-              } else if (rawContent) {
+              } else {
+                const effectiveContent = rawContent || `{title: ${title || 'Synced Song'}}\n{artist: ${artist || ''}}\n\n[Verse]\n`
                 const newSong: ActiveSongState = {
                   id: Date.now(),
                   title: title || 'Synced Song',
                   artist: artist || '',
                   key: msg.payload.key || 'G',
                   capo: msg.payload.capo || 'No Capo',
-                  bpm: '120',
-                  format: 'CHORD_PRO',
+                  bpm: msg.payload.bpm || '120',
+                  format: msg.payload.format || 'CHORD_PRO',
                   transposeOffset: transpose,
-                  rawContent: rawContent,
+                  rawContent: effectiveContent,
                 }
-                setSongs((prev) => [...prev, newSong])
+                setSongs((prev) => {
+                  const updated = [...prev, newSong]
+                  try {
+                    localStorage.setItem('gtar_songs_store', JSON.stringify(updated))
+                  } catch (_) {}
+                  return updated
+                })
                 setActiveSongIndex(songs.length)
               }
             }
@@ -494,22 +525,27 @@ function App() {
             )
             if (libIdx !== -1) {
               setActiveSongIndex(libIdx)
-            } else if (rawContent) {
+            } else {
+              const effectiveContent = rawContent || `{title: ${title || 'Synced Song'}}\n{artist: ${artist || ''}}\n\n[Verse]\n`
               const newSong: ActiveSongState = {
                 id: Date.now(),
                 title: title || 'Synced Song',
                 artist: artist || '',
                 key: msg.payload.key || 'G',
                 capo: msg.payload.capo || 'No Capo',
-                bpm: '120',
-                format: 'CHORD_PRO',
+                bpm: msg.payload.bpm || '120',
+                format: msg.payload.format || 'CHORD_PRO',
                 transposeOffset: transpose,
-                rawContent: rawContent,
+                rawContent: effectiveContent,
               }
-              setSongs((prev) => [...prev, newSong])
+              setSongs((prev) => {
+                const updated = [...prev, newSong]
+                try {
+                  localStorage.setItem('gtar_songs_store', JSON.stringify(updated))
+                } catch (_) {}
+                return updated
+              })
               setActiveSongIndex(songs.length)
-            } else if (queueIndex >= 0 && queueIndex < songs.length) {
-              setActiveSongIndex(queueIndex)
             }
           }
 
@@ -519,9 +555,6 @@ function App() {
         } else if (msg.type === 'SETLIST_SYNC' && msg.payload) {
           const incomingSetlistName = msg.payload.setlistName || 'Band Setlist'
           const incomingSongs: any[] = Array.isArray(msg.payload.songs) ? msg.payload.songs : []
-
-          let addedCount = 0
-          let existingCount = 0
 
           // Smart Merge: do not overwrite or duplicate existing (match title + artist)
           setSongs((prevSongs) => {
@@ -535,10 +568,7 @@ function App() {
             const newSongsToAppend: ActiveSongState[] = []
             for (const item of incomingSongs) {
               const key = `${(item.title || '').trim().toLowerCase()}::${(item.artist || '').trim().toLowerCase()}`
-              if (songMap.has(key)) {
-                existingCount++
-              } else {
-                addedCount++
+              if (!songMap.has(key)) {
                 const newSong: ActiveSongState = {
                   id: Date.now() + Math.floor(Math.random() * 10000) + newSongsToAppend.length,
                   title: item.title || 'Untitled Song',
@@ -554,7 +584,11 @@ function App() {
                 newSongsToAppend.push(newSong)
               }
             }
-            return [...prevSongs, ...newSongsToAppend]
+            const updated = [...prevSongs, ...newSongsToAppend]
+            try {
+              localStorage.setItem('gtar_songs_store', JSON.stringify(updated))
+            } catch (_) {}
+            return updated
           })
 
           // Reconstruct/activate received setlist on Member device immediately
@@ -569,22 +603,26 @@ function App() {
             const filtered = prevSetlists.filter(
               (sl) => sl.name.trim().toLowerCase() !== incomingSetlistName.trim().toLowerCase()
             )
-            return [...filtered, syncedSetlist]
+            const updated = [...filtered, syncedSetlist]
+            try {
+              localStorage.setItem('gtar_setlists_store', JSON.stringify(updated))
+            } catch (_) {}
+            return updated
           })
 
           setActiveSetlistId(newSetlistId)
           setActiveSetlistSongIndex(0)
           setQueueMode('setlist')
+          setActiveView('stage')
 
-          // Toast: "Synced Setlist '[Name]' received from Leader (X songs added, Y existing)"
-          const toast = `Synced Setlist '${incomingSetlistName}' received from Leader (${addedCount} songs added, ${existingCount} existing)`
-          setToastMessage(toast)
+          // Toast: "Received new setlist from Leader"
+          setToastMessage('Received new setlist from Leader')
           setTimeout(() => setToastMessage(null), 5000)
         }
       }
     })
     return unsub
-  }, [songs.length])
+  }, [songs.length, activeSetlist, activeSetlistSongs, setlists])
 
   // Transpose handler
   const handleTransposeChange = (newOffset: number) => {
@@ -1216,6 +1254,7 @@ function App() {
             setlists={setlists}
             onSelectSetlist={handleSelectSetlist}
             onOpenSetlistDrawer={() => setIsSetlistDrawerOpen(true)}
+            onBack={() => setActiveView('songbook')}
             transposeOffset={currentSong.transposeOffset || 0}
             onTransposeChange={handleTransposeChange}
             fontStyle={fontStyle}
@@ -1257,6 +1296,13 @@ function App() {
         isOpen={isThemeModalOpen}
         onClose={() => setIsThemeModalOpen(false)}
         currentTheme={stageTheme}
+        customColors={customThemeColors}
+        onApplyTheme={(theme, colors) => {
+          setStageTheme(theme)
+          if (colors) {
+            setCustomThemeColors(colors)
+          }
+        }}
         onSelectTheme={(theme) => setStageTheme(theme)}
       />
 
@@ -1348,13 +1394,13 @@ function App() {
             <div className="space-y-1">
               <h3 className="text-base font-extrabold text-[#FDF6E3]">You're Up to Date!</h3>
               <p className="text-xs text-[#2AA198] font-mono font-bold">
-                GTAR Web App v1.0.47 (Build 48)
+                GTAR Web App v1.0.49 (Build 50)
               </p>
             </div>
             <div className="p-3 rounded-xl bg-[#002B36] text-left text-[11px] text-[#93A1A1] space-y-1 border border-[#1A4A55]">
               <div className="font-bold text-[#EEE8D5] flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-[#2AA198]" />
-                <span>1:1 Parity with Android v1.0.47</span>
+                <span>1:1 Parity with Android v1.0.49</span>
               </div>
               <p>• Unified TopAppBar with 4-Action 3-Dot Menu</p>
               <p>• Band Sync multi-screen stage sync (Leader / Member)</p>

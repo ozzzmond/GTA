@@ -55,8 +55,15 @@ import com.joel.gta.data.model.SongLine
 import com.joel.gta.data.parser.ChordRegex
 import com.joel.gta.data.parser.SongParser
 import com.joel.gta.data.scraper.ScrapedSong
+import android.content.Intent
+import android.provider.Settings
+import com.joel.gta.presentation.StagePresentationManager
+import com.joel.gta.ui.components.MetaBadge
 import com.joel.gta.ui.components.PreSaveSongReviewDialog
+import com.joel.gta.ui.components.RenderSongLine
+import com.joel.gta.ui.components.StageToolTab
 import com.joel.gta.ui.components.StageToolsDialog
+import com.joel.gta.ui.components.splitSongLinesForColumns
 import com.joel.gta.ui.theme.ChordMonospaceStyle
 import com.joel.gta.ui.theme.LocalGtaColors
 import com.joel.gta.ui.theme.LyricMonospaceStyle
@@ -191,11 +198,39 @@ fun SongViewerScreen(
     }
     var showSetlistDialog by remember { mutableStateOf(false) }
     var showStageToolsDialog by remember { mutableStateOf(false) }
+    var stageToolsInitialTab by remember { mutableStateOf(StageToolTab.METRONOME) }
+    var showCastDialog by remember { mutableStateOf(false) }
     var showEditSongDialog by remember { mutableStateOf(false) }
     var showSpeedInputDialog by remember { mutableStateOf(false) }
     var newSetlistName by remember { mutableStateOf("") }
     var isCreatingSetlist by remember { mutableStateOf(false) }
     var isFocusMode by remember { mutableStateOf(false) }
+
+    // Dual-Screen & Cast Stage Projection Manager
+    val presentationManager = remember(context) { StagePresentationManager(context) }
+    val availableDisplays by presentationManager.availableDisplays.collectAsState()
+    val isProjecting by presentationManager.isProjecting.collectAsState()
+
+    DisposableEffect(presentationManager) {
+        onDispose {
+            presentationManager.cleanup()
+        }
+    }
+
+    LaunchedEffect(song, currentCapo) {
+        presentationManager.updateSong(song, currentCapo)
+    }
+
+    LaunchedEffect(verticalScrollState.value, verticalScrollState.maxValue) {
+        val fraction = if (verticalScrollState.maxValue > 0) {
+            verticalScrollState.value.toFloat() / verticalScrollState.maxValue.toFloat()
+        } else 0f
+        presentationManager.updateScrollFraction(fraction)
+    }
+
+    LaunchedEffect(fontSizeSp, songFontStyle, columnCount) {
+        presentationManager.updateFormatting(fontSizeSp, songFontStyle, columnCount)
+    }
 
     var selectedChordVoicing by remember { mutableStateOf<ChordVoicing?>(null) }
     val onChordClick: (String) -> Unit = remember(context) {
@@ -588,9 +623,33 @@ fun SongViewerScreen(
                             }
                         }
 
+                        // Cast & Screen Mirror Stage Projection
+                        IconButton(onClick = { showCastDialog = true }) {
+                            Icon(
+                                imageVector = if (isProjecting) Icons.Default.CastConnected else Icons.Default.Cast,
+                                contentDescription = "Stage Dual-Screen & Cast Projection",
+                                tint = if (isProjecting) Color(0xFF10B981) else if (availableDisplays.isNotEmpty()) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.7f)
+                            )
+                        }
+
+                        // BandSync Direct Action
+                        IconButton(onClick = {
+                            stageToolsInitialTab = StageToolTab.BAND_SYNC
+                            showStageToolsDialog = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.WifiTethering,
+                                contentDescription = "BandSync",
+                                tint = if (bandSyncState.isHost) Color(0xFF10B981) else if (bandSyncState.role == com.joel.gta.data.sync.BandSyncRole.CLIENT) Color(0xFF3B82F6) else customColors.textSecondary.copy(alpha = 0.7f)
+                            )
+                        }
+
                         // Stage Tools (Metronome & Guitar Tuner)
                         val metronomeState by MetronomeEngine.state.collectAsState()
-                        IconButton(onClick = { showStageToolsDialog = true }) {
+                        IconButton(onClick = {
+                            stageToolsInitialTab = StageToolTab.METRONOME
+                            showStageToolsDialog = true
+                        }) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Tune,
@@ -1512,12 +1571,165 @@ fun SongViewerScreen(
     if (showStageToolsDialog) {
         StageToolsDialog(
             onDismissRequest = { showStageToolsDialog = false },
+            initialTab = stageToolsInitialTab,
             bandSyncState = bandSyncState,
             onStartBandHost = onStartBandHost,
             onStartBandClient = onStartBandClient,
             onConnectBandHost = onConnectBandHost,
             onStopBandSync = onStopBandSync,
             onPushSetlistToMembers = onPushSetlistToMembers
+        )
+    }
+
+    // Dual-Screen & Cast Projection Dialog
+    if (showCastDialog) {
+        AlertDialog(
+            onDismissRequest = { showCastDialog = false },
+            containerColor = customColors.surfaceBackground,
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isProjecting) Icons.Default.CastConnected else Icons.Default.Cast,
+                        contentDescription = null,
+                        tint = if (isProjecting) Color(0xFF10B981) else customColors.chordAccent
+                    )
+                    Text(
+                        text = "Stage Cast & Dual-Screen",
+                        fontWeight = FontWeight.Bold,
+                        color = customColors.textPrimary
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Project a clean, distraction-free teleprompter (chords and lyrics only) to secondary monitors, HDMI/USB-C displays, or Chromecast / wireless screens.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = customColors.textSecondary
+                    )
+
+                    if (availableDisplays.isEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = customColors.canvasBackground,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.TvOff,
+                                    contentDescription = null,
+                                    tint = customColors.textSecondary
+                                )
+                                Text(
+                                    text = "No secondary display detected. Connect an HDMI/USB-C monitor or connect via Android Screen Cast.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = customColors.textSecondary
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Settings.ACTION_CAST_SETTINGS)
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    try {
+                                        val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS)
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = customColors.chordAccent,
+                                contentColor = Color.Black
+                            )
+                        ) {
+                            Icon(Icons.Default.SettingsRemote, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open Android Cast Settings", fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Text(
+                            text = "Detected Displays (${availableDisplays.size}):",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = customColors.chordAccent
+                        )
+
+                        availableDisplays.forEach { display ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = customColors.canvasBackground,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isProjecting) Color(0xFF10B981) else customColors.divider)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = display.name,
+                                            fontWeight = FontWeight.Bold,
+                                            color = customColors.textPrimary
+                                        )
+                                        Text(
+                                            text = "Display ID: ${display.displayId} • ${display.width}x${display.height}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = customColors.textSecondary
+                                        )
+                                    }
+                                    Button(
+                                        onClick = {
+                                            if (isProjecting) {
+                                                presentationManager.stopProjection()
+                                            } else {
+                                                presentationManager.startProjection(display)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isProjecting) Color(0xFFEF4444) else Color(0xFF10B981),
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        Text(if (isProjecting) "Disconnect" else "Project")
+                                    }
+                                }
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Settings.ACTION_CAST_SETTINGS)
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Cast / Wireless Display Settings")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCastDialog = false }) {
+                    Text("Close", color = customColors.chordAccent)
+                }
+            }
         )
     }
 
@@ -1558,239 +1770,6 @@ fun SongViewerScreen(
             onDismissRequest = { selectedChordVoicing = null }
         )
     }
-}
-
-@Composable
-private fun MetaBadge(label: String) {
-    val customColors = LocalGtaColors.current
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = customColors.surfaceBackground,
-        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = customColors.chordAccent
-        )
-    }
-}
-
-private fun splitSongLinesForColumns(lines: List<SongLine>): Pair<List<SongLine>, List<SongLine>> {
-    if (lines.size <= 4) return lines to emptyList()
-    val mid = lines.size / 2
-    var splitIndex = mid
-    val searchRange = (mid - 6).coerceAtLeast(1)..(mid + 6).coerceAtMost(lines.size - 2)
-    for (i in searchRange) {
-        if (lines[i] is SongLine.SectionHeader) {
-            splitIndex = i
-            break
-        }
-    }
-    return lines.take(splitIndex) to lines.drop(splitIndex)
-}
-
-@Composable
-private fun RenderSongLine(
-    line: SongLine,
-    fontSizeSp: Float,
-    songFontStyle: SongFontStyle = SongFontStyle.MONOSPACE,
-    onChordClick: (String) -> Unit = {}
-) {
-    val customColors = LocalGtaColors.current
-    when (line) {
-        is SongLine.SectionHeader -> {
-            Spacer(modifier = Modifier.height(14.dp))
-            Text(
-                text = "[${line.title}]",
-                fontFamily = songFontStyle.fontFamily,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = (fontSizeSp + 1).sp,
-                lineHeight = ((fontSizeSp + 1) * 1.35f).sp,
-                letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
-                color = customColors.sectionHeader,
-                modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
-            )
-        }
-
-        is SongLine.ChordLine -> {
-            var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-            Text(
-                text = line.chords,
-                style = ChordMonospaceStyle.copy(
-                    fontFamily = songFontStyle.fontFamily,
-                    fontWeight = songFontStyle.chordFontWeight,
-                    fontSize = fontSizeSp.sp,
-                    lineHeight = (fontSizeSp * 1.35f).sp,
-                    letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
-                    color = customColors.chordAccent
-                ),
-                onTextLayout = { layoutResult = it },
-                modifier = Modifier
-                    .padding(top = 4.dp, bottom = 1.dp)
-                    .pointerInput(line.chords) {
-                        detectTapGestures { tapOffset ->
-                            layoutResult?.let { layout ->
-                                val offset = layout.getOffsetForPosition(tapOffset)
-                                val chord = extractChordAtOffset(line.chords, offset)
-                                if (chord != null) {
-                                    onChordClick(chord)
-                                }
-                            }
-                        }
-                    }
-            )
-        }
-
-        is SongLine.LyricLine -> {
-            Text(
-                text = line.lyrics,
-                style = LyricMonospaceStyle.copy(
-                    fontFamily = songFontStyle.fontFamily,
-                    fontWeight = songFontStyle.lyricFontWeight,
-                    fontSize = fontSizeSp.sp,
-                    lineHeight = (fontSizeSp * 1.35f).sp,
-                    letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
-                    color = customColors.textPrimary
-                ),
-                modifier = Modifier.padding(top = 1.dp, bottom = 5.dp)
-            )
-        }
-
-        is SongLine.ChordProLine -> {
-            var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-            val annotatedText = buildAnnotatedString {
-                for (segment in line.segments) {
-                    if (segment.chord != null) {
-                        pushStringAnnotation(tag = "CHORD", annotation = segment.chord)
-                        withStyle(
-                            style = SpanStyle(
-                                color = customColors.chordAccent,
-                                fontWeight = songFontStyle.chordFontWeight
-                            )
-                        ) {
-                            append("[${segment.chord}]")
-                        }
-                        pop()
-                    }
-                    withStyle(
-                        style = SpanStyle(
-                            color = customColors.textPrimary,
-                            fontWeight = songFontStyle.lyricFontWeight
-                        )
-                    ) {
-                        append(segment.text)
-                    }
-                }
-            }
-            Text(
-                text = annotatedText,
-                fontFamily = songFontStyle.fontFamily,
-                fontSize = fontSizeSp.sp,
-                lineHeight = (fontSizeSp * 1.4f).sp,
-                letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
-                onTextLayout = { layoutResult = it },
-                modifier = Modifier
-                    .padding(vertical = 3.dp)
-                    .pointerInput(annotatedText) {
-                        detectTapGestures { tapOffset ->
-                            layoutResult?.let { layout ->
-                                val offset = layout.getOffsetForPosition(tapOffset)
-                                val clickedChord = annotatedText
-                                    .getStringAnnotations(tag = "CHORD", start = offset, end = offset)
-                                    .firstOrNull()?.item
-                                    ?: if (offset > 0) {
-                                        annotatedText
-                                            .getStringAnnotations(tag = "CHORD", start = offset - 1, end = offset - 1)
-                                            .firstOrNull()?.item
-                                    } else null
-                                    ?: if (offset < annotatedText.length - 1) {
-                                        annotatedText
-                                            .getStringAnnotations(tag = "CHORD", start = offset + 1, end = offset + 1)
-                                            .firstOrNull()?.item
-                                    } else null
-
-                                if (clickedChord != null) {
-                                    onChordClick(clickedChord)
-                                }
-                            }
-                        }
-                    }
-            )
-        }
-
-        is SongLine.TabLine -> {
-            val tabFontSize = (fontSizeSp - 1f).coerceAtLeast(11f)
-            Text(
-                text = line.content,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Normal,
-                fontSize = tabFontSize.sp,
-                lineHeight = (tabFontSize * 1.25f).sp,
-                letterSpacing = 0.8.sp,
-                color = customColors.tabLineColor,
-                modifier = Modifier.padding(vertical = 1.5.dp)
-            )
-        }
-
-        is SongLine.EmptyLine -> {
-            Spacer(modifier = Modifier.height(20.dp))
-        }
-    }
-}
-
-private fun extractChordAtOffset(text: String, offset: Int): String? {
-    if (text.isBlank() || offset !in text.indices) {
-        return null
-    }
-
-    // Delimiters that separate chords (do not treat internal parentheses like (b9) as delimiters)
-    val isDelim = { c: Char -> c.isWhitespace() || c in "-–—|,:;[]{}" }
-
-    if (isDelim(text[offset])) {
-        if (offset > 0 && !isDelim(text[offset - 1])) {
-            return extractChordAtOffset(text, offset - 1)
-        }
-        if (offset + 1 in text.indices && !isDelim(text[offset + 1])) {
-            return extractChordAtOffset(text, offset + 1)
-        }
-        return null
-    }
-
-    var start = offset
-    while (start > 0 && !isDelim(text[start - 1])) {
-        start--
-    }
-
-    var end = offset
-    while (end < text.length && !isDelim(text[end])) {
-        end++
-    }
-
-    val word = text.substring(start, end).trim(' ', '\t', '[', ']', '{', '}', ',', ';', ':', '-', '–', '—', '|')
-
-    // Direct match (e.g. G13, A6, Dbdim, G7(b9), D/F#)
-    if (word.isNotBlank() && ChordRegex.CHORD_TOKEN_REGEX.matches(word)) {
-        return word
-    }
-
-    // Check if enclosed in outer parentheses like (Am7)
-    if (word.startsWith("(") && word.endsWith(")")) {
-        val unwrapped = word.substring(1, word.length - 1).trim()
-        if (ChordRegex.CHORD_TOKEN_REGEX.matches(unwrapped)) {
-            return unwrapped
-        }
-    }
-
-    // Clean any trailing delimiter punctuation like "/" or "."
-    val cleaned = word.trim('(', ')', '/', '.')
-    if (cleaned.isNotBlank() && ChordRegex.CHORD_TOKEN_REGEX.matches(cleaned)) {
-        return cleaned
-    }
-
-    return null
 }
 
 @Composable

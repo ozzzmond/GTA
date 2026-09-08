@@ -5,7 +5,6 @@ import {
   Play,
   Trash2,
   AlertTriangle,
-  Sparkles,
   Layers,
   ArrowRight,
   Radio,
@@ -173,9 +172,8 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
       {/* 1. Hero / Welcome Banner */}
       <div className="rounded-3xl bg-gradient-to-r from-[#073642] via-[#002B36] to-[#073642] border border-[#1A4A55] p-6 sm:p-8 mb-8 shadow-2xl relative overflow-hidden">
         <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#2AA198]/15 border border-[#2AA198]/30 text-[#2AA198] text-xs font-mono font-bold mb-3">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>GTAR Live Stage Companion v1.0.47</span>
+          <div className="inline-flex items-center px-3 py-1 rounded-full bg-[#2AA198]/15 border border-[#2AA198]/30 text-[#2AA198] text-xs font-mono font-bold mb-3">
+            <span>GTAR Live Stage Companion</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-[#FDF6E3] tracking-tight">
             Songbook & Gig Library

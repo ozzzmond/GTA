@@ -1472,8 +1472,32 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
      * Pushes the currently active setlist (or selected setlist) with complete song data
      * to all connected Band Members.
      */
-    fun pushSetlistToMembers(onResult: (String) -> Unit = {}) {
+    fun pushSetlistToMembers(specificSetlist: SetlistWithSongs? = null, onResult: (String) -> Unit = {}) {
         viewModelScope.launch {
+            if (specificSetlist != null) {
+                val songItems = specificSetlist.songs.map { s ->
+                    SyncMessage.SetlistSongItem(
+                        title = s.title,
+                        artist = s.artist,
+                        key = s.key,
+                        capo = s.capo,
+                        bpm = null,
+                        format = s.format,
+                        rawContent = s.rawContent
+                    )
+                }
+                val setlistSyncMsg = SyncMessage.SetlistSync(
+                    setlistName = specificSetlist.setlist.name,
+                    songs = songItems
+                )
+                bandSyncManager.broadcast(setlistSyncMsg)
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(getApplication(), "Setlist pushed to active members", android.widget.Toast.LENGTH_SHORT).show()
+                    onResult("Setlist pushed to active members")
+                }
+                return@launch
+            }
+
             val currentState = _uiState.value as? SongViewerState.Loaded
             val activeSetlistId = currentState?.setlistId
             val activeSetlistName = currentState?.setlistName
@@ -1497,10 +1521,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                     songs = songItems
                 )
                 bandSyncManager.broadcast(setlistSyncMsg)
-                val status = "Pushed setlist '$activeSetlistName' (${songItems.size} songs) to band members"
                 withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(getApplication(), status, android.widget.Toast.LENGTH_SHORT).show()
-                    onResult(status)
+                    android.widget.Toast.makeText(getApplication(), "Setlist pushed to active members", android.widget.Toast.LENGTH_SHORT).show()
+                    onResult("Setlist pushed to active members")
                 }
                 return@launch
             }

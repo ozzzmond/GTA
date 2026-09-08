@@ -211,3 +211,52 @@ body.theme-paper-light .stage-tab-text {
   font-weight: 700 !important;
 }
 
+/* ========================================================================== */
+/* Custom Stage Theme Palette                                                 */
+/* ========================================================================== */
+body.theme-custom {
+  background-color: var(--custom-stage-bg, #121820) !important;
+  color: var(--custom-stage-text, #F1F5F9) !important;
+}
+body.theme-custom header,
+body.theme-custom .bg-\[\#073642\] {
+  background-color: var(--custom-stage-surface, #1A222D) !important;
+}
+body.theme-custom .bg-\[\#002B36\] {
+  background-color: var(--custom-stage-bg, #121820) !important;
+}
+body.theme-custom .border-\[\#1A4A55\] {
+  border-color: var(--custom-stage-border, #2A3644) !important;
+}
+
+/* Custom Lyrics & Text */
+body.theme-custom div[style*="color: rgb(238, 232, 213)"],
+body.theme-custom div[style*="color: #EEE8D5"],
+body.theme-custom span[style*="color: rgb(238, 232, 213)"],
+body.theme-custom span[style*="color: #EEE8D5"],
+body.theme-custom .stage-lyric-text,
+body.theme-custom .chord-sheet-container .lyrics {
+  color: var(--custom-stage-text, #F1F5F9) !important;
+}
+
+/* Custom Chords */
+body.theme-custom div[style*="color: rgb(181, 137, 0)"],
+body.theme-custom div[style*="color: #B58900"],
+body.theme-custom span[style*="color: rgb(181, 137, 0)"],
+body.theme-custom span[style*="color: #B58900"],
+body.theme-custom .stage-chord-text,
+body.theme-custom .text-\[\#B58900\],
+body.theme-custom .chord-sheet-container .chord {
+  color: var(--custom-stage-chord, #F59E0B) !important;
+}
+
+/* Custom Section Headers */
+body.theme-custom div[style*="color: rgb(139, 92, 246)"],
+body.theme-custom div[style*="color: #8B5CF6"],
+body.theme-custom span[style*="color: rgb(139, 92, 246)"],
+body.theme-custom span[style*="color: #8B5CF6"],
+body.theme-custom .stage-section-header,
+body.theme-custom .chord-sheet-container .comment {
+  color: var(--custom-stage-section, #A78BFA) !important;
+}
+

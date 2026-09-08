@@ -107,6 +107,7 @@ fun HomeScreen(
     onConnectBandHost: (String) -> Unit = {},
     onStopBandSync: () -> Unit = {},
     onPushSetlistToMembers: () -> Unit = {},
+    onPushSpecificSetlistToMembers: (SetlistWithSongs) -> Unit = {},
     deletedSongs: List<SongEntity> = emptyList(),
     onRestoreSong: (Long) -> Unit = {},
     onPermanentDeleteSong: (Long) -> Unit = {},
@@ -199,6 +200,7 @@ fun HomeScreen(
     var showCreateSetlistDialog by remember { mutableStateOf(false) }
     var newSetlistName by remember { mutableStateOf("") }
     var showStageToolsDialog by remember { mutableStateOf(false) }
+    var stageToolsInitialTab by remember { mutableStateOf(com.joel.gta.ui.components.StageToolTab.METRONOME) }
     var showBackupRestoreMenu by remember { mutableStateOf(false) }
     var showClearHistoryTopBarDialog by remember { mutableStateOf(false) }
     var showExportBackupDialog by remember { mutableStateOf(false) }
@@ -339,9 +341,29 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                         }
 
+                        // BandSync Direct Action
+                        IconButton(
+                            onClick = {
+                                stageToolsInitialTab = com.joel.gta.ui.components.StageToolTab.BAND_SYNC
+                                showStageToolsDialog = true
+                            },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(customColors.surfaceBackground)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WifiTethering,
+                                contentDescription = "BandSync",
+                                tint = if (bandSyncState.role == com.joel.gta.data.sync.BandSyncRole.HOST) Color(0xFF10B981) else if (bandSyncState.role == com.joel.gta.data.sync.BandSyncRole.CLIENT) Color(0xFF3B82F6) else customColors.textSecondary.copy(alpha = 0.6f)
+                            )
+                        }
+
                         // Stage Tools (Metronome / Tuner)
                         FilledTonalIconButton(
-                            onClick = { showStageToolsDialog = true },
+                            onClick = {
+                                stageToolsInitialTab = com.joel.gta.ui.components.StageToolTab.METRONOME
+                                showStageToolsDialog = true
+                            },
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
                                 containerColor = customColors.surfaceBackground,
                                 contentColor = customColors.chordAccent
@@ -1371,6 +1393,9 @@ fun HomeScreen(
                                             pendingExportSetlist = setlistWithSongs
                                             val fileName = com.joel.gta.data.setlist.SetlistExportImportManager.generateSetlistFileName(setlistWithSongs.setlist.name)
                                             setlistExportSafLauncher.launch(fileName)
+                                        },
+                                        onPushToMembers = {
+                                            onPushSpecificSetlistToMembers(setlistWithSongs)
                                         }
                                     )
                                 }
@@ -1553,6 +1578,7 @@ fun HomeScreen(
     if (showStageToolsDialog) {
         StageToolsDialog(
             onDismissRequest = { showStageToolsDialog = false },
+            initialTab = stageToolsInitialTab,
             bandSyncState = bandSyncState,
             onStartBandHost = onStartBandHost,
             onStartBandClient = onStartBandClient,
@@ -2520,7 +2546,8 @@ private fun SetlistCard(
     onRemoveSong: (Long) -> Unit,
     onDeleteSetlist: () -> Unit,
     onShareDirect: () -> Unit = {},
-    onExportSaf: () -> Unit = {}
+    onExportSaf: () -> Unit = {},
+    onPushToMembers: () -> Unit = {}
 ) {
     val customColors = LocalGtaColors.current
     var showExportMenu by remember { mutableStateOf(false) }
@@ -2726,6 +2753,33 @@ private fun SetlistCard(
                                     style = MaterialTheme.typography.labelMedium
                                 )
                             }
+                        }
+
+                        // Push Setlist to Active Band Members Button
+                        Button(
+                            onClick = onPushToMembers,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = customColors.chordAccent.copy(alpha = 0.15f),
+                                contentColor = customColors.chordAccent
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WifiTethering,
+                                contentDescription = null,
+                                tint = customColors.chordAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Push Setlist to Members",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                         setlistWithSongs.songs.forEachIndexed { index, song ->
                             Surface(
