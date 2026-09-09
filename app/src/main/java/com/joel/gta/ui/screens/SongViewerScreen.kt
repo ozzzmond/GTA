@@ -210,6 +210,7 @@ fun SongViewerScreen(
     val presentationManager = remember(context) { StagePresentationManager(context) }
     val availableDisplays by presentationManager.availableDisplays.collectAsState()
     val isProjecting by presentationManager.isProjecting.collectAsState()
+    val isPrivacyCurtainActive by presentationManager.isPrivacyCurtainActive.collectAsState()
 
     DisposableEffect(presentationManager) {
         onDispose {
@@ -626,9 +627,9 @@ fun SongViewerScreen(
                         // Cast & Screen Mirror Stage Projection
                         IconButton(onClick = { showCastDialog = true }) {
                             Icon(
-                                imageVector = if (isProjecting) Icons.Default.CastConnected else Icons.Default.Cast,
+                                imageVector = if (isProjecting) Icons.Default.CastConnected else if (isPrivacyCurtainActive) Icons.Default.VisibilityOff else Icons.Default.Cast,
                                 contentDescription = "Stage Dual-Screen & Cast Projection",
-                                tint = if (isProjecting) Color(0xFF10B981) else if (availableDisplays.isNotEmpty()) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.7f)
+                                tint = if (isProjecting) Color(0xFF10B981) else if (isPrivacyCurtainActive) Color(0xFFF59E0B) else if (availableDisplays.isNotEmpty()) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.7f)
                             )
                         }
 
@@ -1660,6 +1661,37 @@ fun SongViewerScreen(
                             Text("Open Android Cast Settings", fontWeight = FontWeight.Bold)
                         }
                     } else {
+                        if (isPrivacyCurtainActive) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF1E1B18),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFFF59E0B))
+                                    Column {
+                                        Text(
+                                            text = "Privacy Blackout Active",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFF59E0B),
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            text = "External display is held in solid black. Audience cannot see your tablet screen or other apps.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = customColors.textSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Text(
                             text = "Detected Displays (${availableDisplays.size}):",
                             style = MaterialTheme.typography.labelMedium,
@@ -1671,7 +1703,7 @@ fun SongViewerScreen(
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = customColors.canvasBackground,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isProjecting) Color(0xFF10B981) else customColors.divider)
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isProjecting) Color(0xFF10B981) else if (isPrivacyCurtainActive) Color(0xFFF59E0B) else customColors.divider)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -1687,36 +1719,52 @@ fun SongViewerScreen(
                                             color = customColors.textPrimary
                                         )
                                         Text(
-                                            text = "Display ID: ${display.displayId} • ${display.width}x${display.height}",
+                                            text = if (isPrivacyCurtainActive) "Display ID: ${display.displayId} • 🔒 Blanked" else "Display ID: ${display.displayId} • ${display.width}x${display.height}",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = customColors.textSecondary
+                                            color = if (isPrivacyCurtainActive) Color(0xFFF59E0B) else customColors.textSecondary
                                         )
                                     }
                                     Button(
                                         onClick = {
                                             if (isProjecting) {
-                                                presentationManager.stopProjection()
+                                                presentationManager.stopProjection(hardDismiss = false)
                                             } else {
                                                 presentationManager.startProjection(display)
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isProjecting) Color(0xFFEF4444) else Color(0xFF10B981),
+                                            containerColor = if (isProjecting) Color(0xFFEF4444) else if (isPrivacyCurtainActive) Color(0xFFF59E0B) else Color(0xFF10B981),
                                             contentColor = Color.White
                                         )
                                     ) {
-                                        Text(if (isProjecting) "Disconnect" else "Project")
+                                        Text(if (isProjecting) "Blank Stage" else if (isPrivacyCurtainActive) "Resume" else "Project")
                                     }
                                 }
                             }
                         }
 
+                        if (isProjecting || isPrivacyCurtainActive) {
+                            Button(
+                                onClick = {
+                                    presentationManager.endCastSession(context)
+                                    showCastDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFDC2626),
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("End Cast Session (Disconnect TV)", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
                         OutlinedButton(
                             onClick = {
-                                try {
-                                    val intent = Intent(Settings.ACTION_CAST_SETTINGS)
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {}
+                                presentationManager.openCastSettings(context)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {

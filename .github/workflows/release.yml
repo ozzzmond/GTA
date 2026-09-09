@@ -99,8 +99,8 @@ jobs:
           if [ "${{ env.IS_PRERELEASE }}" = "true" ]; then
             if [ -f "app/build/outputs/apk/debug/GTA_${VERSION}.apk" ]; then
               cp "app/build/outputs/apk/debug/GTA_${VERSION}.apk" "release_artifacts/GTA_${VERSION}.apk"
-            elif [ -f "app/build/outputs/apk/debug/GTA_v1.0.50-dev.5.apk" ]; then
-              cp "app/build/outputs/apk/debug/GTA_v1.0.50-dev.5.apk" "release_artifacts/GTA_${VERSION}.apk"
+            elif [ -f "app/build/outputs/apk/debug/GTA_v1.0.50-dev.6.apk" ]; then
+              cp "app/build/outputs/apk/debug/GTA_v1.0.50-dev.6.apk" "release_artifacts/GTA_${VERSION}.apk"
             else
               FOUND_APK=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
               if [ -n "$FOUND_APK" ]; then

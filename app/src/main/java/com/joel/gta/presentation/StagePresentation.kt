@@ -60,7 +60,8 @@ data class StagePresentationData(
     val fontSizeSp: Float = 24f,
     val songFontStyle: SongFontStyle = SongFontStyle.MONOSPACE,
     val columnCount: Int = 1,
-    val activeCapo: String = "No Capo"
+    val activeCapo: String = "No Capo",
+    val isPrivacyCurtainActive: Boolean = false
 )
 
 /**
@@ -97,6 +98,7 @@ class StagePresentation(
 
         presentationWindow.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
         presentationWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        presentationWindow.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         @Suppress("DEPRECATION")
         decorView.systemUiVisibility = (
@@ -122,6 +124,24 @@ class StagePresentation(
 
 @Composable
 private fun StageTeleprompterContent(data: StagePresentationData) {
+    if (data.isPrivacyCurtainActive) {
+        // Privacy Blackout Curtain: Pure black canvas to block Android OS screen mirror leak
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "GTAR STAGE • STANDBY",
+                color = Color(0x33FFFFFF),
+                style = MaterialTheme.typography.labelSmall,
+                letterSpacing = 2.sp
+            )
+        }
+        return
+    }
+
     val customColors = LocalGtaColors.current
     val song = data.song
 

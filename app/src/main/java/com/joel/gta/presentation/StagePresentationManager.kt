@@ -1,6 +1,8 @@
 package com.joel.gta.presentation
 
 import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import com.joel.gta.data.logger.AppLogManager
 import android.hardware.display.DisplayManager
 import android.view.Display
@@ -20,6 +22,9 @@ class StagePresentationManager(private val context: Context) {
     private val _isProjecting = MutableStateFlow(false)
     val isProjecting: StateFlow<Boolean> = _isProjecting.asStateFlow()
 
+    private val _isPrivacyCurtainActive = MutableStateFlow(false)
+    val isPrivacyCurtainActive: StateFlow<Boolean> = _isPrivacyCurtainActive.asStateFlow()
+
     private val _presentationData = MutableStateFlow(StagePresentationData())
     val presentationData: StateFlow<StagePresentationData> = _presentationData.asStateFlow()
 
@@ -33,7 +38,7 @@ class StagePresentationManager(private val context: Context) {
         override fun onDisplayRemoved(displayId: Int) {
             refreshDisplays()
             if (activePresentation?.display?.displayId == displayId) {
-                stopProjection()
+                stopProjection(hardDismiss = true)
             }
         }
 
@@ -73,6 +78,20 @@ class StagePresentationManager(private val context: Context) {
             return false
         }
 
+        // If active presentation is already showing on this target display (e.g. held under Privacy Curtain),
+        // lift the curtain to resume live lyrics and chords!
+        if (activePresentation != null && activePresentation?.display?.displayId == targetDisplay.displayId && activePresentation?.isShowing == true) {
+            _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
+            _isPrivacyCurtainActive.value = false
+            _isProjecting.value = true
+            AppLogManager.logPresentationEvent(
+                action = "LIFT_PRIVACY_CURTAIN",
+                details = "Resumed stage projection on Display ID=${targetDisplay.displayId}",
+                success = true
+            )
+            return true
+        }
+
         val displayInfo = "Display ID=${targetDisplay.displayId}, Name='${targetDisplay.name}', Valid=${targetDisplay.isValid}, State=${targetDisplay.state}, Flags=0x${Integer.toHexString(targetDisplay.flags)}, RefreshRate=${targetDisplay.refreshRate}Hz"
         AppLogManager.logPresentationEvent(
             action = "START_PROJECTION_ATTEMPT",
@@ -80,7 +99,7 @@ class StagePresentationManager(private val context: Context) {
             success = true
         )
 
-        stopProjection(disconnectRoute = false)
+        stopProjection(hardDismiss = true, disconnectRoute = false)
         return try {
             val hostActivity = context.findComponentActivity()
             if (hostActivity != null) {
@@ -88,6 +107,7 @@ class StagePresentationManager(private val context: Context) {
             } else {
                 AppLogManager.w("StagePresentationManager", "Warning: Context ${context.javaClass.name} could not be resolved to ComponentActivity.")
             }
+            _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
             val presentation = StagePresentation(context, targetDisplay, _presentationData, hostActivity)
             presentation.setOnDismissListener {
                 AppLogManager.logPresentationEvent(
@@ -95,16 +115,18 @@ class StagePresentationManager(private val context: Context) {
                     details = "StagePresentation on Display ID=${targetDisplay.displayId} dismissed by system or user",
                     success = true
                 )
-                val wasProjecting = _isProjecting.value
+                val wasActive = _isProjecting.value || _isPrivacyCurtainActive.value
                 _isProjecting.value = false
+                _isPrivacyCurtainActive.value = false
                 activePresentation = null
-                if (wasProjecting) {
+                if (wasActive) {
                     disconnectMediaRoutes()
                 }
             }
             presentation.show()
             activePresentation = presentation
             _isProjecting.value = true
+            _isPrivacyCurtainActive.value = false
             AppLogManager.logPresentationEvent(
                 action = "SHOW_SUCCESS",
                 details = "Successfully projected to $displayInfo",
@@ -120,16 +142,37 @@ class StagePresentationManager(private val context: Context) {
             )
             e.printStackTrace()
             _isProjecting.value = false
+            _isPrivacyCurtainActive.value = false
             activePresentation = null
             false
         }
     }
 
-    fun stopProjection(disconnectRoute: Boolean = true) {
+    /**
+     * Stops live projection.
+     * By default (hardDismiss = false), activates Privacy Blackout Curtain:
+     * Keeps the secondary window attached to the external display and blanks it to solid pure black (FLAG_SECURE),
+     * preventing Android 15 from aggressively falling back to mirroring the tablet desktop/private apps to the TV.
+     *
+     * If hardDismiss = true, completely dismisses the secondary window and disconnects media routes.
+     */
+    fun stopProjection(hardDismiss: Boolean = false, disconnectRoute: Boolean = true) {
+        if (!hardDismiss && activePresentation != null && activePresentation?.isShowing == true) {
+            AppLogManager.logPresentationEvent(
+                action = "PRIVACY_CURTAIN_ENABLED",
+                details = "Covering external display ID=${activePresentation?.display?.displayId} with pure black privacy curtain to prevent screen mirror leak.",
+                success = true
+            )
+            _presentationData.update { it.copy(isPrivacyCurtainActive = true) }
+            _isProjecting.value = false
+            _isPrivacyCurtainActive.value = true
+            return
+        }
+
         if (activePresentation != null) {
             AppLogManager.logPresentationEvent(
                 action = "STOP_PROJECTION",
-                details = "Stopping projection on Display ID=${activePresentation?.display?.displayId}",
+                details = "Dismissing Presentation dialog on Display ID=${activePresentation?.display?.displayId}",
                 success = true
             )
             try {
@@ -140,9 +183,36 @@ class StagePresentationManager(private val context: Context) {
         }
         activePresentation = null
         _isProjecting.value = false
+        _isPrivacyCurtainActive.value = false
+        _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
 
         if (disconnectRoute) {
             disconnectMediaRoutes()
+        }
+    }
+
+    /**
+     * Completely terminates the presentation and opens Android Cast / Display settings
+     * so the user can disconnect the OS-level wireless display session with 1 tap.
+     */
+    fun endCastSession(context: Context) {
+        stopProjection(hardDismiss = true, disconnectRoute = true)
+        openCastSettings(context)
+    }
+
+    fun openCastSettings(context: Context) {
+        try {
+            val intent = Intent(Settings.ACTION_CAST_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            try {
+                val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {}
         }
     }
 
@@ -226,7 +296,7 @@ class StagePresentationManager(private val context: Context) {
     }
 
     fun cleanup() {
-        stopProjection()
+        stopProjection(hardDismiss = true, disconnectRoute = true)
         displayManager.unregisterDisplayListener(displayListener)
     }
 }
