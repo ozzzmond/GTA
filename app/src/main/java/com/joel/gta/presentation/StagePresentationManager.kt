@@ -152,36 +152,38 @@ class StagePresentationManager(private val context: Context) {
      */
     private fun disconnectMediaRoutes() {
         val disconnectRunnable = Runnable {
+            AppLogManager.i("StagePresentationManager", "Hard disconnecting active MediaRoute to terminate OS mirroring.")
+
+            // 1. AndroidX MediaRouter hard unselect & default route switch
             try {
                 val mediaRouter = androidx.mediarouter.media.MediaRouter.getInstance(context)
                 val defaultRoute = mediaRouter.defaultRoute
-                val selectedRoute = mediaRouter.selectedRoute
-                if (selectedRoute != defaultRoute) {
-                    AppLogManager.i(
-                        "StagePresentationManager",
-                        "Disconnecting active MediaRouter route '${selectedRoute.name}' -> selecting default route '${defaultRoute.name}'"
-                    )
+
+                try {
+                    mediaRouter.unselect(androidx.mediarouter.media.MediaRouter.UNSELECT_REASON_STOPPED)
+                } catch (e: Throwable) {
+                    AppLogManager.w("StagePresentationManager", "MediaRouter.unselect failed: ${e.message}")
+                }
+
+                try {
                     mediaRouter.selectRoute(defaultRoute)
+                } catch (e: Throwable) {
+                    AppLogManager.w("StagePresentationManager", "MediaRouter.selectRoute(defaultRoute) failed: ${e.message}")
                 }
             } catch (e: Throwable) {
-                AppLogManager.w("StagePresentationManager", "AndroidX MediaRouter route disconnect failed: ${e.message}", e)
+                AppLogManager.w("StagePresentationManager", "AndroidX MediaRouter hard disconnect failed: ${e.message}", e)
             }
 
+            // 2. Framework android.media.MediaRouter fallback
             try {
                 val systemRouter = context.getSystemService(Context.MEDIA_ROUTER_SERVICE) as? android.media.MediaRouter
-                if (systemRouter != null) {
-                    val defaultRoute = systemRouter.getDefaultRoute()
-                    val liveVideoRoute = systemRouter.getSelectedRoute(android.media.MediaRouter.ROUTE_TYPE_LIVE_VIDEO)
-                    if (liveVideoRoute != defaultRoute) {
-                        AppLogManager.i(
-                            "StagePresentationManager",
-                            "Disconnecting system MediaRouter live video route '${liveVideoRoute?.name}' -> selecting default route '${defaultRoute.name}'"
-                        )
-                        systemRouter.selectRoute(android.media.MediaRouter.ROUTE_TYPE_LIVE_VIDEO, defaultRoute)
-                    }
+                val defaultRoute = systemRouter?.getDefaultRoute()
+                if (systemRouter != null && defaultRoute != null) {
+                    systemRouter.selectRoute(android.media.MediaRouter.ROUTE_TYPE_LIVE_VIDEO, defaultRoute)
+                    systemRouter.selectRoute(android.media.MediaRouter.ROUTE_TYPE_LIVE_AUDIO, defaultRoute)
                 }
             } catch (e: Throwable) {
-                AppLogManager.w("StagePresentationManager", "System MediaRouter route disconnect failed: ${e.message}", e)
+                AppLogManager.w("StagePresentationManager", "System MediaRouter hard disconnect failed: ${e.message}", e)
             }
         }
 

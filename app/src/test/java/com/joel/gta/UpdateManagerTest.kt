@@ -4,6 +4,7 @@ import com.joel.gta.data.update.UpdateManager
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class UpdateManagerTest {
 
@@ -32,20 +33,22 @@ class UpdateManagerTest {
         assertTrue(UpdateManager.isVersionNewer("1.0.50-dev.2", "1.0.50-dev.1"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.3", "v1.0.50-dev.2"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.4", "v1.0.50-dev.3"))
-        assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.4", "v1.0.50-dev.2"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.5", "v1.0.50-dev.4"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.5", "v1.0.50-dev.2"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.2", "v1.0.50-dev"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.1", "v1.0.50-dev.2"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.3", "v1.0.50-dev.4"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.4", "v1.0.50-dev.5"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.2", "v1.0.50-dev.2"))
-        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.4", "v1.0.50-dev.4"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.5", "v1.0.50-dev.5"))
 
         // Dev to higher base version
-        assertTrue(UpdateManager.isVersionNewer("v1.0.51-dev.1", "v1.0.50-dev.4"))
-        assertFalse(UpdateManager.isVersionNewer("v1.0.49-dev.5", "v1.0.50-dev.4"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.51-dev.1", "v1.0.50-dev.5"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.49-dev.5", "v1.0.50-dev.5"))
 
         // Production release vs dev pre-release with same base version
-        assertTrue(UpdateManager.isVersionNewer("v1.0.50", "v1.0.50-dev.4"))
-        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.4", "v1.0.50"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.50", "v1.0.50-dev.5"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.5", "v1.0.50"))
     }
 
     @Test
@@ -69,5 +72,38 @@ class UpdateManagerTest {
         assertFalse(UpdateManager.isEligibleReleaseApk("mapping.txt"))
         assertFalse(UpdateManager.isEligibleReleaseApk("release.zip"))
         assertFalse(UpdateManager.isEligibleReleaseApk(""))
+    }
+
+    @Test
+    fun testIsValidZipArchive_detectsValidZipAndRejectsCorrupt() {
+        val tempDir = java.nio.file.Files.createTempDirectory("gta_update_test").toFile()
+        try {
+            // 1. Valid ZIP/APK header (PK\x03\x04 + dummy content)
+            val validApk = File(tempDir, "valid.apk")
+            validApk.writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00))
+            assertTrue(UpdateManager.isValidZipArchive(validApk))
+
+            // 2. HTML Error response page (e.g. GitHub 404/500 error body)
+            val htmlError = File(tempDir, "error.apk")
+            htmlError.writeText("<!DOCTYPE html><html><head><title>404 Not Found</title></head></html>")
+            assertFalse(UpdateManager.isValidZipArchive(htmlError))
+
+            // 3. JSON Error payload
+            val jsonError = File(tempDir, "error.json")
+            jsonError.writeText("{\"message\":\"Not Found\",\"documentation_url\":\"https://docs.github.com\"}")
+            assertFalse(UpdateManager.isValidZipArchive(jsonError))
+
+            // 4. Empty file
+            val emptyFile = File(tempDir, "empty.apk")
+            emptyFile.createNewFile()
+            assertFalse(UpdateManager.isValidZipArchive(emptyFile))
+
+            // 5. Truncated stream (less than 4 bytes)
+            val truncatedFile = File(tempDir, "truncated.apk")
+            truncatedFile.writeBytes(byteArrayOf(0x50, 0x4B))
+            assertFalse(UpdateManager.isValidZipArchive(truncatedFile))
+        } finally {
+            tempDir.deleteRecursively()
+        }
     }
 }

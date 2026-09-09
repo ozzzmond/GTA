@@ -42,6 +42,12 @@ android {
         && !releaseKeyPassword.isNullOrBlank()
 
     signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("release") {
             if (isReleaseSigningConfigured) {
                 storeFile = file(releaseStoreFilePath!!)
@@ -68,7 +74,7 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-dev.4"
+            versionNameSuffix = "-dev.5"
             manifestPlaceholders["appName"] = "GTAR-Dev"
             signingConfig = signingConfigs.getByName("debug")
         }

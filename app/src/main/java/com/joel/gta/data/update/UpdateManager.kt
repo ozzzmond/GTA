@@ -12,12 +12,15 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.joel.gta.BuildConfig
 import com.joel.gta.data.logger.AppLogManager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -346,64 +349,161 @@ object UpdateManager {
         return afterDev.takeWhile { it.isDigit() }.toIntOrNull() ?: 0
     }
 
+    @Volatile
+    private var isDownloading = false
+
     /**
-     * Enqueues .apk download using system DownloadManager and triggers installation on completion.
+     * Downloads .apk directly with buffered streams, validates file integrity and size,
+     * and triggers package installation only when the stream is completely closed and verified.
      */
     fun downloadAndInstallApk(context: Context, apkUrl: String, versionName: String) {
-        try {
-            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-            if (downloadManager == null) {
-                openBrowserUrl(context, apkUrl)
-                return
-            }
+        if (isDownloading) {
+            Toast.makeText(context, "Download already in progress...", Toast.LENGTH_SHORT).show()
+            return
+        }
 
+        isDownloading = true
+        Toast.makeText(context, "Downloading GTAR v$versionName...", Toast.LENGTH_SHORT).show()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
             val fileName = "GTAR-v$versionName.apk"
-            val targetFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
-            if (targetFile.exists()) {
-                targetFile.delete()
-            }
+            val targetFile = File(downloadsDir, fileName)
+            val tempFile = File(downloadsDir, "$fileName.tmp")
 
-            val request = DownloadManager.Request(Uri.parse(apkUrl)).apply {
-                setTitle("Downloading GTAR v$versionName")
-                setDescription("Downloading latest GTAR release APK...")
-                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
-                setMimeType("application/vnd.android.package-archive")
-            }
+            try {
+                if (targetFile.exists()) {
+                    targetFile.delete()
+                }
+                if (tempFile.exists()) {
+                    tempFile.delete()
+                }
 
-            Toast.makeText(context, "Downloading GTAR v$versionName... Check notification bar", Toast.LENGTH_LONG).show()
-            val downloadId = downloadManager.enqueue(request)
+                AppLogManager.i("UpdateManager", "Starting direct buffered APK download from: $apkUrl to ${tempFile.absolutePath}")
+                val connection = openDownloadConnection(apkUrl)
+                val responseCode = connection.responseCode
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    throw IOException("HTTP $responseCode from server: ${connection.responseMessage}")
+                }
 
-            val onCompleteReceiver = object : BroadcastReceiver() {
-                override fun onReceive(recvContext: Context?, intent: Intent?) {
-                    val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) ?: -1
-                    if (id == downloadId) {
-                        try {
-                            recvContext?.unregisterReceiver(this)
-                        } catch (_: Exception) {}
+                val expectedLength = connection.contentLengthLong
 
-                        if (targetFile.exists() && recvContext != null) {
-                            installApkFile(recvContext, targetFile)
-                        }
+                connection.inputStream.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output, bufferSize = 8 * 1024)
+                        output.flush()
                     }
                 }
-            }
+                connection.disconnect()
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(
-                    onCompleteReceiver,
-                    IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                    Context.RECEIVER_EXPORTED
-                )
-            } else {
-                context.registerReceiver(
-                    onCompleteReceiver,
-                    IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-                )
+                val actualLength = tempFile.length()
+                AppLogManager.i("UpdateManager", "Download stream finished. Bytes received: $actualLength (expected: $expectedLength)")
+
+                // Integrity Verification:
+                // 1. File must not be empty
+                if (actualLength <= 0L) {
+                    throw IOException("Downloaded file is empty (0 bytes).")
+                }
+
+                // 2. Length must match Content-Length if provided
+                if (expectedLength > 0L && actualLength != expectedLength) {
+                    throw IOException("APK size mismatch! Expected $expectedLength bytes, but got $actualLength bytes.")
+                }
+
+                // 3. File must be large enough to be a valid APK (> 100KB)
+                if (actualLength < 100_000L) {
+                    throw IOException("Downloaded file is too small ($actualLength bytes) to be a valid Android APK.")
+                }
+
+                // 4. Must be a valid ZIP / APK archive header (PK\x03\x04)
+                if (!isValidZipArchive(tempFile)) {
+                    throw IOException("Downloaded file does not contain a valid APK/ZIP header.")
+                }
+
+                // Atomic rename to final target file
+                if (targetFile.exists()) {
+                    targetFile.delete()
+                }
+                if (!tempFile.renameTo(targetFile)) {
+                    tempFile.copyTo(targetFile, overwrite = true)
+                    tempFile.delete()
+                }
+
+                AppLogManager.i("UpdateManager", "APK download & integrity check successful: ${targetFile.absolutePath} (${targetFile.length()} bytes)")
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Download complete. Starting installation...", Toast.LENGTH_SHORT).show()
+                    installApkFile(context, targetFile)
+                }
+            } catch (e: Exception) {
+                AppLogManager.e("UpdateManager", "Download failed or corrupted: ${e.message}", e)
+                try {
+                    if (tempFile.exists()) tempFile.delete()
+                } catch (_: Exception) {}
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Download failed: ${e.localizedMessage}. Opening browser...", Toast.LENGTH_LONG).show()
+                    openBrowserUrl(context, apkUrl)
+                }
+            } finally {
+                isDownloading = false
             }
-        } catch (e: Exception) {
-            Toast.makeText(context, "Download failed: ${e.localizedMessage}. Opening browser...", Toast.LENGTH_SHORT).show()
-            openBrowserUrl(context, apkUrl)
+        }
+    }
+
+    /**
+     * Follows HTTP 301/302/303/307/308 redirects up to maxRedirects to resolve GitHub asset S3 URLs cleanly.
+     */
+    private fun openDownloadConnection(initialUrl: String, maxRedirects: Int = 5): HttpURLConnection {
+        var url = initialUrl
+        var redirects = 0
+        while (redirects < maxRedirects) {
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 15000
+                readTimeout = 30000
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "GTAR-Android-App")
+                setRequestProperty("Accept", "application/octet-stream,application/vnd.android.package-archive,*/*")
+            }
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
+                responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
+                responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
+                responseCode == 307 ||
+                responseCode == 308
+            ) {
+                val location = connection.getHeaderField("Location")
+                connection.disconnect()
+                if (!location.isNullOrBlank()) {
+                    url = location
+                    redirects++
+                    AppLogManager.i("UpdateManager", "Redirect #$redirects -> $url")
+                    continue
+                }
+            }
+            return connection
+        }
+        throw IOException("Too many redirects ($maxRedirects) for $initialUrl")
+    }
+
+    /**
+     * Validates that a file starts with standard ZIP / APK archive magic bytes (PK\x03\x04 or PK\x05\x06).
+     */
+    fun isValidZipArchive(file: File): Boolean {
+        if (!file.exists() || file.length() < 4) return false
+        return try {
+            file.inputStream().use { stream ->
+                val header = ByteArray(4)
+                val bytesRead = stream.read(header)
+                if (bytesRead < 4) return false
+                header[0] == 0x50.toByte() &&
+                header[1] == 0x4B.toByte() &&
+                ((header[2] == 0x03.toByte() && header[3] == 0x04.toByte()) ||
+                 (header[2] == 0x05.toByte() && header[3] == 0x06.toByte()))
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 
