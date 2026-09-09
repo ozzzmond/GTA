@@ -295,9 +295,9 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5 leading-none">
                 <span className="font-black text-base text-[#FDF6E3] group-hover:text-[#2AA198] tracking-wide transition-colors">
-                  {import.meta.env.VITE_APP_ENV === 'debug' ? 'GTAR-Dev' : 'GTAR'}
+                  {import.meta.env.DEV ? 'GTAR-Dev' : 'GTAR'}
                 </span>
-                {import.meta.env.VITE_APP_ENV === 'debug' && (
+                {import.meta.env.DEV && (
                   <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-black text-[10px] tracking-wider uppercase border border-red-400 shadow-sm animate-pulse">
                     DEV
                   </span>
@@ -308,13 +308,13 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation()
                     onCheckForUpdates?.()
                   }}
-                  title={import.meta.env.VITE_APP_ENV === 'debug' ? 'Click to check for updates (v1.0.62-dev.1)' : 'Click to check for updates (v1.1.62)'}
+                  title={import.meta.env.DEV ? 'Click to check for updates (v1.0.62-dev.1)' : 'Click to check for updates (v1.1.62)'}
                   className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
                 >
                   {isCheckingUpdates && (
                     <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                   )}
-                  <span>{import.meta.env.VITE_APP_ENV === 'debug' ? 'v1.0.62-dev.1' : 'v1.1.62'}</span>
+                  <span>{import.meta.env.DEV ? 'v1.0.62-dev.1' : 'v1.1.62'}</span>
                 </button>
               </div>
               <span className="hidden md:inline text-[10px] text-[#93A1A1] group-hover:text-[#EEE8D5] mt-0.5 font-medium leading-none transition-colors">
@@ -329,22 +329,20 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => onViewChange('songbook')}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeView === 'songbook'
-                  ? 'bg-[#2AA198] text-[#002B36] font-extrabold shadow-sm'
-                  : 'text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642]'
-              }`}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${activeView === 'songbook'
+                ? 'bg-[#2AA198] text-[#002B36] font-extrabold shadow-sm'
+                : 'text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642]'
+                }`}
               title="Open Songbook Library Grid"
             >
               <Music className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Library</span>
               {songsCount !== undefined && (
                 <span
-                  className={`text-[10px] font-mono px-1 py-0.2 rounded font-bold ${
-                    activeView === 'songbook'
-                      ? 'bg-[#002B36]/30 text-[#002B36]'
-                      : 'bg-[#2AA198]/20 text-[#2AA198]'
-                  }`}
+                  className={`text-[10px] font-mono px-1 py-0.2 rounded font-bold ${activeView === 'songbook'
+                    ? 'bg-[#002B36]/30 text-[#002B36]'
+                    : 'bg-[#2AA198]/20 text-[#2AA198]'
+                    }`}
                 >
                   {songsCount}
                 </span>
@@ -361,11 +359,10 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIsSetlistDropdownOpen((prev) => !prev)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  queueMode === 'setlist' || isSetlistDropdownOpen
-                    ? 'bg-[#B58900]/25 text-[#B58900] font-bold'
-                    : 'text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642]'
-                }`}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${queueMode === 'setlist' || isSetlistDropdownOpen
+                  ? 'bg-[#B58900]/25 text-[#B58900] font-bold'
+                  : 'text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642]'
+                  }`}
                 title="Setlist Navigation & 1-Click Song Queue"
               >
                 <ListMusic className="w-3.5 h-3.5" />
@@ -377,9 +374,8 @@ export const Header: React.FC<HeaderProps> = ({
                   </span>
                 )}
                 <ChevronDown
-                  className={`w-3 h-3 transition-transform duration-200 ${
-                    isSetlistDropdownOpen ? 'rotate-180 text-[#B58900]' : 'text-[#93A1A1]'
-                  }`}
+                  className={`w-3 h-3 transition-transform duration-200 ${isSetlistDropdownOpen ? 'rotate-180 text-[#B58900]' : 'text-[#93A1A1]'
+                    }`}
                 />
               </button>
 
@@ -437,29 +433,26 @@ export const Header: React.FC<HeaderProps> = ({
                               onViewChange('stage')
                               setIsSetlistDropdownOpen(false)
                             }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-xl transition-all flex items-center justify-between gap-2 group cursor-pointer ${
-                              isCurrent
-                                ? 'bg-[#B58900]/20 text-[#FDF6E3] border border-[#B58900]/40'
-                                : 'hover:bg-[#002B36] text-[#EEE8D5]'
-                            }`}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-xl transition-all flex items-center justify-between gap-2 group cursor-pointer ${isCurrent
+                              ? 'bg-[#B58900]/20 text-[#FDF6E3] border border-[#B58900]/40'
+                              : 'hover:bg-[#002B36] text-[#EEE8D5]'
+                              }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <span
-                                className={`w-5 h-5 rounded-lg flex items-center justify-center font-mono text-[10px] font-bold shrink-0 ${
-                                  isCurrent
-                                    ? 'bg-[#B58900] text-[#002B36]'
-                                    : 'bg-[#002B36] text-[#93A1A1] group-hover:text-[#2AA198]'
-                                }`}
+                                className={`w-5 h-5 rounded-lg flex items-center justify-center font-mono text-[10px] font-bold shrink-0 ${isCurrent
+                                  ? 'bg-[#B58900] text-[#002B36]'
+                                  : 'bg-[#002B36] text-[#93A1A1] group-hover:text-[#2AA198]'
+                                  }`}
                               >
                                 {idx + 1}
                               </span>
                               <div className="truncate">
                                 <p
-                                  className={`text-xs font-bold truncate leading-tight ${
-                                    isCurrent
-                                      ? 'text-[#B58900]'
-                                      : 'text-[#FDF6E3] group-hover:text-[#2AA198]'
-                                  }`}
+                                  className={`text-xs font-bold truncate leading-tight ${isCurrent
+                                    ? 'text-[#B58900]'
+                                    : 'text-[#FDF6E3] group-hover:text-[#2AA198]'
+                                    }`}
                                 >
                                   {s.title}
                                 </p>
@@ -504,11 +497,10 @@ export const Header: React.FC<HeaderProps> = ({
                                 onSelectSetlist(sl.id)
                               }
                             }}
-                            className={`text-[10px] px-2 py-0.5 rounded-lg whitespace-nowrap transition-colors cursor-pointer ${
-                              String(sl.id) === String(activeSetlistId)
-                                ? 'bg-[#B58900] text-[#002B36] font-bold'
-                                : 'bg-[#002B36] text-[#93A1A1] hover:text-[#FDF6E3]'
-                            }`}
+                            className={`text-[10px] px-2 py-0.5 rounded-lg whitespace-nowrap transition-colors cursor-pointer ${String(sl.id) === String(activeSetlistId)
+                              ? 'bg-[#B58900] text-[#002B36] font-bold'
+                              : 'bg-[#002B36] text-[#93A1A1] hover:text-[#FDF6E3]'
+                              }`}
                             title={`Switch to setlist: ${sl.name}`}
                           >
                             {sl.name}
@@ -540,11 +532,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => onViewChange('editor')}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeView === 'editor'
-                  ? 'bg-[#2AA198] text-[#002B36] font-extrabold shadow-sm'
-                  : 'text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642]'
-              }`}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${activeView === 'editor'
+                ? 'bg-[#2AA198] text-[#002B36] font-extrabold shadow-sm'
+                : 'text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642]'
+                }`}
             >
               <FileEdit className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Editor</span>
@@ -554,11 +545,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => onViewChange('stage')}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeView === 'stage'
-                  ? 'bg-[#B58900] text-[#002B36] font-extrabold shadow-sm'
-                  : 'text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642]'
-              }`}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${activeView === 'stage'
+                ? 'bg-[#B58900] text-[#002B36] font-extrabold shadow-sm'
+                : 'text-[#93A1A1] hover:text-[#FDF6E3] hover:bg-[#073642]'
+                }`}
             >
               <Eye className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Stage</span>
@@ -568,22 +558,20 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => onViewChange('trash')}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeView === 'trash'
-                  ? 'bg-[#DC6E67] text-[#002B36] font-extrabold shadow-sm'
-                  : 'text-[#93A1A1] hover:text-[#DC6E67] hover:bg-[#073642]'
-              }`}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${activeView === 'trash'
+                ? 'bg-[#DC6E67] text-[#002B36] font-extrabold shadow-sm'
+                : 'text-[#93A1A1] hover:text-[#DC6E67] hover:bg-[#073642]'
+                }`}
               title="Trash Bin / Basurahan"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Trash</span>
               {deletedSongsCount > 0 && (
                 <span
-                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold ${
-                    activeView === 'trash'
-                      ? 'bg-[#002B36]/30 text-[#002B36]'
-                      : 'bg-[#DC6E67]/20 text-[#DC6E67]'
-                  }`}
+                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold ${activeView === 'trash'
+                    ? 'bg-[#002B36]/30 text-[#002B36]'
+                    : 'bg-[#DC6E67]/20 text-[#DC6E67]'
+                    }`}
                 >
                   {deletedSongsCount}
                 </span>
@@ -943,7 +931,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
 
                 {/* 5. Debug Logs (Debug environment only) */}
-                {import.meta.env.VITE_APP_ENV === 'debug' && (
+                {import.meta.env.DEV && (
                   <>
                     <div className="h-[1px] bg-[#1A4A55]/60 my-1" />
                     <button

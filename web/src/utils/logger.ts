@@ -61,7 +61,7 @@ class WebLoggerEngine {
         this.logs = this.logs.slice(-Math.floor(this.logs.length / 2))
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(this.logs))
-        } catch {}
+        } catch { }
       }
     }
   }
@@ -119,7 +119,7 @@ class WebLoggerEngine {
       })
     })
 
-    this.info('WebLogger', `Logger initialized. Environment: ${import.meta.env.VITE_APP_ENV || 'production'}`)
+    this.info('WebLogger', `Logger initialized. Environment: ${import.meta.env.DEV ? 'development' : 'production'}`)
   }
 
   private captureConsoleEntry(level: LogLevel, args: any[]) {
@@ -178,7 +178,7 @@ class WebLoggerEngine {
   }
 
   public debug(tag: string, message: string, details?: string) {
-    if (import.meta.env.VITE_APP_ENV !== 'debug') return
+    if (!import.meta.env.DEV) return
     this.addEntry({ level: 'DEBUG', tag, message, details })
   }
 
@@ -210,7 +210,7 @@ class WebLoggerEngine {
     if (typeof window !== 'undefined') {
       try {
         localStorage.removeItem(STORAGE_KEY)
-      } catch {}
+      } catch { }
     }
     this.notifyListeners()
   }
@@ -228,7 +228,7 @@ class WebLoggerEngine {
     for (const listener of this.listeners) {
       try {
         listener(current)
-      } catch {}
+      } catch { }
     }
   }
 
@@ -236,7 +236,7 @@ class WebLoggerEngine {
     const header = [
       '=========================================================================',
       `GTAR WEB DEBUG LOG EXPORT - ${new Date().toISOString()}`,
-      `Environment: ${import.meta.env.VITE_APP_ENV || 'production'}`,
+      `Environment: ${import.meta.env.DEV ? 'development' : 'production'}`, ,
       `User Agent: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'}`,
       `Total Log Entries: ${this.logs.length}`,
       '=========================================================================',

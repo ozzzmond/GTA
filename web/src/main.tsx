@@ -10,7 +10,7 @@ import { appLogger } from './utils/logger'
 appLogger.init()
 
 // Apply debug environment branding if active
-if (import.meta.env.VITE_APP_ENV === 'debug') {
+if (import.meta.env.DEV) {
   if (typeof document !== 'undefined') {
     const isPresentation =
       window.location.pathname.includes('/stage/present') ||
@@ -40,7 +40,7 @@ if (import.meta.env.VITE_APP_ENV === 'debug') {
       }
       link.type = 'image/svg+xml'
       link.href = iconUrl
-    } catch {}
+    } catch { }
   }
 }
 
@@ -52,7 +52,7 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       if (registration) {
         // Periodically check for updates (every hour)
         setInterval(() => {
-          registration.update().catch(() => {})
+          registration.update().catch(() => { })
         }, 60 * 60 * 1000)
       }
     },
