@@ -194,17 +194,35 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
   }, [filteredIndexedSongs, sortBy])
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#002B36] px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full select-none">
-      {/* 1. Hero / Welcome Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-[#073642] via-[#002B36] to-[#073642] border border-[#1A4A55] p-6 sm:p-8 mb-8 shadow-2xl relative overflow-hidden">
-        <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center px-3 py-1 rounded-full bg-[#2AA198]/15 border border-[#2AA198]/30 text-[#2AA198] text-xs font-mono font-bold mb-3">
+    <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full select-none">
+      {/* 1. Hero / Welcome Banner — adaptive glassmorphism card */}
+      <div className="rounded-3xl relative overflow-hidden mb-8 shadow-2xl"
+        style={{
+          background: 'linear-gradient(135deg, rgba(7,54,66,0.72) 0%, rgba(0,43,54,0.60) 50%, rgba(7,54,66,0.72) 100%)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(42,161,152,0.18)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06)',
+        }}
+      >
+        <div className="relative z-10 max-w-2xl p-6 sm:p-8">
+          <div className="inline-flex items-center px-3 py-1 rounded-full border text-xs font-mono font-bold mb-3"
+            style={{
+              background: 'rgba(42,161,152,0.12)',
+              borderColor: 'rgba(42,161,152,0.35)',
+              color: '#2AA198',
+            }}
+          >
             <span>GTAR Live Stage Companion</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#FDF6E3] tracking-tight">
-            Songbook & Gig Library
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight"
+            style={{ color: '#FDF6E3', textShadow: '0 1px 8px rgba(0,0,0,0.45)' }}
+          >
+            Songbook &amp; Gig Library
           </h1>
-          <p className="text-sm text-[#93A1A1] mt-2 leading-relaxed">
+          <p className="text-sm mt-2 leading-relaxed"
+            style={{ color: 'rgba(253,246,227,0.65)' }}
+          >
             Select any song below to launch into the live Stage View teleprompter, or create and manage gig setlists.
           </p>
 
@@ -222,7 +240,7 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
         </div>
 
         {/* Decorative Guitar Icon background */}
-        <div className="absolute right-4 -bottom-6 opacity-5 pointer-events-none hidden md:block">
+        <div className="absolute right-4 -bottom-6 opacity-[0.04] pointer-events-none hidden md:block">
           <GtaLogoIcon className="w-64 h-64 text-[#2AA198] fill-current" />
         </div>
       </div>
