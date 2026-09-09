@@ -42,6 +42,20 @@ if (import.meta.env.DEV) {
       link.href = iconUrl
     } catch { }
   }
+} else {
+  // Production: explicitly ensure favicon points to the GTAR teal guitar icon
+  if (typeof document !== 'undefined') {
+    try {
+      let link = document.querySelector("link[rel*='icon']") as HTMLLinkElement
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = 'icon'
+        document.head.appendChild(link)
+      }
+      link.type = 'image/svg+xml'
+      link.href = '/favicon.svg'
+    } catch { }
+  }
 }
 
 // Register PWA Service Worker for offline stage caching & local testing
