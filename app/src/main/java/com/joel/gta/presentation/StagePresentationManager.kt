@@ -1,6 +1,7 @@
 package com.joel.gta.presentation
 
 import android.content.Context
+import com.joel.gta.data.logger.AppLogManager
 import android.hardware.display.DisplayManager
 import android.view.Display
 import com.joel.gta.data.model.ParsedSong
@@ -54,23 +55,59 @@ class StagePresentationManager(private val context: Context) {
             displayManager.displays.filter { it.displayId != Display.DEFAULT_DISPLAY }
         }
         _availableDisplays.value = secondaryDisplays
+        AppLogManager.d(
+            "StagePresentationManager",
+            "refreshDisplays: ${presentationDisplays.size} category-presentation displays, ${secondaryDisplays.size} total secondary displays available."
+        )
     }
 
     fun startProjection(display: Display? = null): Boolean {
         refreshDisplays()
-        val targetDisplay = display ?: _availableDisplays.value.firstOrNull() ?: return false
+        val targetDisplay = display ?: _availableDisplays.value.firstOrNull()
+        if (targetDisplay == null) {
+            AppLogManager.logPresentationEvent(
+                action = "START_PROJECTION",
+                details = "Aborted: No external or presentation displays available. Total system displays: ${displayManager.displays.size}",
+                success = false
+            )
+            return false
+        }
+
+        val displayInfo = "Display ID=${targetDisplay.displayId}, Name='${targetDisplay.name}', Valid=${targetDisplay.isValid}, State=${targetDisplay.state}, Flags=0x${Integer.toHexString(targetDisplay.flags)}, RefreshRate=${targetDisplay.refreshRate}Hz"
+        AppLogManager.logPresentationEvent(
+            action = "START_PROJECTION_ATTEMPT",
+            details = "Initiating projection on $displayInfo",
+            success = true
+        )
+
         stopProjection()
         return try {
             val presentation = StagePresentation(context, targetDisplay, _presentationData)
             presentation.setOnDismissListener {
+                AppLogManager.logPresentationEvent(
+                    action = "DISMISS",
+                    details = "StagePresentation on Display ID=${targetDisplay.displayId} dismissed by system or user",
+                    success = true
+                )
                 _isProjecting.value = false
                 activePresentation = null
             }
             presentation.show()
             activePresentation = presentation
             _isProjecting.value = true
+            AppLogManager.logPresentationEvent(
+                action = "SHOW_SUCCESS",
+                details = "Successfully projected to $displayInfo",
+                success = true
+            )
             true
         } catch (e: Exception) {
+            AppLogManager.logPresentationEvent(
+                action = "SHOW_FAILED",
+                details = "Failed to project to $displayInfo: ${e.message}",
+                success = false,
+                error = e
+            )
             e.printStackTrace()
             _isProjecting.value = false
             activePresentation = null
@@ -79,9 +116,18 @@ class StagePresentationManager(private val context: Context) {
     }
 
     fun stopProjection() {
-        try {
-            activePresentation?.dismiss()
-        } catch (_: Exception) {}
+        if (activePresentation != null) {
+            AppLogManager.logPresentationEvent(
+                action = "STOP_PROJECTION",
+                details = "Stopping projection on Display ID=${activePresentation?.display?.displayId}",
+                success = true
+            )
+            try {
+                activePresentation?.dismiss()
+            } catch (e: Exception) {
+                AppLogManager.w("StagePresentationManager", "Error while dismissing presentation: ${e.message}", e)
+            }
+        }
         activePresentation = null
         _isProjecting.value = false
     }

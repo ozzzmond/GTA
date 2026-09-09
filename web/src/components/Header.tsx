@@ -22,6 +22,7 @@ import {
   Loader2,
   Trash2,
   Download,
+  Terminal,
 } from 'lucide-react'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 import {
@@ -31,6 +32,7 @@ import {
   type FetchedChordSheet,
 } from '../utils/onlineSearch'
 import { ChordPreviewModal } from './ChordPreviewModal'
+import { DebugLogsModal } from './DebugLogsModal'
 import { GtaLogoIcon } from './GtaLogoIcon'
 
 interface HeaderProps {
@@ -112,6 +114,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [importingId, setImportingId] = useState<string | number | null>(null)
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null)
   const [isAppInstalled, setIsAppInstalled] = useState(false)
+  const [showDebugLogsModal, setShowDebugLogsModal] = useState(false)
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -292,21 +295,26 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5 leading-none">
                 <span className="font-black text-base text-[#FDF6E3] group-hover:text-[#2AA198] tracking-wide transition-colors">
-                  GTAR
+                  {import.meta.env.VITE_APP_ENV === 'debug' ? 'GTAR-Dev' : 'GTAR'}
                 </span>
+                {import.meta.env.VITE_APP_ENV === 'debug' && (
+                  <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-black text-[10px] tracking-wider uppercase border border-red-400 shadow-sm animate-pulse">
+                    DEV
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
                     onCheckForUpdates?.()
                   }}
-                  title="Click to check for updates (v1.0.49)"
+                  title="Click to check for updates (v1.0.50)"
                   className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
                 >
                   {isCheckingUpdates && (
                     <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                   )}
-                  <span>v1.0.49</span>
+                  <span>v1.0.50</span>
                 </button>
               </div>
               <span className="hidden md:inline text-[10px] text-[#93A1A1] group-hover:text-[#EEE8D5] mt-0.5 font-medium leading-none transition-colors">
@@ -933,6 +941,28 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   )}
                 </button>
+
+                <div className="h-[1px] bg-[#1A4A55]/60 my-1" />
+
+                {/* 5. Debug Logs */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOverflowMenu(false)
+                    setShowDebugLogsModal(true)
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center justify-between gap-3 cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <Terminal className="w-4 h-4 text-[#2AA198]" />
+                    <span className="font-semibold">Debug Logs</span>
+                  </div>
+                  {import.meta.env.VITE_APP_ENV === 'debug' && (
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-red-600/25 text-red-400 border border-red-500/30">
+                      DEV:5174
+                    </span>
+                  )}
+                </button>
               </div>
             )}
           </div>
@@ -949,6 +979,12 @@ export const Header: React.FC<HeaderProps> = ({
             onDirectImportOnlineSong(sheet, openStage)
           }
         }}
+      />
+
+      {/* In-Browser Debug Logs Modal */}
+      <DebugLogsModal
+        isOpen={showDebugLogsModal}
+        onClose={() => setShowDebugLogsModal(false)}
       />
     </>
   )

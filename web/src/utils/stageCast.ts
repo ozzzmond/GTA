@@ -5,6 +5,7 @@
  */
 
 import type { ActiveSongState } from '../types/gtar'
+import { appLogger } from './logger'
 
 export interface StageCastState {
   song: ActiveSongState
@@ -113,37 +114,80 @@ class StageCastEngine {
   }
 
   public openPresentationWindow(): Window | null {
-    if (typeof window === 'undefined') return null
+    if (typeof window === 'undefined') {
+      appLogger.warn('StageCast', 'Cannot open presentation window: window is undefined (SSR environment)')
+      return null
+    }
 
     const targetUrl = `${window.location.origin}/stage/present?view=present`
     const windowFeatures =
       'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no'
 
+    appLogger.info('StageCast', `Initiating stage presentation window pop-out to: ${targetUrl}`)
+
     // Try browser Presentation API if supported
     if ('PresentationRequest' in window) {
       try {
+        appLogger.info('StageCast', 'Browser Presentation API detected. Requesting presentation display...')
         const pr = new (window as any).PresentationRequest([targetUrl])
         pr.start()
           .then((conn: any) => {
-            console.log('Browser presentation started on external display', conn)
+            appLogger.info('StageCast', `Browser presentation started on external display. Connection ID: ${conn?.id || 'active'}`)
           })
-          .catch(() => {
+          .catch((err: any) => {
             // User cancelled or presentation failed -> fallback to popup window
-            const win = window.open(targetUrl, 'gtar_stage_teleprompter', windowFeatures)
-            this.setPopupWindow(win)
+            appLogger.warn('StageCast', `Presentation API request was cancelled or failed (${err?.message || 'unknown'}). Falling back to pop-up window...`)
+            try {
+              const win = window.open(targetUrl, 'gtar_stage_teleprompter', windowFeatures)
+              if (win) {
+                appLogger.info('StageCast', 'Fallback pop-up window opened successfully.')
+                this.setPopupWindow(win)
+                this.monitorWindowLifecycle(win)
+              } else {
+                appLogger.warn('StageCast', 'Fallback pop-up window blocked by browser popup blocker.')
+              }
+            } catch (popErr) {
+              appLogger.error('StageCast', 'Failed to open fallback presentation window', popErr as Error)
+            }
           })
         return null
-      } catch {
-        // Fallback to popup
+      } catch (presErr) {
+        appLogger.warn('StageCast', `PresentationRequest threw immediate exception, falling back to popup window: ${presErr}`)
       }
     }
 
-    const win = window.open(targetUrl, 'gtar_stage_teleprompter', windowFeatures)
-    if (win) {
-      win.focus()
-      this.setPopupWindow(win)
+    try {
+      const win = window.open(targetUrl, 'gtar_stage_teleprompter', windowFeatures)
+      if (win) {
+        win.focus()
+        this.setPopupWindow(win)
+        this.monitorWindowLifecycle(win)
+        appLogger.info('StageCast', 'External stage teleprompter window opened and focused successfully.')
+        return win
+      } else {
+        appLogger.warn('StageCast', 'window.open returned null: The browser popup blocker may be blocking the external stage window.')
+        return null
+      }
+    } catch (openErr) {
+      appLogger.error('StageCast', 'Unexpected error opening presentation popup window', openErr as Error)
+      return null
     }
-    return win
+  }
+
+  private monitorWindowLifecycle(win: Window) {
+    try {
+      const checkTimer = setInterval(() => {
+        try {
+          if (win.closed) {
+            clearInterval(checkTimer)
+            this.setPopupWindow(null)
+            appLogger.info('StageCast', 'External presentation pop-up window closed by user.')
+          }
+        } catch {
+          clearInterval(checkTimer)
+        }
+      }, 1500)
+    } catch {}
   }
 
   public subscribe(

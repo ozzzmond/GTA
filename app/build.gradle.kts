@@ -13,8 +13,8 @@ android {
         applicationId = "com.joel.gta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 50
-        versionName = "v1.0.49"
+        versionCode = 51
+        versionName = "v1.0.50"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -54,6 +54,7 @@ android {
 
     buildTypes {
         release {
+            manifestPlaceholders["appName"] = "GTAR"
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -64,6 +65,12 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+        }
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-dev"
+            manifestPlaceholders["appName"] = "GTAR-Dev"
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

@@ -184,89 +184,102 @@ ${cleanContent}`
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [
-    tailwindcss(),
-    react(),
-    ugScraperPlugin(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
-      manifest: {
-        name: 'GTAR Live Stage Companion',
-        short_name: 'GTAR',
-        description: 'Professional Live Stage Teleprompter, Chord Transposer, BandSync, and Setlist Companion for Musicians',
-        theme_color: '#0f172a',
-        background_color: '#002B36',
-        display: 'standalone',
-        orientation: 'any',
-        start_url: '/',
-        icons: [
-          {
-            src: '/favicon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
-            purpose: 'any',
-          },
-          {
-            src: '/favicon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
-            purpose: 'maskable',
-          },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff,woff2,ttf}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: {
-                maxEntries: 15,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
+export default defineConfig(({ mode }) => {
+  const isDebug = mode === 'debug' || process.env.VITE_APP_ENV === 'debug'
+  const appEnv = isDebug ? 'debug' : 'production'
+
+  return {
+    define: {
+      'import.meta.env.VITE_APP_ENV': JSON.stringify(appEnv),
+    },
+    plugins: [
+      tailwindcss(),
+      react(),
+      ugScraperPlugin(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        devOptions: {
+          enabled: true,
+        },
+        includeAssets: ['favicon.svg', 'icons.svg'],
+        manifest: {
+          name: isDebug ? 'GTAR-Dev Live Stage Companion' : 'GTAR Live Stage Companion',
+          short_name: isDebug ? 'GTAR-Dev' : 'GTAR',
+          description: 'Professional Live Stage Teleprompter, Chord Transposer, BandSync, and Setlist Companion for Musicians',
+          theme_color: '#0f172a',
+          background_color: '#002B36',
+          display: 'standalone',
+          orientation: 'any',
+          start_url: '/',
+          icons: [
+            {
+              src: '/favicon.svg',
+              sizes: '192x192 512x512',
+              type: 'image/svg+xml',
+              purpose: 'any',
+            },
+            {
+              src: '/favicon.svg',
+              sizes: '192x192 512x512',
+              type: 'image/svg+xml',
+              purpose: 'maskable',
+            },
+          ],
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff,woff2,ttf,webmanifest}'],
+          navigateFallback: '/index.html',
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 15,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
               },
             },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'gstatic-fonts-cache',
-              expiration: {
-                maxEntries: 30,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
+            {
+              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'gstatic-fonts-cache',
+                expiration: {
+                  maxEntries: 30,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
               },
             },
-          },
-        ],
-      },
-    }),
-  ],
-  server: {
-    proxy: {
-      '/api/ug': {
-        target: 'https://www.ultimate-guitar.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/ug/, ''),
-        headers: UG_HEADERS,
-      },
-      '/api/ug-tabs': {
-        target: 'https://tabs.ultimate-guitar.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/ug-tabs/, ''),
-        headers: UG_HEADERS,
+          ],
+        },
+      }),
+    ],
+    server: {
+      port: isDebug ? 5174 : 5173,
+      proxy: {
+        '/api/ug': {
+          target: 'https://www.ultimate-guitar.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/ug/, ''),
+          headers: UG_HEADERS,
+        },
+        '/api/ug-tabs': {
+          target: 'https://tabs.ultimate-guitar.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/ug-tabs/, ''),
+          headers: UG_HEADERS,
+        },
       },
     },
-  },
+  }
 })
 
 

@@ -39,6 +39,7 @@ import com.joel.gta.data.backup.BackupManager
 import com.joel.gta.data.local.entity.SearchHistoryEntity
 import com.joel.gta.data.local.entity.SetlistWithSongs
 import com.joel.gta.data.local.entity.SongEntity
+import com.joel.gta.ui.components.DebugLogsDialog
 import com.joel.gta.ui.components.GtaBrandLogo
 import com.joel.gta.ui.components.PreSaveSongReviewDialog
 import com.joel.gta.ui.components.StageToolsDialog
@@ -206,6 +207,7 @@ fun HomeScreen(
     var showExportBackupDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showBackupRestoreDialog by remember { mutableStateOf(false) }
+    var showDebugLogsDialog by remember { mutableStateOf(false) }
 
     // SAF Document Picker launcher - accepts .txt, .chordtxt, or all text formats
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -281,11 +283,26 @@ fun HomeScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "GTAR",
+                                    text = if (BuildConfig.DEBUG) "GTAR-Dev" else "GTAR",
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Black,
                                     color = customColors.textPrimary
                                 )
+                                if (BuildConfig.DEBUG) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0xFFD32F2F))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "DEV",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
                                     color = customColors.surfaceBackground,
@@ -471,6 +488,43 @@ fun HomeScreen(
                                         onCheckForUpdates()
                                     }
                                 )
+                                if (BuildConfig.DEBUG) {
+                                    HorizontalDivider(color = customColors.divider)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text("Debug Logs")
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(Color(0xFFD32F2F))
+                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "DEV",
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Black,
+                                                        fontSize = 9.sp
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Terminal,
+                                                contentDescription = null,
+                                                tint = Color(0xFFDC6E67)
+                                            )
+                                         },
+                                        onClick = {
+                                            showBackupRestoreMenu = false
+                                            showDebugLogsDialog = true
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -2310,6 +2364,13 @@ fun HomeScreen(
                     Text("Cancel", color = customColors.textSecondary)
                 }
             }
+        )
+    }
+
+    // GTAR Debug Logs Modal
+    if (showDebugLogsDialog) {
+        DebugLogsDialog(
+            onDismissRequest = { showDebugLogsDialog = false }
         )
     }
 
