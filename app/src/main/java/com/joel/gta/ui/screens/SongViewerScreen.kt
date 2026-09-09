@@ -211,6 +211,7 @@ fun SongViewerScreen(
     val availableDisplays by presentationManager.availableDisplays.collectAsState()
     val isProjecting by presentationManager.isProjecting.collectAsState()
     val isPrivacyCurtainActive by presentationManager.isPrivacyCurtainActive.collectAsState()
+    val showDisconnectGuide by presentationManager.showDisconnectGuide.collectAsState()
 
     DisposableEffect(presentationManager) {
         onDispose {
@@ -1729,7 +1730,7 @@ fun SongViewerScreen(
                                             if (isProjecting) {
                                                 presentationManager.stopProjection()
                                             } else {
-                                                presentationManager.startProjection(display)
+                                                presentationManager.startProjection(display, song, currentCapo)
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(
@@ -1743,11 +1744,47 @@ fun SongViewerScreen(
                             }
                         }
 
+                        if (showDisconnectGuide || isPrivacyCurtainActive) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF1E293B),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = Color(0xFFF59E0B),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Projection Paused (Blackout Screen Active)",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Projection paused. Disconnect Cast via quick settings when ready.",
+                                            color = Color(0xFFCBD5E1),
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         if (isProjecting || isPrivacyCurtainActive) {
                             Button(
                                 onClick = {
-                                    presentationManager.endCastSession(context)
-                                    showCastDialog = false
+                                    presentationManager.endCastSession()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
@@ -1758,7 +1795,7 @@ fun SongViewerScreen(
                             ) {
                                 Icon(Icons.Default.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("End Cast Session (Disconnect TV)", fontWeight = FontWeight.Bold)
+                                Text("End Cast Session (Blank Stage)", fontWeight = FontWeight.Bold)
                             }
                         }
 

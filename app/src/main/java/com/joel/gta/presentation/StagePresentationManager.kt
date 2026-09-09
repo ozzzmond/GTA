@@ -25,6 +25,9 @@ class StagePresentationManager(private val context: Context) {
     private val _isPrivacyCurtainActive = MutableStateFlow(false)
     val isPrivacyCurtainActive: StateFlow<Boolean> = _isPrivacyCurtainActive.asStateFlow()
 
+    private val _showDisconnectGuide = MutableStateFlow(false)
+    val showDisconnectGuide: StateFlow<Boolean> = _showDisconnectGuide.asStateFlow()
+
     private val _presentationData = MutableStateFlow(StagePresentationData())
     val presentationData: StateFlow<StagePresentationData> = _presentationData.asStateFlow()
 
@@ -51,6 +54,7 @@ class StagePresentationManager(private val context: Context) {
                 activePresentation = null
                 _isProjecting.value = false
                 _isPrivacyCurtainActive.value = false
+                _showDisconnectGuide.value = false
                 _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
                 disconnectMediaRoutes()
             }
@@ -80,7 +84,11 @@ class StagePresentationManager(private val context: Context) {
         )
     }
 
-    fun startProjection(display: Display? = null): Boolean {
+    fun startProjection(
+        display: Display? = null,
+        song: ParsedSong? = null,
+        activeCapo: String? = null
+    ): Boolean {
         refreshDisplays()
         val targetDisplay = display ?: _availableDisplays.value.firstOrNull()
         if (targetDisplay == null) {
@@ -92,17 +100,30 @@ class StagePresentationManager(private val context: Context) {
             return false
         }
 
+        // Ensure active song payload is not wiped and is applied immediately
+        if (song != null) {
+            _presentationData.update {
+                it.copy(
+                    song = song,
+                    activeCapo = activeCapo ?: it.activeCapo,
+                    isPrivacyCurtainActive = false
+                )
+            }
+        } else {
+            _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
+        }
+
         // Initial State on startProjection: Privacy Curtain MUST be FALSE by default
-        setPrivacyCurtain(false)
+        _isPrivacyCurtainActive.value = false
+        _showDisconnectGuide.value = false
 
         // If active presentation is already showing on this target display (e.g. held under Privacy Curtain),
         // lift the curtain to resume live lyrics and chords!
         if (activePresentation != null && activePresentation?.display?.displayId == targetDisplay.displayId && activePresentation?.isShowing == true) {
-            setPrivacyCurtain(false)
             _isProjecting.value = true
             AppLogManager.logPresentationEvent(
                 action = "LIFT_PRIVACY_CURTAIN",
-                details = "Resumed stage projection on Display ID=${targetDisplay.displayId}",
+                details = "Resumed stage projection on Display ID=${targetDisplay.displayId} (Song='${_presentationData.value.song?.title}')",
                 success = true
             )
             return true
@@ -131,7 +152,6 @@ class StagePresentationManager(private val context: Context) {
             } else {
                 AppLogManager.w("StagePresentationManager", "Warning: Context ${context.javaClass.name} could not be resolved to ComponentActivity.")
             }
-            _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
             val presentation = StagePresentation(context, targetDisplay, _presentationData, hostActivity)
             presentation.setOnDismissListener {
                 AppLogManager.logPresentationEvent(
@@ -143,6 +163,7 @@ class StagePresentationManager(private val context: Context) {
                     activePresentation = null
                     _isProjecting.value = false
                     _isPrivacyCurtainActive.value = false
+                    _showDisconnectGuide.value = false
                     _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
                 }
             }
@@ -184,14 +205,15 @@ class StagePresentationManager(private val context: Context) {
 
     /**
      * Stops live projection without dismissing the secondary window.
-     * Keeps the presentation alive and engages a permanent blackout/standby screen
-     * (Privacy Curtain with pure black and FLAG_SECURE) to prevent Android 15 from
-     * aggressively leaking the tablet desktop/apps via screen mirroring.
+     * Keeps the presentation alive and engages a permanent blackout screen
+     * (Privacy Curtain with pure black), preventing Android from falling back
+     * to mirroring the tablet desktop/apps to the TV.
      *
-     * Automatically launches the system Cast / Wireless Display menu so the user
-     * can cleanly disconnect without pulling down notification shades.
+     * Keeps the user inside GTAR app so the Presentation window stays foregrounded
+     * and actively obscuring the mirror. Sets showDisconnectGuide = true so the UI
+     * displays an in-app banner instructing the user to disconnect Cast via quick settings.
      */
-    fun stopProjection(launchSettings: Boolean = true) {
+    fun stopProjection() {
         if (activePresentation != null && activePresentation?.isShowing == true) {
             AppLogManager.logPresentationEvent(
                 action = "PRIVACY_CURTAIN_ENABLED",
@@ -199,22 +221,23 @@ class StagePresentationManager(private val context: Context) {
                 success = true
             )
             setPrivacyCurtain(true)
+            _showDisconnectGuide.value = true
         } else {
             _isProjecting.value = false
             _isPrivacyCurtainActive.value = false
-        }
-
-        if (launchSettings) {
-            openCastSettings(context)
+            _showDisconnectGuide.value = false
         }
     }
 
+    fun dismissDisconnectGuide() {
+        _showDisconnectGuide.value = false
+    }
+
     /**
-     * Completely terminates the presentation session and opens Android Cast / Display settings
-     * so the user can disconnect the OS-level wireless display session with 1 tap.
+     * Completely terminates the presentation session and sets privacy curtain to black.
      */
-    fun endCastSession(context: Context) {
-        stopProjection(launchSettings = true)
+    fun endCastSession(context: Context? = null) {
+        stopProjection()
     }
 
     fun openCastSettings(context: Context) {
@@ -281,12 +304,12 @@ class StagePresentationManager(private val context: Context) {
         }
     }
 
-    fun toggleProjection(): Boolean {
+    fun toggleProjection(song: ParsedSong? = null, activeCapo: String? = null): Boolean {
         return if (_isProjecting.value) {
             stopProjection()
             false
         } else {
-            startProjection()
+            startProjection(song = song, activeCapo = activeCapo)
         }
     }
 
@@ -322,6 +345,7 @@ class StagePresentationManager(private val context: Context) {
         activePresentation = null
         _isProjecting.value = false
         _isPrivacyCurtainActive.value = false
+        _showDisconnectGuide.value = false
         _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
         disconnectMediaRoutes()
     }
