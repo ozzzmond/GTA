@@ -210,7 +210,39 @@ ${cleanContent}`
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const isDebug = mode === 'debug' || process.env.VITE_APP_ENV === 'debug'
+  // isDev covers both standard dev server (mode='development') and the debug variant
+  const isDev = mode === 'development' || isDebug
   const appEnv = isDebug ? 'debug' : 'production'
+
+  // PWA manifest icon sets
+  const devIcons = [
+    {
+      src: '/pwa-dev-icon.svg',
+      sizes: '192x192 512x512',
+      type: 'image/svg+xml',
+      purpose: 'any',
+    },
+    {
+      src: '/pwa-dev-icon.svg',
+      sizes: '192x192 512x512',
+      type: 'image/svg+xml',
+      purpose: 'maskable',
+    },
+  ]
+  const prodIcons = [
+    {
+      src: '/favicon.svg',
+      sizes: '192x192 512x512',
+      type: 'image/svg+xml',
+      purpose: 'any',
+    },
+    {
+      src: '/favicon.svg',
+      sizes: '192x192 512x512',
+      type: 'image/svg+xml',
+      purpose: 'maskable',
+    },
+  ]
 
   return {
     define: {
@@ -225,30 +257,19 @@ export default defineConfig(({ mode }) => {
         devOptions: {
           enabled: true,
         },
-        includeAssets: ['favicon.svg', 'icons.svg'],
+        includeAssets: isDev
+          ? ['favicon.svg', 'icons.svg', 'pwa-dev-icon.svg']
+          : ['favicon.svg', 'icons.svg'],
         manifest: {
-          name: isDebug ? 'GTAR-Dev Live Stage Companion' : 'GTAR Live Stage Companion',
-          short_name: isDebug ? 'GTAR-Dev' : 'GTAR',
+          name: isDev ? 'GTAR-Dev Live Stage Companion' : 'GTAR Live Stage Companion',
+          short_name: isDev ? 'GTAR-Dev' : 'GTAR',
           description: 'Professional Live Stage Teleprompter, Chord Transposer, BandSync, and Setlist Companion for Musicians',
-          theme_color: '#0f172a',
-          background_color: '#002B36',
+          theme_color: isDev ? '#8B0000' : '#0f172a',
+          background_color: isDev ? '#1a0000' : '#002B36',
           display: 'standalone',
           orientation: 'any',
           start_url: '/',
-          icons: [
-            {
-              src: '/favicon.svg',
-              sizes: '192x192 512x512',
-              type: 'image/svg+xml',
-              purpose: 'any',
-            },
-            {
-              src: '/favicon.svg',
-              sizes: '192x192 512x512',
-              type: 'image/svg+xml',
-              purpose: 'maskable',
-            },
-          ],
+          icons: isDev ? devIcons : prodIcons,
         },
         workbox: {
           globPatterns: [
