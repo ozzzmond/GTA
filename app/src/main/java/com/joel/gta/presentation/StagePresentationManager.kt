@@ -80,7 +80,7 @@ class StagePresentationManager(private val context: Context) {
             success = true
         )
 
-        stopProjection()
+        stopProjection(disconnectRoute = false)
         return try {
             val hostActivity = context.findComponentActivity()
             if (hostActivity != null) {
@@ -95,8 +95,12 @@ class StagePresentationManager(private val context: Context) {
                     details = "StagePresentation on Display ID=${targetDisplay.displayId} dismissed by system or user",
                     success = true
                 )
+                val wasProjecting = _isProjecting.value
                 _isProjecting.value = false
                 activePresentation = null
+                if (wasProjecting) {
+                    disconnectMediaRoutes()
+                }
             }
             presentation.show()
             activePresentation = presentation
@@ -121,7 +125,7 @@ class StagePresentationManager(private val context: Context) {
         }
     }
 
-    fun stopProjection() {
+    fun stopProjection(disconnectRoute: Boolean = true) {
         if (activePresentation != null) {
             AppLogManager.logPresentationEvent(
                 action = "STOP_PROJECTION",
@@ -136,6 +140,56 @@ class StagePresentationManager(private val context: Context) {
         }
         activePresentation = null
         _isProjecting.value = false
+
+        if (disconnectRoute) {
+            disconnectMediaRoutes()
+        }
+    }
+
+    /**
+     * Completely disconnects active media route / cast session back to the default internal route.
+     * Prevents Android OS from dropping back into screen mirroring mode on the external display.
+     */
+    private fun disconnectMediaRoutes() {
+        val disconnectRunnable = Runnable {
+            try {
+                val mediaRouter = androidx.mediarouter.media.MediaRouter.getInstance(context)
+                val defaultRoute = mediaRouter.defaultRoute
+                val selectedRoute = mediaRouter.selectedRoute
+                if (selectedRoute != defaultRoute) {
+                    AppLogManager.i(
+                        "StagePresentationManager",
+                        "Disconnecting active MediaRouter route '${selectedRoute.name}' -> selecting default route '${defaultRoute.name}'"
+                    )
+                    mediaRouter.selectRoute(defaultRoute)
+                }
+            } catch (e: Throwable) {
+                AppLogManager.w("StagePresentationManager", "AndroidX MediaRouter route disconnect failed: ${e.message}", e)
+            }
+
+            try {
+                val systemRouter = context.getSystemService(Context.MEDIA_ROUTER_SERVICE) as? android.media.MediaRouter
+                if (systemRouter != null) {
+                    val defaultRoute = systemRouter.getDefaultRoute()
+                    val liveVideoRoute = systemRouter.getSelectedRoute(android.media.MediaRouter.ROUTE_TYPE_LIVE_VIDEO)
+                    if (liveVideoRoute != defaultRoute) {
+                        AppLogManager.i(
+                            "StagePresentationManager",
+                            "Disconnecting system MediaRouter live video route '${liveVideoRoute?.name}' -> selecting default route '${defaultRoute.name}'"
+                        )
+                        systemRouter.selectRoute(android.media.MediaRouter.ROUTE_TYPE_LIVE_VIDEO, defaultRoute)
+                    }
+                }
+            } catch (e: Throwable) {
+                AppLogManager.w("StagePresentationManager", "System MediaRouter route disconnect failed: ${e.message}", e)
+            }
+        }
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            disconnectRunnable.run()
+        } else {
+            android.os.Handler(android.os.Looper.getMainLooper()).post(disconnectRunnable)
+        }
     }
 
     fun toggleProjection(): Boolean {

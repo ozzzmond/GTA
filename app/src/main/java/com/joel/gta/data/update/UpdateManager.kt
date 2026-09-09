@@ -411,6 +411,7 @@ object UpdateManager {
      * Fires ACTION_VIEW with FileProvider content URI to start the Android package installer.
      */
     fun installApkFile(context: Context, apkFile: File) {
+        AppLogManager.i("UpdateManager", "installApkFile invoked for: ${apkFile.absolutePath} (exists=${apkFile.exists()}, size=${apkFile.length()} bytes)")
         try {
             val apkUri: Uri = FileProvider.getUriForFile(
                 context,
@@ -422,8 +423,10 @@ object UpdateManager {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
             }
+            AppLogManager.i("UpdateManager", "Launching ACTION_VIEW package installer intent with FLAG_ACTIVITY_NEW_TASK and FLAG_GRANT_READ_URI_PERMISSION (uri=$apkUri)")
             context.startActivity(installIntent)
         } catch (e: Exception) {
+            AppLogManager.e("UpdateManager", "Cannot launch installer: ${e.message}", e)
             Toast.makeText(context, "Cannot launch installer: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
     }

@@ -28,7 +28,13 @@ if not exist "%ADB_PATH%" (
     )
 )
 
-set APK_PATH=%~dp0app\build\outputs\apk\debug\app-debug.apk
+set APK_PATH=%~dp0app\build\outputs\apk\debug\GTA_v1.0.50-dev.4.apk
+if not exist "%APK_PATH%" (
+    for %%f in ("%~dp0app\build\outputs\apk\debug\GTA_*.apk") do set APK_PATH=%%f
+)
+if not exist "%APK_PATH%" (
+    set APK_PATH=%~dp0app\build\outputs\apk\debug\app-debug.apk
+)
 
 if "%SKIP_BUILD%"=="0" (
     echo [INFO] Building latest debug APK with gradlew assembleDebug...
@@ -39,10 +45,12 @@ if "%SKIP_BUILD%"=="0" (
         if "%NO_PAUSE%"=="0" pause
         exit /b %ERRORLEVEL%
     )
+    for %%f in ("%~dp0app\build\outputs\apk\debug\GTA_*.apk") do set APK_PATH=%%f
 ) else (
     if not exist "%APK_PATH%" (
         echo [WARN] APK not found. Building despite --no-build flag...
         call "%~dp0gradlew.bat" assembleDebug
+        for %%f in ("%~dp0app\build\outputs\apk\debug\GTA_*.apk") do set APK_PATH=%%f
     ) else (
         echo [INFO] Skipping build --no-build specified. Using existing APK.
     )
@@ -53,12 +61,13 @@ echo [INFO] Checking connected Android devices...
 "%ADB_PATH%" devices
 
 echo.
-echo [INFO] Installing GTA to device / tablet...
+echo [INFO] Installing GTA to device / tablet (%APK_PATH%)...
 "%ADB_PATH%" install -r -d "%APK_PATH%"
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [WARN] Standard install failed. Retrying with signature refresh...
-    "%ADB_PATH%" uninstall com.joel.gta
+    "%ADB_PATH%" uninstall com.joel.gta.debug 2>nul
+    "%ADB_PATH%" uninstall com.joel.gta 2>nul
     "%ADB_PATH%" install -r "%APK_PATH%"
 )
 
@@ -68,7 +77,7 @@ if %ERRORLEVEL% EQU 0 (
     echo SUCCESS! GTA is now installed on your device.
     echo Opening GTA application on phone / tablet...
     echo ===================================================
-    "%ADB_PATH%" shell am start -n com.joel.gta/.MainActivity
+    "%ADB_PATH%" shell am start -n com.joel.gta.debug/com.joel.gta.MainActivity 2>nul || "%ADB_PATH%" shell am start -n com.joel.gta/.MainActivity
 ) else (
     echo.
     echo [ERROR] Hindi natapos ang pag-install. Siguraduhin na:
