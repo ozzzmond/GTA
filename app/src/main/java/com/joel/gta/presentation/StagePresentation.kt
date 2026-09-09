@@ -99,8 +99,14 @@ class StagePresentation(
         setCancelable(false)
         setCanceledOnTouchOutside(false)
 
+        presentationWindow.setFormat(android.graphics.PixelFormat.OPAQUE)
         presentationWindow.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
-        presentationWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Crucial: Set layout params to strictly match screen dimensions and obscure everything below
+        presentationWindow.attributes = presentationWindow.attributes.apply {
+            flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        }
 
         @Suppress("DEPRECATION")
         decorView.systemUiVisibility = (
@@ -127,12 +133,25 @@ class StagePresentation(
 @Composable
 private fun StageTeleprompterContent(data: StagePresentationData) {
     if (data.isPrivacyCurtainActive) {
-        // Privacy Blackout Curtain: Pure black canvas to block Android OS screen mirror leak
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        )
+        // Persistent, opaque, hardware-backed Surface to force GPU compositor to draw an opaque buffer on Miracast/Cast
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color.Black
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                // Minimal standby dot so the GPU compositor actively renders non-empty pixels:
+                Text(
+                    text = "•",
+                    color = Color(0xFF010101),
+                    fontSize = 8.sp
+                )
+            }
+        }
         return
     }
 
