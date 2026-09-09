@@ -101,6 +101,7 @@ class StagePresentation(
 
         presentationWindow.setFormat(android.graphics.PixelFormat.OPAQUE)
         presentationWindow.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
+        decorView.setBackgroundColor(android.graphics.Color.BLACK)
         // Crucial: Set layout params to strictly match screen dimensions and obscure everything below
         presentationWindow.attributes = presentationWindow.attributes.apply {
             flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -127,6 +128,21 @@ class StagePresentation(
             }
         }
         setContentView(composeView)
+    }
+
+    /**
+     * Forces immediate redraw of the window canvas with pure black to guarantee
+     * an opaque buffer is maintained across display updates.
+     */
+    fun engageBlackoutCanvas() {
+        try {
+            window?.setFormat(android.graphics.PixelFormat.OPAQUE)
+            window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
+            window?.decorView?.setBackgroundColor(android.graphics.Color.BLACK)
+            window?.decorView?.invalidate()
+        } catch (e: Exception) {
+            AppLogManager.w("StagePresentation", "Failed to redraw blackout canvas: ${e.message}")
+        }
     }
 }
 

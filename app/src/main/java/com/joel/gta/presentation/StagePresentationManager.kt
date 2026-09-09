@@ -36,6 +36,10 @@ class StagePresentationManager(private val context: Context) {
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
             refreshDisplays()
+            val addedDisplay = displayManager.getDisplay(displayId)
+            if (addedDisplay != null && addedDisplay.displayId != Display.DEFAULT_DISPLAY) {
+                autoEngageCurtainForDisplay(addedDisplay)
+            }
         }
 
         override fun onDisplayRemoved(displayId: Int) {
@@ -68,6 +72,10 @@ class StagePresentationManager(private val context: Context) {
     init {
         displayManager.registerDisplayListener(displayListener, null)
         refreshDisplays()
+        val firstDisplay = _availableDisplays.value.firstOrNull()
+        if (firstDisplay != null && activePresentation == null) {
+            autoEngageCurtainForDisplay(firstDisplay)
+        }
     }
 
     fun refreshDisplays() {
@@ -82,6 +90,57 @@ class StagePresentationManager(private val context: Context) {
             "StagePresentationManager",
             "refreshDisplays: ${presentationDisplays.size} category-presentation displays, ${secondaryDisplays.size} total secondary displays available."
         )
+    }
+
+    /**
+     * Preemptively instantiates and shows StagePresentation with isPrivacyCurtainActive = true and song = null
+     * the moment an external display is detected by the OS.
+     * This forces the TV to transition directly from Miracast connecting to pure black,
+     * completely eliminating any initial tablet desktop/home screen mirror leak!
+     */
+    fun autoEngageCurtainForDisplay(targetDisplay: Display) {
+        if (activePresentation != null && activePresentation?.display?.displayId == targetDisplay.displayId && activePresentation?.isShowing == true) {
+            return
+        }
+
+        AppLogManager.logPresentationEvent(
+            action = "AUTO_CURTAIN_PREEMPTIVE_LOCK",
+            details = "Display ID=${targetDisplay.displayId} connected. Instantly presenting opaque blackout curtain to preempt desktop mirror.",
+            success = true
+        )
+
+        _presentationData.update {
+            it.copy(
+                isPrivacyCurtainActive = true,
+                song = null
+            )
+        }
+        _isPrivacyCurtainActive.value = true
+        _isProjecting.value = false
+
+        try {
+            val hostActivity = context.findComponentActivity()
+            val presentation = StagePresentation(context, targetDisplay, _presentationData, hostActivity)
+            presentation.setOnDismissListener {
+                AppLogManager.logPresentationEvent(
+                    action = "DISMISS",
+                    details = "StagePresentation on Display ID=${targetDisplay.displayId} dismissed",
+                    success = true
+                )
+                if (activePresentation == presentation) {
+                    activePresentation = null
+                    _isProjecting.value = false
+                    _isPrivacyCurtainActive.value = false
+                    _showDisconnectGuide.value = false
+                    _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
+                }
+            }
+            presentation.engageBlackoutCanvas()
+            presentation.show()
+            activePresentation = presentation
+        } catch (e: Exception) {
+            AppLogManager.w("StagePresentationManager", "Failed to auto-engage curtain for display ${targetDisplay.displayId}: ${e.message}", e)
+        }
     }
 
     fun startProjection(
@@ -221,6 +280,7 @@ class StagePresentationManager(private val context: Context) {
                 success = true
             )
             setPrivacyCurtain(true)
+            activePresentation?.engageBlackoutCanvas()
             _showDisconnectGuide.value = true
         } else {
             _isProjecting.value = false

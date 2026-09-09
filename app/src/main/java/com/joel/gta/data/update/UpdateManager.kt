@@ -84,15 +84,19 @@ object UpdateManager {
                 val jsonArray = JSONArray(jsonString)
 
                 var latestDevRelease: JSONObject? = null
+                var highestDevTag: String? = null
+
                 for (i in 0 until jsonArray.length()) {
                     val item = jsonArray.getJSONObject(i)
                     val isPrerelease = item.optBoolean("prerelease", false)
                     val isDraft = item.optBoolean("draft", false)
                     val tagName = item.optString("tag_name", "")
 
-                    if (!isDraft && (isPrerelease || tagName.contains("-dev", ignoreCase = true))) {
-                        latestDevRelease = item
-                        break
+                    if (!isDraft && (isPrerelease || tagName.contains("dev", ignoreCase = true))) {
+                        if (latestDevRelease == null || highestDevTag == null || isVersionNewer(tagName, highestDevTag)) {
+                            latestDevRelease = item
+                            highestDevTag = tagName
+                        }
                     }
                 }
 
@@ -306,9 +310,9 @@ object UpdateManager {
         if (cleanLatest.isEmpty() || cleanCurrent.isEmpty()) return false
         if (cleanLatest.equals(cleanCurrent, ignoreCase = true)) return false
 
-        // Extract base version before any hyphen or dev suffix
-        val baseLatestStr = cleanLatest.substringBefore("-")
-        val baseCurrentStr = cleanCurrent.substringBefore("-")
+        // Extract base version before any hyphen or dev suffix (e.g. "1.0.50" from "1.0.50-dev.11")
+        val baseLatestStr = cleanLatest.substringBefore("-").substringBefore(".dev").substringBefore("_dev")
+        val baseCurrentStr = cleanCurrent.substringBefore("-").substringBefore(".dev").substringBefore("_dev")
 
         val latestParts = baseLatestStr.split(".").mapNotNull { part ->
             part.takeWhile { it.isDigit() }.toIntOrNull()
@@ -325,7 +329,7 @@ object UpdateManager {
             if (l < c) return false
         }
 
-        // Base semantic versions are equal. Compare pre-release iteration.
+        // Base semantic versions are equal. Compare pre-release iteration numerically.
         val latestDevIter = parseDevIteration(cleanLatest)
         val currentDevIter = parseDevIteration(cleanCurrent)
 
@@ -334,7 +338,7 @@ object UpdateManager {
         // Pre-release is older than production release of the same version
         if (latestDevIter != null && currentDevIter == null) return false
 
-        // Both are dev iterations (e.g. dev.2 vs dev.1)
+        // Both are dev iterations (e.g. dev.11 vs dev.10, dev.10 vs dev.9)
         if (latestDevIter != null && currentDevIter != null) {
             return latestDevIter > currentDevIter
         }
@@ -342,10 +346,15 @@ object UpdateManager {
         return false
     }
 
-    private fun parseDevIteration(version: String): Int? {
+    fun parseDevIteration(version: String): Int? {
         val lower = version.lowercase(Locale.US)
-        if (!lower.contains("-dev")) return null
-        val afterDev = lower.substringAfter("-dev").removePrefix(".")
+        if (!lower.contains("dev")) return null
+        val regex = Regex("""dev[.\-_]?(\d+)""")
+        val match = regex.find(lower)
+        if (match != null) {
+            return match.groupValues[1].toIntOrNull()
+        }
+        val afterDev = lower.substringAfter("dev").trimStart('.', '-', '_')
         return afterDev.takeWhile { it.isDigit() }.toIntOrNull() ?: 0
     }
 
