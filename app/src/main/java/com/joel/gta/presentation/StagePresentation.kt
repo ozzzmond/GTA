@@ -96,9 +96,11 @@ class StagePresentation(
             )
         }
 
+        setCancelable(false)
+        setCanceledOnTouchOutside(false)
+
         presentationWindow.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
         presentationWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        presentationWindow.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         @Suppress("DEPRECATION")
         decorView.systemUiVisibility = (
@@ -129,16 +131,8 @@ private fun StageTeleprompterContent(data: StagePresentationData) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "GTAR STAGE • STANDBY",
-                color = Color(0x33FFFFFF),
-                style = MaterialTheme.typography.labelSmall,
-                letterSpacing = 2.sp
-            )
-        }
+                .background(Color.Black)
+        )
         return
     }
 

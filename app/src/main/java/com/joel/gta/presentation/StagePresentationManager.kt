@@ -92,6 +92,9 @@ class StagePresentationManager(private val context: Context) {
             return false
         }
 
+        // Initial State on startProjection: Privacy Curtain MUST be FALSE by default
+        setPrivacyCurtain(false)
+
         // If active presentation is already showing on this target display (e.g. held under Privacy Curtain),
         // lift the curtain to resume live lyrics and chords!
         if (activePresentation != null && activePresentation?.display?.displayId == targetDisplay.displayId && activePresentation?.isShowing == true) {
@@ -133,15 +136,14 @@ class StagePresentationManager(private val context: Context) {
             presentation.setOnDismissListener {
                 AppLogManager.logPresentationEvent(
                     action = "DISMISS",
-                    details = "StagePresentation on Display ID=${targetDisplay.displayId} dismissed by system",
+                    details = "StagePresentation on Display ID=${targetDisplay.displayId} dismissed",
                     success = true
                 )
-                val wasActive = _isProjecting.value || _isPrivacyCurtainActive.value
-                _isProjecting.value = false
-                _isPrivacyCurtainActive.value = false
-                activePresentation = null
-                if (wasActive) {
-                    disconnectMediaRoutes()
+                if (activePresentation == presentation) {
+                    activePresentation = null
+                    _isProjecting.value = false
+                    _isPrivacyCurtainActive.value = false
+                    _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
                 }
             }
             presentation.show()
