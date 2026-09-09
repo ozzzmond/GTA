@@ -272,7 +272,7 @@ export const StageView: React.FC<StageViewProps> = ({
     }
   }, [song.bpm])
 
-  // Continuous smooth auto-scroll loop
+  // Continuous smooth auto-scroll loop with deceleration near the bottom
   useEffect(() => {
     if (!isAutoScrolling) {
       if (scrollAnimRef.current) {
@@ -292,11 +292,32 @@ export const StageView: React.FC<StageViewProps> = ({
       lastTimestamp = currentTimestamp
 
       if (container) {
-        container.scrollTop += scrollSpeed * elapsed
-        if (container.scrollTop + container.clientHeight >= container.scrollHeight - 5) {
+        const maxScroll = container.scrollHeight - container.clientHeight
+        if (maxScroll <= 0) {
           setIsAutoScrolling(false)
           return
         }
+
+        // Deceleration zone: last 15% of total scrollable content
+        const decelerationZoneStart = maxScroll * 0.85
+        const remaining = maxScroll - container.scrollTop
+
+        let effectiveSpeed = scrollSpeed
+        if (container.scrollTop >= decelerationZoneStart) {
+          // Linear ramp from scrollSpeed down to 0 over the deceleration zone
+          const decelerationRange = maxScroll - decelerationZoneStart
+          const progress = Math.min(1, remaining / decelerationRange)
+          effectiveSpeed = scrollSpeed * Math.max(0, progress)
+        }
+
+        // Stop cleanly when at the bottom or speed is negligible
+        if (remaining <= 2 || effectiveSpeed < 0.5) {
+          container.scrollTop = maxScroll
+          setIsAutoScrolling(false)
+          return
+        }
+
+        container.scrollTop += effectiveSpeed * elapsed
       }
 
       scrollAnimRef.current = requestAnimationFrame(scrollStep)

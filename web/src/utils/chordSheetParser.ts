@@ -121,11 +121,20 @@ export function extractDirectives(rawText: string) {
 }
 
 /**
- * Detects whether raw song text is primarily ChordPro (with inline brackets) or 2-line tabs
+ * Detects whether raw song text is primarily ChordPro (with inline brackets) or 2-line tabs.
+ *
+ * Only counts tokens that look like real chord names (A–G with optional modifier and/or bass
+ * note), NOT section headers like [Intro], [Chorus], [Verse 1], [Tab], etc.
+ *
+ * Slash chords (D/F#, G/B, Bb/D) are correctly recognised as valid chord tokens.
  */
 export function detectFormat(rawText: string): SongFormat {
-  const bracketMatches = (rawText.match(/\[[A-Ga-g][#b]?[^\]]*\]/g) || []).length
-  if (bracketMatches >= 2) return 'CHORD_PRO'
+  // Match inline chord tokens: [A], [Bm], [C#maj7], [D/F#], [Bb], [G/B], etc.
+  // Must start with a note letter (A–G) optionally followed by b/#, chord quality, and an
+  // optional slash bass note. Does NOT match pure-word labels like [Intro] or [Verse 1].
+  const chordTokenRegex = /\[([A-G][b#]?(?:maj|min|m|M|sus|add|aug|dim|dom)?[0-9]?(?:\/[A-G][b#]?)?)\]/g
+  const chordMatches = (rawText.match(chordTokenRegex) || []).length
+  if (chordMatches >= 2) return 'CHORD_PRO'
   return 'TWO_LINE'
 }
 
@@ -138,7 +147,9 @@ function prepareTextForChordSheet(rawText: string): string {
   const lines = rawText.split('\n')
   const processed: string[] = []
 
-  const sectionRegex = /^\[(Intro|Verse|Chorus|Bridge|Pre-Chorus|Post-Chorus|Outro|Solo|Ending|Tab|Interlude|Hook|Riff|Instrumental|Refrain|Adlib|Breakdown|Coda)[^\]]*\]$/i
+  // Matches standalone section headers on their own line only — never slash chords or inline brackets.
+  // Uses anchored word-boundary check so [D/F#] style inline chords in lyric lines are untouched.
+  const sectionRegex = /^\[(Intro|Verse|Chorus|Bridge|Pre-?Chorus|Post-?Chorus|Outro|Solo|Ending|Tab|Interlude|Hook|Riff|Instrumental|Refrain|Adlib|Breakdown|Coda)(?:\s+\d+)?\]$/i
 
   for (const line of lines) {
     const trimmed = line.trim()
