@@ -74,6 +74,13 @@ class UpdateManagerTest {
         assertTrue(UpdateManager.isVersionNewer("v1.1.62", "v1.0.50-dev.12"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50", "v1.1.62"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.12", "v1.1.62"))
+
+        // New dev cycle baseline: v1.0.62-dev.1
+        assertTrue(UpdateManager.isVersionNewer("v1.0.62-dev.1", "v1.0.50-dev.12"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.62-dev.1", "v1.0.50"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.62-dev.2", "v1.0.62-dev.1"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.62-dev.1", "v1.0.62-dev.2"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.12", "v1.0.62-dev.1"))
     }
 
     @Test

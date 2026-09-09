@@ -308,13 +308,13 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation()
                     onCheckForUpdates?.()
                   }}
-                  title="Click to check for updates (v1.1.62)"
+                  title={import.meta.env.VITE_APP_ENV === 'debug' ? 'Click to check for updates (v1.0.62-dev.1)' : 'Click to check for updates (v1.1.62)'}
                   className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
                 >
                   {isCheckingUpdates && (
                     <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                   )}
-                  <span>v1.1.62</span>
+                  <span>{import.meta.env.VITE_APP_ENV === 'debug' ? 'v1.0.62-dev.1' : 'v1.1.62'}</span>
                 </button>
               </div>
               <span className="hidden md:inline text-[10px] text-[#93A1A1] group-hover:text-[#EEE8D5] mt-0.5 font-medium leading-none transition-colors">
