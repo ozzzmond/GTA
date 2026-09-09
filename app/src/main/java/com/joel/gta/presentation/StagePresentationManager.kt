@@ -180,6 +180,7 @@ class StagePresentationManager(private val context: Context) {
         // lift the curtain to resume live lyrics and chords!
         if (activePresentation != null && activePresentation?.display?.displayId == targetDisplay.displayId && activePresentation?.isShowing == true) {
             _isProjecting.value = true
+            activePresentation?.setCurtainOverlayVisible(false)
             AppLogManager.logPresentationEvent(
                 action = "LIFT_PRIVACY_CURTAIN",
                 details = "Resumed stage projection on Display ID=${targetDisplay.displayId} (Song='${_presentationData.value.song?.title}')",
@@ -227,6 +228,7 @@ class StagePresentationManager(private val context: Context) {
                 }
             }
             presentation.show()
+            presentation.setCurtainOverlayVisible(false)
             activePresentation = presentation
             _isProjecting.value = true
             _isPrivacyCurtainActive.value = false
@@ -257,6 +259,7 @@ class StagePresentationManager(private val context: Context) {
     fun setPrivacyCurtain(active: Boolean) {
         _isPrivacyCurtainActive.value = active
         _presentationData.update { it.copy(isPrivacyCurtainActive = active) }
+        activePresentation?.setCurtainOverlayVisible(active)
         if (active) {
             _isProjecting.value = false
         }

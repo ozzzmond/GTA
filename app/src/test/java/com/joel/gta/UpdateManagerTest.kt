@@ -41,9 +41,13 @@ class UpdateManagerTest {
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.10", "v1.0.50-dev.9"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.11", "v1.0.50-dev.10"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.11", "v1.0.50-dev.9"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.12", "v1.0.50-dev.11"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.12", "v1.0.50-dev.10"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.10", "v1.0.50-dev.2"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.2", "v1.0.50-dev"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.1", "v1.0.50-dev.2"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.11", "v1.0.50-dev.12"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.10", "v1.0.50-dev.12"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.10", "v1.0.50-dev.11"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.9", "v1.0.50-dev.11"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.9", "v1.0.50-dev.10"))
@@ -55,6 +59,7 @@ class UpdateManagerTest {
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.2", "v1.0.50-dev.2"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.10", "v1.0.50-dev.10"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.11", "v1.0.50-dev.11"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.12", "v1.0.50-dev.12"))
 
         // Dev to higher base version
         assertTrue(UpdateManager.isVersionNewer("v1.0.51-dev.1", "v1.0.50-dev.10"))

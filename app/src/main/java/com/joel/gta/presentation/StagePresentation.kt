@@ -43,6 +43,14 @@ import com.joel.gta.ui.theme.LocalGtaColors
 import com.joel.gta.ui.theme.SongFontStyle
 import kotlinx.coroutines.flow.StateFlow
 
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
 fun Context.findComponentActivity(): ComponentActivity? {
     var current: Context? = this
     while (current is ContextWrapper) {
@@ -75,6 +83,11 @@ class StagePresentation(
     private val presentationDataFlow: StateFlow<StagePresentationData>,
     private val hostActivity: ComponentActivity? = context.findComponentActivity()
 ) : Presentation(context, display) {
+
+    private var composeView: ComposeView? = null
+    private var curtainOverlay: View? = null
+    private val presentationScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+    private var curtainObserverJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,7 +131,20 @@ class StagePresentation(
             or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
         )
 
-        val composeView = ComposeView(context).apply {
+        val rootLayout = FrameLayout(context).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+
+        // Child 0: ComposeView (renders the teleprompter / song content)
+        val cv = ComposeView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
             setContent {
                 val data by presentationDataFlow.collectAsState()
@@ -127,7 +153,52 @@ class StagePresentation(
                 }
             }
         }
-        setContentView(composeView)
+        composeView = cv
+        rootLayout.addView(cv)
+
+        // Child 1: Native View (android.view.View) styled with Color.BLACK as a dedicated privacy curtain overlay
+        val overlay = View(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(android.graphics.Color.BLACK)
+            visibility = if (presentationDataFlow.value.isPrivacyCurtainActive) View.VISIBLE else View.GONE
+        }
+        curtainOverlay = overlay
+        rootLayout.addView(overlay)
+
+        setContentView(rootLayout)
+
+        // Observe presentationDataFlow to update curtain visibility immediately on state emission
+        curtainObserverJob?.cancel()
+        curtainObserverJob = presentationScope.launch {
+            presentationDataFlow.collect { data ->
+                setCurtainOverlayVisible(data.isPrivacyCurtainActive)
+            }
+        }
+    }
+
+    /**
+     * Controls native curtain overlay visibility and forces immediate buffer invalidation.
+     * When active: sets curtainOverlay to VISIBLE, brings to front, invalidates decorView.
+     * When inactive: sets curtainOverlay to GONE, forces composeView requestLayout and invalidate.
+     */
+    fun setCurtainOverlayVisible(active: Boolean) {
+        val overlay = curtainOverlay ?: return
+        val cv = composeView ?: return
+        val presentationWindow = window
+
+        if (active) {
+            overlay.visibility = View.VISIBLE
+            overlay.bringToFront()
+            presentationWindow?.decorView?.invalidate()
+        } else {
+            overlay.visibility = View.GONE
+            cv.requestLayout()
+            cv.invalidate()
+            presentationWindow?.decorView?.invalidate()
+        }
     }
 
     /**
@@ -136,6 +207,7 @@ class StagePresentation(
      */
     fun engageBlackoutCanvas() {
         try {
+            setCurtainOverlayVisible(true)
             window?.setFormat(android.graphics.PixelFormat.OPAQUE)
             window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
             window?.decorView?.setBackgroundColor(android.graphics.Color.BLACK)
@@ -144,33 +216,20 @@ class StagePresentation(
             AppLogManager.w("StagePresentation", "Failed to redraw blackout canvas: ${e.message}")
         }
     }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        curtainObserverJob?.cancel()
+    }
+
+    override fun dismiss() {
+        curtainObserverJob?.cancel()
+        super.dismiss()
+    }
 }
 
 @Composable
 private fun StageTeleprompterContent(data: StagePresentationData) {
-    if (data.isPrivacyCurtainActive) {
-        // Persistent, opaque, hardware-backed Surface to force GPU compositor to draw an opaque buffer on Miracast/Cast
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color.Black
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                // Minimal standby dot so the GPU compositor actively renders non-empty pixels:
-                Text(
-                    text = "•",
-                    color = Color(0xFF010101),
-                    fontSize = 8.sp
-                )
-            }
-        }
-        return
-    }
-
     val customColors = LocalGtaColors.current
     val song = data.song
 
