@@ -38,7 +38,21 @@ class StagePresentationManager(private val context: Context) {
         override fun onDisplayRemoved(displayId: Int) {
             refreshDisplays()
             if (activePresentation?.display?.displayId == displayId) {
-                stopProjection(hardDismiss = true)
+                AppLogManager.logPresentationEvent(
+                    action = "DISPLAY_REMOVED",
+                    details = "External Display ID=$displayId physically removed or disconnected. Cleaning up presentation.",
+                    success = true
+                )
+                try {
+                    activePresentation?.dismiss()
+                } catch (e: Exception) {
+                    AppLogManager.w("StagePresentationManager", "Error dismissing on display removed: ${e.message}", e)
+                }
+                activePresentation = null
+                _isProjecting.value = false
+                _isPrivacyCurtainActive.value = false
+                _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
+                disconnectMediaRoutes()
             }
         }
 
@@ -81,8 +95,7 @@ class StagePresentationManager(private val context: Context) {
         // If active presentation is already showing on this target display (e.g. held under Privacy Curtain),
         // lift the curtain to resume live lyrics and chords!
         if (activePresentation != null && activePresentation?.display?.displayId == targetDisplay.displayId && activePresentation?.isShowing == true) {
-            _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
-            _isPrivacyCurtainActive.value = false
+            setPrivacyCurtain(false)
             _isProjecting.value = true
             AppLogManager.logPresentationEvent(
                 action = "LIFT_PRIVACY_CURTAIN",
@@ -99,7 +112,15 @@ class StagePresentationManager(private val context: Context) {
             success = true
         )
 
-        stopProjection(hardDismiss = true, disconnectRoute = false)
+        if (activePresentation != null && activePresentation?.display?.displayId != targetDisplay.displayId) {
+            try {
+                activePresentation?.dismiss()
+            } catch (e: Exception) {
+                AppLogManager.w("StagePresentationManager", "Error dismissing previous display presentation: ${e.message}", e)
+            }
+            activePresentation = null
+        }
+
         return try {
             val hostActivity = context.findComponentActivity()
             if (hostActivity != null) {
@@ -112,7 +133,7 @@ class StagePresentationManager(private val context: Context) {
             presentation.setOnDismissListener {
                 AppLogManager.logPresentationEvent(
                     action = "DISMISS",
-                    details = "StagePresentation on Display ID=${targetDisplay.displayId} dismissed by system or user",
+                    details = "StagePresentation on Display ID=${targetDisplay.displayId} dismissed by system",
                     success = true
                 )
                 val wasActive = _isProjecting.value || _isPrivacyCurtainActive.value
@@ -149,67 +170,61 @@ class StagePresentationManager(private val context: Context) {
     }
 
     /**
-     * Stops live projection.
-     * By default (hardDismiss = false), activates Privacy Blackout Curtain:
-     * Keeps the secondary window attached to the external display and blanks it to solid pure black (FLAG_SECURE),
-     * preventing Android 15 from aggressively falling back to mirroring the tablet desktop/private apps to the TV.
-     *
-     * If hardDismiss = true, completely dismisses the secondary window and disconnects media routes.
+     * Toggles or sets the Privacy Curtain state directly.
      */
-    fun stopProjection(hardDismiss: Boolean = false, disconnectRoute: Boolean = true) {
-        if (!hardDismiss && activePresentation != null && activePresentation?.isShowing == true) {
-            AppLogManager.logPresentationEvent(
-                action = "PRIVACY_CURTAIN_ENABLED",
-                details = "Covering external display ID=${activePresentation?.display?.displayId} with pure black privacy curtain to prevent screen mirror leak.",
-                success = true
-            )
-            _presentationData.update { it.copy(isPrivacyCurtainActive = true) }
+    fun setPrivacyCurtain(active: Boolean) {
+        _isPrivacyCurtainActive.value = active
+        _presentationData.update { it.copy(isPrivacyCurtainActive = active) }
+        if (active) {
             _isProjecting.value = false
-            _isPrivacyCurtainActive.value = true
-            return
-        }
-
-        if (activePresentation != null) {
-            AppLogManager.logPresentationEvent(
-                action = "STOP_PROJECTION",
-                details = "Dismissing Presentation dialog on Display ID=${activePresentation?.display?.displayId}",
-                success = true
-            )
-            try {
-                activePresentation?.dismiss()
-            } catch (e: Exception) {
-                AppLogManager.w("StagePresentationManager", "Error while dismissing presentation: ${e.message}", e)
-            }
-        }
-        activePresentation = null
-        _isProjecting.value = false
-        _isPrivacyCurtainActive.value = false
-        _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
-
-        if (disconnectRoute) {
-            disconnectMediaRoutes()
         }
     }
 
     /**
-     * Completely terminates the presentation and opens Android Cast / Display settings
+     * Stops live projection without dismissing the secondary window.
+     * Keeps the presentation alive and engages a permanent blackout/standby screen
+     * (Privacy Curtain with pure black and FLAG_SECURE) to prevent Android 15 from
+     * aggressively leaking the tablet desktop/apps via screen mirroring.
+     *
+     * Automatically launches the system Cast / Wireless Display menu so the user
+     * can cleanly disconnect without pulling down notification shades.
+     */
+    fun stopProjection(launchSettings: Boolean = true) {
+        if (activePresentation != null && activePresentation?.isShowing == true) {
+            AppLogManager.logPresentationEvent(
+                action = "PRIVACY_CURTAIN_ENABLED",
+                details = "Engaging permanent Privacy Curtain on Display ID=${activePresentation?.display?.displayId}. Screen held pure black to prevent screen mirror leak.",
+                success = true
+            )
+            setPrivacyCurtain(true)
+        } else {
+            _isProjecting.value = false
+            _isPrivacyCurtainActive.value = false
+        }
+
+        if (launchSettings) {
+            openCastSettings(context)
+        }
+    }
+
+    /**
+     * Completely terminates the presentation session and opens Android Cast / Display settings
      * so the user can disconnect the OS-level wireless display session with 1 tap.
      */
     fun endCastSession(context: Context) {
-        stopProjection(hardDismiss = true, disconnectRoute = true)
-        openCastSettings(context)
+        stopProjection(launchSettings = true)
     }
 
     fun openCastSettings(context: Context) {
         try {
             val intent = Intent(Settings.ACTION_CAST_SETTINGS).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
         } catch (_: Exception) {
             try {
                 val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
             } catch (_: Exception) {}
@@ -296,7 +311,16 @@ class StagePresentationManager(private val context: Context) {
     }
 
     fun cleanup() {
-        stopProjection(hardDismiss = true, disconnectRoute = true)
         displayManager.unregisterDisplayListener(displayListener)
+        try {
+            activePresentation?.dismiss()
+        } catch (e: Exception) {
+            AppLogManager.w("StagePresentationManager", "Error dismissing on cleanup: ${e.message}", e)
+        }
+        activePresentation = null
+        _isProjecting.value = false
+        _isPrivacyCurtainActive.value = false
+        _presentationData.update { it.copy(isPrivacyCurtainActive = false) }
+        disconnectMediaRoutes()
     }
 }

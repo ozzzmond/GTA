@@ -1727,7 +1727,7 @@ fun SongViewerScreen(
                                     Button(
                                         onClick = {
                                             if (isProjecting) {
-                                                presentationManager.stopProjection(hardDismiss = false)
+                                                presentationManager.stopProjection()
                                             } else {
                                                 presentationManager.startProjection(display)
                                             }
@@ -1737,7 +1737,7 @@ fun SongViewerScreen(
                                             contentColor = Color.White
                                         )
                                     ) {
-                                        Text(if (isProjecting) "Blank Stage" else if (isPrivacyCurtainActive) "Resume" else "Project")
+                                        Text(if (isProjecting) "Stop Projection" else if (isPrivacyCurtainActive) "Resume" else "Project")
                                     }
                                 }
                             }

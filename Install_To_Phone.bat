@@ -28,7 +28,7 @@ if not exist "%ADB_PATH%" (
     )
 )
 
-set APK_PATH=%~dp0app\build\outputs\apk\debug\GTA_v1.0.50-dev.6.apk
+set APK_PATH=%~dp0app\build\outputs\apk\debug\GTA_v1.0.50-dev.7.apk
 if not exist "%APK_PATH%" (
     for %%f in ("%~dp0app\build\outputs\apk\debug\GTA_*.apk") do set APK_PATH=%%f
 )

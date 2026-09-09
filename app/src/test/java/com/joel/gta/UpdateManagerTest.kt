@@ -35,21 +35,23 @@ class UpdateManagerTest {
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.4", "v1.0.50-dev.3"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.5", "v1.0.50-dev.4"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.6", "v1.0.50-dev.5"))
-        assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.6", "v1.0.50-dev.2"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.7", "v1.0.50-dev.6"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.7", "v1.0.50-dev.2"))
         assertTrue(UpdateManager.isVersionNewer("v1.0.50-dev.2", "v1.0.50-dev"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.1", "v1.0.50-dev.2"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.6", "v1.0.50-dev.7"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.5", "v1.0.50-dev.6"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.4", "v1.0.50-dev.5"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.2", "v1.0.50-dev.2"))
-        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.6", "v1.0.50-dev.6"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.7", "v1.0.50-dev.7"))
 
         // Dev to higher base version
-        assertTrue(UpdateManager.isVersionNewer("v1.0.51-dev.1", "v1.0.50-dev.6"))
-        assertFalse(UpdateManager.isVersionNewer("v1.0.49-dev.5", "v1.0.50-dev.6"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.51-dev.1", "v1.0.50-dev.7"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.49-dev.5", "v1.0.50-dev.7"))
 
         // Production release vs dev pre-release with same base version
-        assertTrue(UpdateManager.isVersionNewer("v1.0.50", "v1.0.50-dev.6"))
-        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.6", "v1.0.50"))
+        assertTrue(UpdateManager.isVersionNewer("v1.0.50", "v1.0.50-dev.7"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.7", "v1.0.50"))
     }
 
     @Test
