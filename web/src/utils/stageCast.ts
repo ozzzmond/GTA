@@ -36,6 +36,7 @@ class StageCastEngine {
   private popupWindow: Window | null = null
   private presentationConnection: any | null = null
   private lastState: StageCastState | null = null
+  private lastScroll: { scrollTop: number; scrollFraction: number } | null = null
   private sessionListeners: Set<(isActive: boolean) => void> = new Set()
   constructor() {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -123,6 +124,7 @@ class StageCastEngine {
   }
 
   public broadcastScroll(scrollTop: number, scrollFraction: number) {
+    this.lastScroll = { scrollTop, scrollFraction }
     const msg: StageCastMessage = {
       type: 'SCROLL_UPDATE',
       payload: { scrollTop, scrollFraction },
@@ -143,6 +145,50 @@ class StageCastEngine {
     if (this.presentationConnection && this.presentationConnection.state === 'connected') {
       try {
         this.presentationConnection.send(JSON.stringify({ source: 'GTAR_CAST', message: msg }))
+      } catch {}
+    }
+  }
+
+  public sendCurrentStateToConnection(conn: any) {
+    if (!conn || conn.state !== 'connected') return
+    const currentState = this.lastState || this.getCachedState()
+    if (!currentState) return
+
+    const fullPayload = {
+      ...currentState,
+      scrollTop: this.lastScroll?.scrollTop ?? 0,
+      scrollFraction: this.lastScroll?.scrollFraction ?? 0,
+    }
+
+    appLogger.info(
+      'StageCast',
+      `Immediate state injection on connect: sending song "${currentState.song?.title || 'Unknown'}" over PresentationConnection (ID: ${conn.id || 'active'})`
+    )
+
+    try {
+      conn.send(
+        JSON.stringify({
+          source: 'GTAR_CAST',
+          type: 'STATE_UPDATE',
+          payload: currentState,
+          ...fullPayload,
+          message: { type: 'STATE_UPDATE', payload: currentState },
+        })
+      )
+    } catch (err) {
+      appLogger.warn('StageCast', `Failed to inject state on connect: ${err}`)
+    }
+
+    if (this.lastScroll) {
+      try {
+        conn.send(
+          JSON.stringify({
+            source: 'GTAR_CAST',
+            type: 'SCROLL_UPDATE',
+            payload: this.lastScroll,
+            message: { type: 'SCROLL_UPDATE', payload: this.lastScroll },
+          })
+        )
       } catch {}
     }
   }
@@ -226,10 +272,16 @@ class StageCastEngine {
             )
             this.notifySessionChange()
 
-            // Wire connection lifecycle listeners
+            // 1. Immediate state injection if already connected
+            if (conn.state === 'connected') {
+              this.sendCurrentStateToConnection(conn)
+            }
+
+            // 2. Wire connection lifecycle listeners
             conn.onconnect = () => {
-              appLogger.info('StageCast', `PresentationConnection connected (ID: ${conn?.id})`)
+              appLogger.info('StageCast', `PresentationConnection connected (ID: ${conn?.id}). Injecting current stage state immediately...`)
               this.notifySessionChange()
+              this.sendCurrentStateToConnection(conn)
             }
             conn.onclose = () => {
               appLogger.info('StageCast', `PresentationConnection closed (ID: ${conn?.id})`)
@@ -243,9 +295,11 @@ class StageCastEngine {
             }
             conn.onmessage = (event: MessageEvent) => {
               try {
-                const data = JSON.parse(event.data)
-                if (data?.type === 'REQUEST_STATE' && this.lastState) {
-                  this.broadcastState(this.lastState)
+                const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+                const req = data?.message || data
+                if (req?.type === 'REQUEST_STATE') {
+                  appLogger.info('StageCast', 'Received REQUEST_STATE from PresentationConnection. Re-injecting state...')
+                  this.sendCurrentStateToConnection(conn)
                 }
               } catch {}
             }
@@ -285,6 +339,35 @@ class StageCastEngine {
         this.monitorWindowLifecycle(win)
         this.notifySessionChange()
         appLogger.info('StageCast', 'External stage teleprompter pop-up window opened and focused successfully.')
+
+        // Immediately inject state into popup once loaded
+        const currentState = this.lastState || this.getCachedState()
+        if (currentState) {
+          const injectPopupState = () => {
+            try {
+              if (win && !win.closed) {
+                win.postMessage(
+                  {
+                    source: 'GTAR_CAST',
+                    message: { type: 'STATE_UPDATE', payload: currentState },
+                  },
+                  '*'
+                )
+                if (this.lastScroll) {
+                  win.postMessage(
+                    {
+                      source: 'GTAR_CAST',
+                      message: { type: 'SCROLL_UPDATE', payload: this.lastScroll },
+                    },
+                    '*'
+                  )
+                }
+              }
+            } catch {}
+          }
+          setTimeout(injectPopupState, 150)
+          setTimeout(injectPopupState, 600)
+        }
         return win
       } else {
         appLogger.warn('StageCast', 'window.open returned null: The browser popup blocker may be blocking the external stage window.')
@@ -320,14 +403,42 @@ class StageCastEngine {
     onScroll: (scrollTop: number, scrollFraction: number) => void,
     onRequestState?: () => void
   ): () => void {
-    const handleMessage = (msg: StageCastMessage) => {
+    const handleMessage = (rawData: any) => {
+      let msg = rawData
+      if (typeof rawData === 'string') {
+        try {
+          msg = JSON.parse(rawData)
+        } catch {
+          return
+        }
+      }
       if (!msg || typeof msg !== 'object') return
+
+      if (msg.source === 'GTAR_CAST' && msg.message) {
+        msg = msg.message
+      }
+
       if (msg.type === 'STATE_UPDATE' && msg.payload) {
         onState(msg.payload)
       } else if (msg.type === 'SCROLL_UPDATE' && msg.payload) {
         onScroll(msg.payload.scrollTop, msg.payload.scrollFraction)
       } else if (msg.type === 'REQUEST_STATE' && onRequestState) {
         onRequestState()
+      } else if (msg.song && (msg.song.rawContent || msg.song.title)) {
+        // Direct stage state payload
+        onState({
+          song: msg.song,
+          effectiveKey: msg.effectiveKey || msg.song.key || 'C',
+          transposeOffset: msg.transposeOffset ?? 0,
+          fontSizePx: msg.fontSizePx ?? 28,
+          fontStyle: msg.fontStyle ?? 'mono',
+          isTwoColumn: Boolean(msg.isTwoColumn),
+          themeMode: msg.themeMode,
+          customThemeColors: msg.customThemeColors,
+        })
+        if (typeof msg.scrollFraction === 'number') {
+          onScroll(msg.scrollTop || 0, msg.scrollFraction)
+        }
       }
     }
 
@@ -338,6 +449,8 @@ class StageCastEngine {
     const windowListener = (e: MessageEvent) => {
       if (e.data && e.data.source === 'GTAR_CAST' && e.data.message) {
         handleMessage(e.data.message)
+      } else {
+        handleMessage(e.data)
       }
     }
 
@@ -346,11 +459,43 @@ class StageCastEngine {
     }
     window.addEventListener('message', windowListener)
 
+    // Presentation API Receiver listener (Secondary screen / TV receiver side)
+    let receiverCleanup: (() => void) | null = null
+    if (typeof navigator !== 'undefined' && 'presentation' in navigator && (navigator as any).presentation?.receiver) {
+      const receiver = (navigator as any).presentation.receiver
+      if (receiver.connectionList) {
+        receiver.connectionList
+          .then((list: any) => {
+            const listenToConn = (conn: any) => {
+              const onMsg = (event: MessageEvent) => {
+                handleMessage(event.data)
+              }
+              conn.addEventListener('message', onMsg)
+              try {
+                conn.send(JSON.stringify({ type: 'REQUEST_STATE', source: 'GTAR_CAST' }))
+              } catch {}
+            }
+            list.connections.forEach((conn: any) => listenToConn(conn))
+            const onAvail = (evt: any) => {
+              listenToConn(evt.connection)
+            }
+            list.addEventListener('connectionavailable', onAvail)
+            receiverCleanup = () => {
+              list.removeEventListener('connectionavailable', onAvail)
+            }
+          })
+          .catch(() => {})
+      }
+    }
+
     return () => {
       if (this.channel) {
         this.channel.removeEventListener('message', channelListener)
       }
       window.removeEventListener('message', windowListener)
+      if (receiverCleanup) {
+        receiverCleanup()
+      }
     }
   }
 }

@@ -34,8 +34,115 @@ export const StagePresentationView: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null)
   const isSyncingScrollRef = useRef(false)
 
-  // Listen to real-time Stage Cast updates
+  // Listen to real-time Stage Cast updates and Presentation API receiver connections
   useEffect(() => {
+    // Set clean secondary window title so presentation banner doesn't show duplicate lines
+    document.title = 'GTAR Stage Display'
+
+    const applyScroll = (scrollTop: number, scrollFraction: number) => {
+      const container = containerRef.current
+      if (!container) return
+
+      isSyncingScrollRef.current = true
+      const maxScroll = container.scrollHeight - container.clientHeight
+      if (maxScroll > 0) {
+        const targetScroll = Math.round(scrollFraction * maxScroll)
+        container.scrollTo({
+          top: targetScroll,
+          behavior: 'smooth',
+        })
+      } else {
+        container.scrollTop = scrollTop
+      }
+
+      setTimeout(() => {
+        isSyncingScrollRef.current = false
+      }, 100)
+    }
+
+    const applyIncomingData = (rawData: any) => {
+      let data = rawData
+      if (typeof rawData === 'string') {
+        try {
+          data = JSON.parse(rawData)
+        } catch {
+          return
+        }
+      }
+      if (!data || typeof data !== 'object') return
+
+      if (data.source === 'GTAR_CAST' && data.message) {
+        data = data.message
+      }
+
+      // 1. STATE_UPDATE
+      if (data.type === 'STATE_UPDATE' && data.payload) {
+        const payload: StageCastState = data.payload
+        setCastState((prev) => ({ ...prev, ...payload }))
+        if (payload.customThemeColors) {
+          applyCustomThemeStyles(payload.customThemeColors)
+        }
+        return
+      }
+
+      // 2. SCROLL_UPDATE
+      if (data.type === 'SCROLL_UPDATE' && data.payload) {
+        applyScroll(data.payload.scrollTop, data.payload.scrollFraction)
+        return
+      }
+
+      // 3. Direct stage state payload (e.g. currentStageState)
+      if (data.song && (data.song.rawContent || data.song.title)) {
+        const newState: StageCastState = {
+          song: data.song,
+          effectiveKey: data.effectiveKey || data.song.key || 'C',
+          transposeOffset: data.transposeOffset ?? 0,
+          fontSizePx: data.fontSizePx ?? 28,
+          fontStyle: data.fontStyle ?? 'mono',
+          isTwoColumn: Boolean(data.isTwoColumn),
+          themeMode: data.themeMode,
+          customThemeColors: data.customThemeColors,
+        }
+        setCastState((prev) => ({ ...prev, ...newState }))
+        if (newState.customThemeColors) {
+          applyCustomThemeStyles(newState.customThemeColors)
+        }
+        if (typeof data.scrollFraction === 'number') {
+          applyScroll(data.scrollTop || 0, data.scrollFraction)
+        }
+      }
+    }
+
+    // Direct listener on browser Presentation API receiver connections for instant display
+    let receiverCleanup: (() => void) | null = null
+    if (typeof navigator !== 'undefined' && 'presentation' in navigator && (navigator as any).presentation?.receiver) {
+      const receiver = (navigator as any).presentation.receiver
+      if (receiver.connectionList) {
+        receiver.connectionList
+          .then((list: any) => {
+            const handlePresentationConn = (conn: any) => {
+              conn.onmessage = (event: MessageEvent) => {
+                applyIncomingData(event.data)
+              }
+              // Immediately request latest stage state
+              try {
+                conn.send(JSON.stringify({ type: 'REQUEST_STATE', source: 'GTAR_CAST' }))
+              } catch {}
+            }
+
+            list.connections.forEach(handlePresentationConn)
+            const onAvail = (evt: any) => {
+              handlePresentationConn(evt.connection)
+            }
+            list.addEventListener('connectionavailable', onAvail)
+            receiverCleanup = () => {
+              list.removeEventListener('connectionavailable', onAvail)
+            }
+          })
+          .catch(() => {})
+      }
+    }
+
     // Request current state on mount
     stageCast.requestState()
 
@@ -51,26 +158,7 @@ export const StagePresentationView: React.FC = () => {
           applyCustomThemeStyles(newState.customThemeColors)
         }
       },
-      (scrollTop, scrollFraction) => {
-        const container = containerRef.current
-        if (!container) return
-
-        isSyncingScrollRef.current = true
-        const maxScroll = container.scrollHeight - container.clientHeight
-        if (maxScroll > 0) {
-          const targetScroll = Math.round(scrollFraction * maxScroll)
-          container.scrollTo({
-            top: targetScroll,
-            behavior: 'smooth',
-          })
-        } else {
-          container.scrollTop = scrollTop
-        }
-
-        setTimeout(() => {
-          isSyncingScrollRef.current = false
-        }, 100)
-      }
+      applyScroll
     )
 
     // Keyboard shortcut 'F' to toggle browser fullscreen
@@ -87,6 +175,9 @@ export const StagePresentationView: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown)
     return () => {
       unsubscribe()
+      if (receiverCleanup) {
+        receiverCleanup()
+      }
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [])

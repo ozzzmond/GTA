@@ -12,7 +12,11 @@ appLogger.init()
 // Apply debug environment branding if active
 if (import.meta.env.VITE_APP_ENV === 'debug') {
   if (typeof document !== 'undefined') {
-    document.title = 'GTAR-Dev Live Stage Companion'
+    const isPresentation =
+      window.location.pathname.includes('/stage/present') ||
+      window.location.search.includes('view=present') ||
+      window.location.hash.includes('present')
+    document.title = isPresentation ? 'GTAR Stage Display' : 'GTAR-Dev Live Stage Companion'
     try {
       const devFaviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>

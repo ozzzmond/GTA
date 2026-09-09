@@ -711,6 +711,12 @@ export const StageView: React.FC<StageViewProps> = ({
               if (isCastActive) {
                 stageCast.stopPresentation()
               } else {
+                const container = scrollContainerRef.current
+                if (container) {
+                  const maxScroll = container.scrollHeight - container.clientHeight
+                  const fraction = maxScroll > 0 ? container.scrollTop / maxScroll : 0
+                  stageCast.broadcastScroll(container.scrollTop, fraction)
+                }
                 stageCast.broadcastState({
                   song,
                   effectiveKey,
