@@ -1,0 +1,87 @@
+name: Build & Release GTAR Dev Preview
+
+on:
+  push:
+    branches: [ dev ]
+    tags:
+      - 'v*-dev*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release-dev:
+    name: Build & Release Dev Preview APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant Execute Permission to Gradle Wrapper
+        run: chmod +x gradlew
+
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Prepare Dev Preview APK
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ "$REF" == v*-dev* ]]; then
+            DEV_TAG="$REF"
+          else
+            BASE_VER=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed 's/.*"\(.*\)".*/\1/')
+            if [[ ! "$BASE_VER" =~ ^v ]]; then
+              BASE_VER="v${BASE_VER}"
+            fi
+            DEV_TAG="${BASE_VER}-dev"
+          fi
+          echo "DEV_TAG=${DEV_TAG}" >> $GITHUB_ENV
+          echo "Packaging dev preview APK as GTA_${DEV_TAG}.apk"
+          mkdir -p dev_artifacts
+          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk "dev_artifacts/GTA_${DEV_TAG}.apk"
+          else
+            echo "Error: app-debug.apk not found!" && exit 1
+          fi
+
+      - name: Upload APK Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTA-Dev-APK
+          path: dev_artifacts/*.apk
+          retention-days: 7
+
+      - name: Create GitHub Dev Pre-Release & Attach APK
+        uses: softprops/action-gh-release@v2
+        with:
+          name: GTAR Dev Preview ${{ env.DEV_TAG }}
+          tag_name: ${{ env.DEV_TAG }}
+          target_commitish: ${{ github.sha }}
+          files: dev_artifacts/GTA_${{ env.DEV_TAG }}.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: true
+          make_latest: false
+          body: |
+            ### 🧪 GTAR Developer Preview (${{ env.DEV_TAG }})
+            - **Application ID:** `com.gtar.app.debug`
+            - **Icon:** Distinctive Red DEV adaptive launcher icon
+            - **Installation:** Installs side-by-side with production GTAR without overwriting existing data.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,19 +1,18 @@
-name: Build & Release GTA Stage Suite
+name: Build & Release GTAR Production
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
+    tags:
+      - 'v*'
+      - '!v*-dev*'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build & Test Android APK
+  build-and-release-prod:
+    name: Build & Release Production APK
     runs-on: ubuntu-latest
 
     steps:
@@ -35,7 +34,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+        run: ./gradlew testReleaseUnitTest --no-daemon --stacktrace
 
       - name: Decode Release Keystore
         env:
@@ -56,33 +55,43 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Rename APK to GTA Version Format
+      - name: Prepare Production Release APK
         run: |
           VERSION="${{ github.ref_name }}"
           if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
-            TAG_FROM_GRADLE=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed 's/.*"\(.*\)".*/v\1/')
-            VERSION="${TAG_FROM_GRADLE:-v1.0.35}"
+            TAG_FROM_GRADLE=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed 's/.*"\(.*\)".*/\1/')
+            if [[ ! "$TAG_FROM_GRADLE" =~ ^v ]]; then
+              VERSION="v${TAG_FROM_GRADLE}"
+            else
+              VERSION="${TAG_FROM_GRADLE}"
+            fi
           fi
-          echo "Packaging APK as GTA_${VERSION}.apk"
+          echo "PROD_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "Packaging production release APK as GTA_${VERSION}.apk"
+          mkdir -p release_artifacts
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-            mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/GTA_${VERSION}.apk"
+            cp app/build/outputs/apk/release/app-release.apk "release_artifacts/GTA_${VERSION}.apk"
+          else
+            echo "Error: app-release.apk not found!" && exit 1
           fi
 
       - name: Upload APK Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GTA-Stage-Suite-APK
-          path: app/build/outputs/apk/release/*.apk
+          name: GTA-Prod-APK
+          path: release_artifacts/*.apk
           retention-days: 14
 
       - name: Create GitHub Release & Attach APK
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          name: GTAR Release ${{ env.PROD_VERSION }}
+          tag_name: ${{ env.PROD_VERSION }}
+          files: release_artifacts/GTA_${{ env.PROD_VERSION }}.apk
           generate_release_notes: true
           draft: false
           prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

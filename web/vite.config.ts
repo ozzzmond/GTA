@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig, type Plugin } from 'vite'
 import https from 'node:https'
 import url from 'node:url'
+import os from 'node:os'
 
 const UG_HEADERS = {
   'User-Agent':
@@ -179,6 +180,29 @@ ${cleanContent}`
           res.end(JSON.stringify({ success: false, error: err.message }))
         }
       })
+
+      // DEV-only local LAN IP discovery endpoint for Chromecast / Smart TV receiver
+      server.middlewares.use('/api/dev-lan-ip', (_req, res) => {
+        try {
+          const interfaces = os.networkInterfaces()
+          let lanIp: string | null = null
+          for (const name of Object.keys(interfaces)) {
+            const ifaceList = interfaces[name] || []
+            for (const iface of ifaceList) {
+              if (iface.family === 'IPv4' && !iface.internal) {
+                lanIp = iface.address
+                break
+              }
+            }
+            if (lanIp) break
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: true, lanIp }))
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: false, error: err.message }))
+        }
+      })
     },
   }
 }
@@ -264,6 +288,7 @@ export default defineConfig(({ mode }) => {
     ],
     server: {
       port: isDebug ? 5174 : 5173,
+      host: isDebug ? '0.0.0.0' : false,
       proxy: {
         '/api/ug': {
           target: 'https://www.ultimate-guitar.com',

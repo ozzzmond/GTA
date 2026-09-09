@@ -34,7 +34,10 @@ const STORAGE_KEY = 'gtar_stage_cast_state'
 class StageCastEngine {
   private channel: BroadcastChannel | null = null
   private popupWindow: Window | null = null
+  private presentationConnection: any | null = null
   private lastState: StageCastState | null = null
+  private sessionListeners: Set<(isActive: boolean) => void> = new Set()
+  private cachedLanIp: string | null = null
 
   constructor() {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -44,10 +47,64 @@ class StageCastEngine {
         console.warn('BroadcastChannel not supported in this environment:', err)
       }
     }
+
+    // Pre-fetch dev LAN IP if in DEV debug mode
+    if (typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'debug') {
+      this.fetchDevLanIp().catch(() => {})
+    }
+  }
+
+  private async fetchDevLanIp(): Promise<string | null> {
+    if (this.cachedLanIp) return this.cachedLanIp
+    try {
+      const res = await fetch('/api/dev-lan-ip')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.lanIp) {
+          this.cachedLanIp = data.lanIp
+          return data.lanIp
+        }
+      }
+    } catch {}
+
+    const stored = localStorage.getItem('gtar_dev_lan_ip')
+    if (stored) {
+      this.cachedLanIp = stored
+      return stored
+    }
+    return null
+  }
+
+  public isPresentationActive(): boolean {
+    const isConnActive =
+      this.presentationConnection != null &&
+      (this.presentationConnection.state === 'connected' ||
+        this.presentationConnection.state === 'connecting')
+
+    const isPopupActive = this.popupWindow != null && !this.popupWindow.closed
+    return Boolean(isConnActive || isPopupActive)
+  }
+
+  public subscribeSessionState(listener: (isActive: boolean) => void): () => void {
+    this.sessionListeners.add(listener)
+    listener(this.isPresentationActive())
+    return () => {
+      this.sessionListeners.delete(listener)
+    }
+  }
+
+  private notifySessionChange() {
+    const active = this.isPresentationActive()
+    for (const listener of this.sessionListeners) {
+      try {
+        listener(active)
+      } catch {}
+    }
   }
 
   public setPopupWindow(win: Window | null) {
     this.popupWindow = win
+    this.notifySessionChange()
   }
 
   public getCachedState(): StageCastState | null {
@@ -83,6 +140,14 @@ class StageCastEngine {
         this.popupWindow.postMessage({ source: 'GTAR_CAST', message: msg }, '*')
       } catch {}
     }
+
+    if (this.presentationConnection && this.presentationConnection.state === 'connected') {
+      try {
+        this.presentationConnection.send(JSON.stringify({ source: 'GTAR_CAST', message: msg }))
+      } catch (err) {
+        appLogger.warn('StageCast', `Failed to send state over PresentationConnection: ${err}`)
+      }
+    }
   }
 
   public broadcastScroll(scrollTop: number, scrollFraction: number) {
@@ -102,6 +167,12 @@ class StageCastEngine {
         this.popupWindow.postMessage({ source: 'GTAR_CAST', message: msg }, '*')
       } catch {}
     }
+
+    if (this.presentationConnection && this.presentationConnection.state === 'connected') {
+      try {
+        this.presentationConnection.send(JSON.stringify({ source: 'GTAR_CAST', message: msg }))
+      } catch {}
+    }
   }
 
   public requestState() {
@@ -113,63 +184,167 @@ class StageCastEngine {
     }
   }
 
-  public openPresentationWindow(): Window | null {
+  public stopPresentation() {
+    let hadSession = false
+
+    if (this.presentationConnection) {
+      hadSession = true
+      const connId = this.presentationConnection.id || 'active'
+      appLogger.info('StageCast', `Explicit session cleanup: Terminating active PresentationConnection (ID: ${connId})...`)
+      try {
+        if (typeof this.presentationConnection.terminate === 'function') {
+          this.presentationConnection.terminate()
+        } else if (typeof this.presentationConnection.close === 'function') {
+          this.presentationConnection.close()
+        }
+      } catch (err) {
+        appLogger.warn('StageCast', `Error terminating PresentationConnection: ${err}`)
+      }
+      this.presentationConnection = null
+    }
+
+    if (this.popupWindow && !this.popupWindow.closed) {
+      hadSession = true
+      appLogger.info('StageCast', 'Explicit session cleanup: Closing active external presentation pop-up window...')
+      try {
+        this.popupWindow.close()
+      } catch (err) {
+        appLogger.warn('StageCast', `Error closing pop-up window: ${err}`)
+      }
+      this.popupWindow = null
+    }
+
+    if (hadSession) {
+      appLogger.info('StageCast', 'Stage Cast presentation session has been successfully stopped and disconnected.')
+    }
+
+    this.notifySessionChange()
+  }
+
+  private async resolveTargetUrl(targetPath: string): Promise<string> {
+    if (typeof window === 'undefined') return targetPath
+    const isDev = import.meta.env.VITE_APP_ENV === 'debug'
+    let origin = window.location.origin
+
+    // DEV ONLY: Swap localhost for host machine's LAN IP so external Chromecast / Smart TV receivers can load page
+    if (isDev && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      const lanIp = await this.fetchDevLanIp()
+      if (lanIp) {
+        const protocol = window.location.protocol
+        const port = window.location.port ? `:${window.location.port}` : ''
+        const lanOrigin = `${protocol}//${lanIp}${port}`
+        appLogger.info(
+          'StageCast',
+          `[DEV MODE] Localhost detected (${origin}). Swapped cast target to machine LAN IP: ${lanOrigin}${targetPath} so Chromecast/TV on same Wi-Fi can fetch page.`
+        )
+        return `${lanOrigin}${targetPath}`
+      } else {
+        appLogger.warn(
+          'StageCast',
+          `[DEV MODE] Could not determine local LAN IP. Casting to ${origin}${targetPath}. If external Chromecast fails, visit http://<YOUR-LAN-IP>:${window.location.port} on host first.`
+        )
+      }
+    }
+
+    return `${origin}${targetPath}`
+  }
+
+  public async openPresentationWindow(): Promise<Window | null> {
     if (typeof window === 'undefined') {
       appLogger.warn('StageCast', 'Cannot open presentation window: window is undefined (SSR environment)')
       return null
     }
 
-    const targetUrl = `${window.location.origin}/stage/present?view=present`
+    // 1. Clean up any existing active session before requesting a new one
+    if (this.isPresentationActive()) {
+      appLogger.info('StageCast', 'Active presentation session detected. Cleaning up and terminating previous session before starting new one...')
+      this.stopPresentation()
+    }
+
+    const targetUrl = await this.resolveTargetUrl('/stage/present?view=present')
     const windowFeatures =
       'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no'
 
-    appLogger.info('StageCast', `Initiating stage presentation window pop-out to: ${targetUrl}`)
+    appLogger.info('StageCast', `Initiating Stage Cast presentation request. Target URL: ${targetUrl}`)
 
-    // Try browser Presentation API if supported
+    // 2. Try browser Presentation API if supported (Chromecast, Smart TV, Wireless Displays)
     if ('PresentationRequest' in window) {
       try {
         appLogger.info('StageCast', 'Browser Presentation API detected. Requesting presentation display...')
         const pr = new (window as any).PresentationRequest([targetUrl])
         pr.start()
           .then((conn: any) => {
-            appLogger.info('StageCast', `Browser presentation started on external display. Connection ID: ${conn?.id || 'active'}`)
+            this.presentationConnection = conn
+            appLogger.info(
+              'StageCast',
+              `PresentationConnection established on external display. Connection ID: ${conn?.id || 'active'}, State: ${conn?.state}`
+            )
+            this.notifySessionChange()
+
+            // Wire connection lifecycle listeners
+            conn.onconnect = () => {
+              appLogger.info('StageCast', `PresentationConnection connected (ID: ${conn?.id})`)
+              this.notifySessionChange()
+            }
+            conn.onclose = () => {
+              appLogger.info('StageCast', `PresentationConnection closed (ID: ${conn?.id})`)
+              this.presentationConnection = null
+              this.notifySessionChange()
+            }
+            conn.onterminate = () => {
+              appLogger.info('StageCast', `PresentationConnection terminated (ID: ${conn?.id})`)
+              this.presentationConnection = null
+              this.notifySessionChange()
+            }
+            conn.onmessage = (event: MessageEvent) => {
+              try {
+                const data = JSON.parse(event.data)
+                if (data?.type === 'REQUEST_STATE' && this.lastState) {
+                  this.broadcastState(this.lastState)
+                }
+              } catch {}
+            }
           })
           .catch((err: any) => {
-            // User cancelled or presentation failed -> fallback to popup window
-            appLogger.warn('StageCast', `Presentation API request was cancelled or failed (${err?.message || 'unknown'}). Falling back to pop-up window...`)
-            try {
-              const win = window.open(targetUrl, 'gtar_stage_teleprompter', windowFeatures)
-              if (win) {
-                appLogger.info('StageCast', 'Fallback pop-up window opened successfully.')
-                this.setPopupWindow(win)
-                this.monitorWindowLifecycle(win)
-              } else {
-                appLogger.warn('StageCast', 'Fallback pop-up window blocked by browser popup blocker.')
-              }
-            } catch (popErr) {
-              appLogger.error('StageCast', 'Failed to open fallback presentation window', popErr as Error)
-            }
+            appLogger.warn(
+              'StageCast',
+              `Presentation API request was cancelled or failed (${err?.message || 'unknown'}). Triggering fallback pop-up window...`
+            )
+            this.openPopupWindow(targetUrl, windowFeatures)
           })
         return null
       } catch (presErr) {
-        appLogger.warn('StageCast', `PresentationRequest threw immediate exception, falling back to popup window: ${presErr}`)
+        appLogger.warn(
+          'StageCast',
+          `PresentationRequest threw immediate exception (${presErr}), triggering fallback pop-up window.`
+        )
+        return this.openPopupWindow(targetUrl, windowFeatures)
       }
     }
 
+    // 3. Fallback to standard window.open pop-up
+    return this.openPopupWindow(targetUrl, windowFeatures)
+  }
+
+  private openPopupWindow(targetUrl: string, windowFeatures: string): Window | null {
     try {
+      appLogger.info('StageCast', `Opening fallback presentation pop-up window: ${targetUrl}`)
       const win = window.open(targetUrl, 'gtar_stage_teleprompter', windowFeatures)
       if (win) {
         win.focus()
         this.setPopupWindow(win)
         this.monitorWindowLifecycle(win)
-        appLogger.info('StageCast', 'External stage teleprompter window opened and focused successfully.')
+        this.notifySessionChange()
+        appLogger.info('StageCast', 'External stage teleprompter pop-up window opened and focused successfully.')
         return win
       } else {
         appLogger.warn('StageCast', 'window.open returned null: The browser popup blocker may be blocking the external stage window.')
+        this.notifySessionChange()
         return null
       }
     } catch (openErr) {
       appLogger.error('StageCast', 'Unexpected error opening presentation popup window', openErr as Error)
+      this.notifySessionChange()
       return null
     }
   }
@@ -182,6 +357,7 @@ class StageCastEngine {
             clearInterval(checkTimer)
             this.setPopupWindow(null)
             appLogger.info('StageCast', 'External presentation pop-up window closed by user.')
+            this.notifySessionChange()
           }
         } catch {
           clearInterval(checkTimer)

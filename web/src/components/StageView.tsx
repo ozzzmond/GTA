@@ -144,6 +144,16 @@ export const StageView: React.FC<StageViewProps> = ({
   // Band Sync State
   const [syncState, setSyncState] = useState<BandSyncState>(() => bandSync.getState())
 
+  // Stage Cast Active Presentation State
+  const [isCastActive, setIsCastActive] = useState(() => stageCast.isPresentationActive())
+
+  useEffect(() => {
+    const unsubscribe = stageCast.subscribeSessionState((active) => {
+      setIsCastActive(active)
+    })
+    return unsubscribe
+  }, [])
+
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollAnimRef = useRef<number | null>(null)
 
@@ -698,20 +708,37 @@ export const StageView: React.FC<StageViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              stageCast.broadcastState({
-                song,
-                effectiveKey,
-                transposeOffset,
-                fontSizePx,
-                fontStyle,
-                isTwoColumn,
-              })
-              stageCast.openPresentationWindow()
+              if (isCastActive) {
+                stageCast.stopPresentation()
+              } else {
+                stageCast.broadcastState({
+                  song,
+                  effectiveKey,
+                  transposeOffset,
+                  fontSizePx,
+                  fontStyle,
+                  isTwoColumn,
+                })
+                stageCast.openPresentationWindow()
+              }
             }}
-            className="p-2 rounded-lg bg-[#002B36] border border-[#1A4A55] text-[#EEE8D5] hover:text-[#2AA198] hover:border-[#2AA198] transition-colors cursor-pointer"
-            title="Cast / Pop-out Screen (Open distraction-free fullscreen teleprompter on secondary monitor or TV)"
+            className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+              isCastActive
+                ? 'bg-[#DC6E67]/20 border-[#DC6E67] text-[#DC6E67] hover:bg-[#DC6E67]/30 shadow-sm animate-pulse'
+                : 'bg-[#002B36] border-[#1A4A55] text-[#EEE8D5] hover:text-[#2AA198] hover:border-[#2AA198]'
+            }`}
+            title={
+              isCastActive
+                ? 'Disconnect / Stop Presenting (Session Active - click to terminate)'
+                : 'Cast / Pop-out Screen (Open distraction-free fullscreen teleprompter on secondary monitor or TV)'
+            }
           >
             <Cast className="w-4 h-4" />
+            {isCastActive && (
+              <span className="hidden xl:inline text-[10px] font-mono font-bold uppercase tracking-wider">
+                Stop
+              </span>
+            )}
           </button>
 
           {/* Stage Focus Mode (Fullscreen) */}
