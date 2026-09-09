@@ -24,6 +24,7 @@ import { BandSyncModal } from './components/BandSyncModal'
 import { bandSync } from './utils/bandSync'
 import { extractDirectives } from './utils/chordSheetParser'
 import type { ActiveSongState } from './types/gtar'
+import { GTAR_APP_VERSION, GTAR_DEV_VERSION } from './types/gtar'
 import type { FetchedChordSheet } from './utils/onlineSearch'
 import { exportAllDataJson } from './utils/jsonBackup'
 import { Check, Sparkles } from 'lucide-react'
@@ -792,7 +793,7 @@ function App() {
     try {
       const exportData = {
         app: 'GTAR',
-        version: '1.0.47',
+        version: import.meta.env.DEV ? GTAR_DEV_VERSION : GTAR_APP_VERSION,
         type: 'SETLIST_EXPORT',
         exportedAt: new Date().toISOString(),
         setlist: {
@@ -1454,13 +1455,13 @@ function App() {
             <div className="space-y-1">
               <h3 className="text-base font-extrabold text-[#FDF6E3]">You're Up to Date!</h3>
               <p className="text-xs text-[#2AA198] font-mono font-bold">
-                GTAR Web App v1.0.49 (Build 50)
+                GTAR Web App {import.meta.env.DEV ? `v${GTAR_DEV_VERSION}` : `v${GTAR_APP_VERSION}`}
               </p>
             </div>
             <div className="p-3 rounded-xl bg-[#002B36] text-left text-[11px] text-[#93A1A1] space-y-1 border border-[#1A4A55]">
               <div className="font-bold text-[#EEE8D5] flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-[#2AA198]" />
-                <span>1:1 Parity with Android v1.0.49</span>
+                <span>1:1 Parity with Android v{GTAR_APP_VERSION}</span>
               </div>
               <p>• Unified TopAppBar with 4-Action 3-Dot Menu</p>
               <p>• Band Sync multi-screen stage sync (Leader / Member)</p>

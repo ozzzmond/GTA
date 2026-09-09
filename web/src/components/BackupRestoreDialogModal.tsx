@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react'
 import { CloudUpload, CloudDownload, Download, Copy, Check, AlertCircle, X, Database } from 'lucide-react'
 import type { ActiveSongState } from '../types/gtar'
+import { GTAR_APP_VERSION, GTAR_DEV_VERSION } from '../types/gtar'
 import { exportAllDataJson, parseBackupJson } from '../utils/jsonBackup'
 import { applyCustomThemeStyles } from './ThemeModal'
 
@@ -62,7 +63,7 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
     try {
       const jsonContent = JSON.stringify({
         app: 'GTAR',
-        version: '1.0.49',
+        version: import.meta.env.DEV ? GTAR_DEV_VERSION : GTAR_APP_VERSION,
         exportedAt: new Date().toISOString(),
         songs: allSongs,
         setlists,

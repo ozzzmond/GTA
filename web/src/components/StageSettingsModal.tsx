@@ -14,6 +14,7 @@ import {
   Download,
   Upload,
 } from 'lucide-react'
+import { GTAR_APP_VERSION, GTAR_DEV_VERSION } from '../types/gtar'
 
 export type SongFontStyleOption = 'mono' | 'sans' | 'serif'
 
@@ -381,7 +382,7 @@ export const StageSettingsModal: React.FC<StageSettingsModalProps> = ({
           <div className="p-4 rounded-xl bg-[#002B36]/60 border border-[#1A4A55]/70 text-center space-y-2">
             <div className="text-xs font-extrabold text-[#FDF6E3]">GTAR Live Stage Companion</div>
             <div className="text-[11px] font-mono font-bold text-[#2AA198]">
-              Version 1.0.49 (Build 50)
+              {import.meta.env.DEV ? `Version ${GTAR_DEV_VERSION}` : `Version ${GTAR_APP_VERSION}`}
             </div>
             <div className="text-[10px] text-[#93A1A1]">
               Offline-First Stage Teleprompter & Chord Companion for Live Musicians
