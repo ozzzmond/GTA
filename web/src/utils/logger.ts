@@ -178,6 +178,7 @@ class WebLoggerEngine {
   }
 
   public debug(tag: string, message: string, details?: string) {
+    if (import.meta.env.VITE_APP_ENV !== 'debug') return
     this.addEntry({ level: 'DEBUG', tag, message, details })
   }
 

@@ -68,6 +68,12 @@ class UpdateManagerTest {
         // Production release vs dev pre-release with same base version
         assertTrue(UpdateManager.isVersionNewer("v1.0.50", "v1.0.50-dev.10"))
         assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.10", "v1.0.50"))
+
+        // Production v1.1.62 release vs previous prod and dev cycles
+        assertTrue(UpdateManager.isVersionNewer("v1.1.62", "v1.0.50"))
+        assertTrue(UpdateManager.isVersionNewer("v1.1.62", "v1.0.50-dev.12"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50", "v1.1.62"))
+        assertFalse(UpdateManager.isVersionNewer("v1.0.50-dev.12", "v1.1.62"))
     }
 
     @Test

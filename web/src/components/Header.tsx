@@ -308,13 +308,13 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation()
                     onCheckForUpdates?.()
                   }}
-                  title="Click to check for updates (v1.0.50)"
+                  title="Click to check for updates (v1.1.62)"
                   className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
                 >
                   {isCheckingUpdates && (
                     <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                   )}
-                  <span>v1.0.50</span>
+                  <span>v1.1.62</span>
                 </button>
               </div>
               <span className="hidden md:inline text-[10px] text-[#93A1A1] group-hover:text-[#EEE8D5] mt-0.5 font-medium leading-none transition-colors">
@@ -942,27 +942,28 @@ export const Header: React.FC<HeaderProps> = ({
                   )}
                 </button>
 
-                <div className="h-[1px] bg-[#1A4A55]/60 my-1" />
-
-                {/* 5. Debug Logs */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowOverflowMenu(false)
-                    setShowDebugLogsModal(true)
-                  }}
-                  className="w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center justify-between gap-3 cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <Terminal className="w-4 h-4 text-[#2AA198]" />
-                    <span className="font-semibold">Debug Logs</span>
-                  </div>
-                  {import.meta.env.VITE_APP_ENV === 'debug' && (
-                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-red-600/25 text-red-400 border border-red-500/30">
-                      DEV:5174
-                    </span>
-                  )}
-                </button>
+                {/* 5. Debug Logs (Debug environment only) */}
+                {import.meta.env.VITE_APP_ENV === 'debug' && (
+                  <>
+                    <div className="h-[1px] bg-[#1A4A55]/60 my-1" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOverflowMenu(false)
+                        setShowDebugLogsModal(true)
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center justify-between gap-3 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Terminal className="w-4 h-4 text-[#2AA198]" />
+                        <span className="font-semibold">Debug Logs</span>
+                      </div>
+                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-red-600/25 text-red-400 border border-red-500/30">
+                        DEV:5174
+                      </span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

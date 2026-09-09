@@ -95,8 +95,8 @@ object AppLogManager {
     }
 
     fun d(tag: String, message: String) {
-        writeEntry("DEBUG", tag, message)
         if (BuildConfig.DEBUG) {
+            writeEntry("DEBUG", tag, message)
             Log.d(tag, message)
         }
     }
