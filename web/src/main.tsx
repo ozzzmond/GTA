@@ -12,11 +12,36 @@ appLogger.init()
 // Apply debug environment branding if active
 if (import.meta.env.DEV) {
   if (typeof document !== 'undefined') {
-    const isPresentation =
-      window.location.pathname.includes('/stage/present') ||
-      window.location.search.includes('view=present') ||
-      window.location.hash.includes('present')
-    document.title = isPresentation ? 'GTAR Stage Display' : 'GTAR-Dev Live Stage Companion'
+    document.title = 'GTAR-Dev Live Stage Companion'
+
+    // Blob manifests need absolute resource URLs and a stable installation identity.
+    const devManifest = {
+      id: new URL('/?app=gtar-dev', window.location.origin).href,
+      name: 'GTAR-Dev Live Stage Companion',
+      short_name: 'GTAR-Dev',
+      start_url: new URL('/', window.location.origin).href,
+      scope: new URL('/', window.location.origin).href,
+      icons: [{
+        src: new URL('/pwa-dev-icon.svg', window.location.origin).href,
+        sizes: 'any',
+        type: 'image/svg+xml',
+      }],
+      theme_color: '#8B0000',
+      background_color: '#1a0000',
+      display: 'standalone',
+    }
+    const blob = new Blob([JSON.stringify(devManifest)], { type: 'application/json' })
+    const manifestUrl = URL.createObjectURL(blob)
+    let manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]')
+    if (!manifestLink) {
+      manifestLink = document.createElement('link')
+      manifestLink.rel = 'manifest'
+      document.head.appendChild(manifestLink)
+    }
+    manifestLink.href = manifestUrl
+    if (import.meta.hot) {
+      import.meta.hot.dispose(() => URL.revokeObjectURL(manifestUrl))
+    }
     try {
       const devFaviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
@@ -40,6 +65,7 @@ if (import.meta.env.DEV) {
       }
       link.type = 'image/svg+xml'
       link.href = iconUrl
+
     } catch { }
   }
 } else {
