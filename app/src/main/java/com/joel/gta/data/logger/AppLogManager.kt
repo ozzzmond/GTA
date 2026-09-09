@@ -207,12 +207,48 @@ object AppLogManager {
     }
 
     fun createExportIntent(context: Context): Intent? {
-        val uri = getLogFileUri(context) ?: return null
+        val file = logFile ?: return null
+        if (!file.exists() || file.length() == 0L) {
+            writeRaw("GTAR Log Initialized\n")
+        }
+
+        val timeStamp = SimpleDateFormat("yyyy-MM-dd-HH.mm", Locale.US).format(Date())
+        val exportFileName = "GTAR-debug-${BuildConfig.VERSION_NAME}-$timeStamp.log"
+        val exportFile = try {
+            val logsDir = file.parentFile ?: File(context.getExternalFilesDir(null), "logs")
+            if (!logsDir.exists()) logsDir.mkdirs()
+
+            // Optional cleanup: remove older temporary export files to save disk space
+            logsDir.listFiles { f ->
+                (f.name.startsWith("GTAR-debug-") || f.name.startsWith("gtar-debug-")) &&
+                f.name.endsWith(".log") &&
+                f.name != LOG_FILE_NAME
+            }?.forEach { it.delete() }
+
+            val timestampedFile = File(logsDir, exportFileName)
+            file.copyTo(timestampedFile, overwrite = true)
+            timestampedFile
+        } catch (e: Exception) {
+            Log.w(LOG_TAG, "Failed to create timestamped export copy, falling back to original log file", e)
+            file
+        }
+
+        val uri = try {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                exportFile
+            )
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Failed to get Uri for export log file", e)
+            null
+        } ?: return null
+
         return Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "GTAR Debug Log (${BuildConfig.VERSION_NAME})")
-            putExtra(Intent.EXTRA_TEXT, "Attached is the GTAR debug log file generated on ${dateFormat.format(Date())}.")
+            putExtra(Intent.EXTRA_SUBJECT, "GTAR Debug Log - ${BuildConfig.VERSION_NAME} - $timeStamp")
+            putExtra(Intent.EXTRA_TEXT, "Attached is the GTAR debug log file ($exportFileName) generated on $timeStamp.")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }

@@ -82,7 +82,13 @@ class StagePresentationManager(private val context: Context) {
 
         stopProjection()
         return try {
-            val presentation = StagePresentation(context, targetDisplay, _presentationData)
+            val hostActivity = context.findComponentActivity()
+            if (hostActivity != null) {
+                AppLogManager.i("StagePresentationManager", "Host ComponentActivity found (${hostActivity.javaClass.simpleName}) for ViewTree owner binding.")
+            } else {
+                AppLogManager.w("StagePresentationManager", "Warning: Context ${context.javaClass.name} could not be resolved to ComponentActivity.")
+            }
+            val presentation = StagePresentation(context, targetDisplay, _presentationData, hostActivity)
             presentation.setOnDismissListener {
                 AppLogManager.logPresentationEvent(
                     action = "DISMISS",

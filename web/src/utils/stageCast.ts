@@ -37,8 +37,6 @@ class StageCastEngine {
   private presentationConnection: any | null = null
   private lastState: StageCastState | null = null
   private sessionListeners: Set<(isActive: boolean) => void> = new Set()
-  private cachedLanIp: string | null = null
-
   constructor() {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
@@ -47,32 +45,6 @@ class StageCastEngine {
         console.warn('BroadcastChannel not supported in this environment:', err)
       }
     }
-
-    // Pre-fetch dev LAN IP if in DEV debug mode
-    if (typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'debug') {
-      this.fetchDevLanIp().catch(() => {})
-    }
-  }
-
-  private async fetchDevLanIp(): Promise<string | null> {
-    if (this.cachedLanIp) return this.cachedLanIp
-    try {
-      const res = await fetch('/api/dev-lan-ip')
-      if (res.ok) {
-        const data = await res.json()
-        if (data.lanIp) {
-          this.cachedLanIp = data.lanIp
-          return data.lanIp
-        }
-      }
-    } catch {}
-
-    const stored = localStorage.getItem('gtar_dev_lan_ip')
-    if (stored) {
-      this.cachedLanIp = stored
-      return stored
-    }
-    return null
   }
 
   public isPresentationActive(): boolean {
@@ -221,34 +193,6 @@ class StageCastEngine {
     this.notifySessionChange()
   }
 
-  private async resolveTargetUrl(targetPath: string): Promise<string> {
-    if (typeof window === 'undefined') return targetPath
-    const isDev = import.meta.env.VITE_APP_ENV === 'debug'
-    let origin = window.location.origin
-
-    // DEV ONLY: Swap localhost for host machine's LAN IP so external Chromecast / Smart TV receivers can load page
-    if (isDev && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-      const lanIp = await this.fetchDevLanIp()
-      if (lanIp) {
-        const protocol = window.location.protocol
-        const port = window.location.port ? `:${window.location.port}` : ''
-        const lanOrigin = `${protocol}//${lanIp}${port}`
-        appLogger.info(
-          'StageCast',
-          `[DEV MODE] Localhost detected (${origin}). Swapped cast target to machine LAN IP: ${lanOrigin}${targetPath} so Chromecast/TV on same Wi-Fi can fetch page.`
-        )
-        return `${lanOrigin}${targetPath}`
-      } else {
-        appLogger.warn(
-          'StageCast',
-          `[DEV MODE] Could not determine local LAN IP. Casting to ${origin}${targetPath}. If external Chromecast fails, visit http://<YOUR-LAN-IP>:${window.location.port} on host first.`
-        )
-      }
-    }
-
-    return `${origin}${targetPath}`
-  }
-
   public async openPresentationWindow(): Promise<Window | null> {
     if (typeof window === 'undefined') {
       appLogger.warn('StageCast', 'Cannot open presentation window: window is undefined (SSR environment)')
@@ -261,7 +205,8 @@ class StageCastEngine {
       this.stopPresentation()
     }
 
-    const targetUrl = await this.resolveTargetUrl('/stage/present?view=present')
+    // Always use same-origin URL for PresentationRequest (Chrome rejects cross-origin LAN IPs)
+    const targetUrl = `${window.location.origin}/stage/present?view=present`
     const windowFeatures =
       'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no'
 
@@ -306,9 +251,13 @@ class StageCastEngine {
             }
           })
           .catch((err: any) => {
+            if (err?.name === 'AbortError' || err?.name === 'NotAllowedError') {
+              appLogger.info('StageCast', 'Presentation request cancelled by user (picker closed).')
+              return
+            }
             appLogger.warn(
               'StageCast',
-              `Presentation API request was cancelled or failed (${err?.message || 'unknown'}). Triggering fallback pop-up window...`
+              `Presentation API request failed (${err?.message || 'unknown'}). Triggering fallback pop-up window...`
             )
             this.openPopupWindow(targetUrl, windowFeatures)
           })

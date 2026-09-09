@@ -2,11 +2,16 @@ package com.joel.gta.presentation
 
 import android.app.Presentation
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.Display
 import android.view.View
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.joel.gta.data.logger.AppLogManager
 import com.joel.gta.data.model.ParsedSong
 import com.joel.gta.ui.components.MetaBadge
 import com.joel.gta.ui.components.RenderSongLine
@@ -36,6 +42,17 @@ import com.joel.gta.ui.theme.GTATheme
 import com.joel.gta.ui.theme.LocalGtaColors
 import com.joel.gta.ui.theme.SongFontStyle
 import kotlinx.coroutines.flow.StateFlow
+
+fun Context.findComponentActivity(): ComponentActivity? {
+    var current: Context? = this
+    while (current is ContextWrapper) {
+        if (current is ComponentActivity) {
+            return current
+        }
+        current = current.baseContext
+    }
+    return null
+}
 
 data class StagePresentationData(
     val song: ParsedSong? = null,
@@ -54,17 +71,35 @@ data class StagePresentationData(
 class StagePresentation(
     context: Context,
     display: Display,
-    private val presentationDataFlow: StateFlow<StagePresentationData>
+    private val presentationDataFlow: StateFlow<StagePresentationData>,
+    private val hostActivity: ComponentActivity? = context.findComponentActivity()
 ) : Presentation(context, display) {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val presentationWindow = window ?: return
+        val decorView = presentationWindow.decorView
+
+        // Bind owners from the host ComponentActivity to the secondary window's decorView
+        // to prevent "ViewTreeLifecycleOwner not found from ComposeView" crash
+        val activity = hostActivity ?: context.findComponentActivity()
+        if (activity != null) {
+            decorView.setViewTreeLifecycleOwner(activity)
+            decorView.setViewTreeViewModelStoreOwner(activity)
+            decorView.setViewTreeSavedStateRegistryOwner(activity)
+        } else {
+            AppLogManager.w(
+                "StagePresentation",
+                "Warning: Context is not a ComponentActivity (${context.javaClass.name}). ViewTree owners not bound."
+            )
+        }
+
+        presentationWindow.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
+        presentationWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         @Suppress("DEPRECATION")
-        window?.decorView?.systemUiVisibility = (
+        decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
             or View.SYSTEM_UI_FLAG_FULLSCREEN

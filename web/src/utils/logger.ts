@@ -269,7 +269,9 @@ class WebLoggerEngine {
     const yyyy = now.getFullYear()
     const mm = String(now.getMonth() + 1).padStart(2, '0')
     const dd = String(now.getDate()).padStart(2, '0')
-    const filename = `gtar-web-debug-${yyyy}-${mm}-${dd}.log`
+    const hh = String(now.getHours()).padStart(2, '0')
+    const min = String(now.getMinutes()).padStart(2, '0')
+    const filename = `gtar-web-debug-${yyyy}-${mm}-${dd}-${hh}.${min}.log`
 
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
