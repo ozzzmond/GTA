@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
+import {
+  createFullscreenController,
+  createWakeLockController,
+  isIosDevice,
+  isStandalonePwa,
+} from '../utils/stagePerformance'
 import {
   Play,
   Pause,
@@ -118,6 +124,12 @@ export const StageView: React.FC<StageViewProps> = ({
     return false
   })
   const [isFullscreen, setIsFullscreen] = useState(false)
+  // iOS PWA distraction-free mode: collapses the top bar since requestFullscreen
+  // is not supported on iOS. On iOS PWA the shell is already full-height.
+  const [isDistractionFree, setIsDistractionFree] = useState(false)
+  // Computed once — doesn't change between renders
+  const iosPwa = useMemo(() => isIosDevice() && isStandalonePwa(), [])
+  const iosOnly = useMemo(() => isIosDevice() && !isStandalonePwa(), [])
 
   const fontStyle = externalFontStyle !== undefined ? externalFontStyle : localFontStyle
   const setFontStyle = externalOnSelectFontStyle || setLocalFontStyle
@@ -462,13 +474,40 @@ export const StageView: React.FC<StageViewProps> = ({
     syncState.role,
   ])
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {})
+  // ---------------------------------------------------------------------------
+  // Fullscreen controller — created once, cleaned up on unmount
+  // ---------------------------------------------------------------------------
+  const fullscreenCtrl = useMemo(() => createFullscreenController(), [])
+
+  // Keep isFullscreen in sync with browser-driven exits (e.g. user presses Escape)
+  useEffect(() => {
+    const unsub = fullscreenCtrl.onChange((state) => setIsFullscreen(state))
+    return () => {
+      unsub()
+      fullscreenCtrl.cleanup()
     }
+  }, [fullscreenCtrl])
+
+  const toggleFullscreen = () => {
+    // iOS device (Safari or PWA): native fullscreen is not supported.
+    // Fall back to a distraction-free toolbar-collapse mode instead.
+    if (iosPwa || iosOnly || !fullscreenCtrl.isSupported) {
+      setIsDistractionFree((prev) => !prev)
+      return
+    }
+    fullscreenCtrl.toggle()
   }
+
+  // ---------------------------------------------------------------------------
+  // Screen Wake Lock — acquire on mount, re-acquire on tab return, release on unmount
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const wakeLock = createWakeLockController()
+    wakeLock.acquire()
+    return () => {
+      wakeLock.cleanup()
+    }
+  }, [])
 
   const effectiveKey = song.key ? transposeKey(song.key, transposeOffset) : ''
   const offsetStr = formatTransposeOffset(transposeOffset)
@@ -528,8 +567,13 @@ export const StageView: React.FC<StageViewProps> = ({
     <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] bg-[#002B36] select-none relative overflow-hidden">
       {/* =================================================================== */}
       {/* 1. TOP APP BAR (Exact 1:1 Jetpack Compose SongViewerScreen.kt)       */}
+      {/*    On iOS PWA, collapsed when isDistractionFree is true.             */}
       {/* =================================================================== */}
-      <div className="border-b border-[#1A4A55] bg-[#073642] px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3 z-20 shadow-md">
+      <div
+        className={`border-b border-[#1A4A55] bg-[#073642] px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3 z-20 shadow-md transition-all duration-300 ${
+          isDistractionFree ? 'opacity-0 pointer-events-none h-0 py-0 overflow-hidden' : 'opacity-100'
+        }`}
+      >
         {/* Left Side: Back Navigation Button + Song Title & Artist */}
         <div className="flex items-center gap-2 sm:gap-3">
           {onBack && (
@@ -768,14 +812,39 @@ export const StageView: React.FC<StageViewProps> = ({
             )}
           </button>
 
-          {/* Stage Focus Mode (Fullscreen) */}
+          {/* Stage Focus Mode (Fullscreen / Distraction-Free) */}
           <button
             type="button"
             onClick={toggleFullscreen}
-            className="p-2 rounded-lg bg-[#002B36] border border-[#1A4A55] text-[#EEE8D5] hover:text-[#2AA198] transition-colors cursor-pointer"
-            title="Toggle Fullscreen"
+            className={`p-2 rounded-lg border transition-colors cursor-pointer ${
+              isDistractionFree
+                ? 'bg-[#2AA198]/20 border-[#2AA198] text-[#2AA198] hover:bg-[#2AA198]/30'
+                : 'bg-[#002B36] border-[#1A4A55] text-[#EEE8D5] hover:text-[#2AA198]'
+            }`}
+            title={
+              iosPwa || iosOnly
+                ? isDistractionFree
+                  ? 'Exit Focus Mode (show toolbar)'
+                  : 'Focus Mode — collapse toolbar for distraction-free stage'
+                : isFullscreen
+                ? 'Exit Fullscreen'
+                : 'Enter Fullscreen'
+            }
+            aria-label={
+              iosPwa || iosOnly
+                ? isDistractionFree
+                  ? 'Exit distraction-free focus mode'
+                  : 'Enter distraction-free focus mode'
+                : isFullscreen
+                ? 'Exit fullscreen'
+                : 'Enter fullscreen'
+            }
           >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            {isFullscreen || isDistractionFree ? (
+              <Minimize2 className="w-4 h-4" />
+            ) : (
+              <Maximize2 className="w-4 h-4" />
+            )}
           </button>
         </div>
       </div>

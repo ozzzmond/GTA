@@ -4,6 +4,10 @@ import { parseGtarSong, splitSongLinesForColumns } from '../utils/songParser'
 import { SongLineRenderer } from './SongLineRenderer'
 import { applyCustomThemeStyles } from './ThemeModal'
 import type { ActiveSongState } from '../types/gtar'
+import {
+  createFullscreenController,
+  createWakeLockController,
+} from '../utils/stagePerformance'
 
 const DEFAULT_FALLBACK_SONG: ActiveSongState = {
   id: 0,
@@ -161,14 +165,15 @@ export const StagePresentationView: React.FC = () => {
       applyScroll
     )
 
-    // Keyboard shortcut 'F' to toggle browser fullscreen
+    // Keyboard shortcut 'F' to toggle browser fullscreen (with feature detection)
+    const fsCtrl = createFullscreenController()
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'f' || e.key === 'F') {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(() => {})
-        } else {
-          document.exitFullscreen().catch(() => {})
+        if (fsCtrl.isSupported) {
+          fsCtrl.toggle()
         }
+        // On iOS where fullscreen is unsupported, 'F' is a no-op here.
+        // The double-click handler also guards with isSupported.
       }
     }
 
@@ -179,6 +184,18 @@ export const StagePresentationView: React.FC = () => {
         receiverCleanup()
       }
       window.removeEventListener('keydown', handleKeyDown)
+      fsCtrl.cleanup()
+    }
+  }, [])
+
+  // ---------------------------------------------------------------------------
+  // Screen Wake Lock — keep the presentation screen awake during gigs
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const wakeLock = createWakeLockController()
+    wakeLock.acquire()
+    return () => {
+      wakeLock.cleanup()
     }
   }, [])
 
@@ -203,11 +220,12 @@ export const StagePresentationView: React.FC = () => {
     <div
       ref={containerRef}
       onDoubleClick={() => {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(() => {})
-        } else {
-          document.exitFullscreen().catch(() => {})
+        // Guard: iOS Safari doesn't support requestFullscreen on non-video elements
+        const fsCtrl = createFullscreenController()
+        if (fsCtrl.isSupported) {
+          fsCtrl.toggle()
         }
+        // fsCtrl has no persistent listeners here so no cleanup needed
       }}
       className="fixed inset-0 w-screen h-screen overflow-y-auto bg-[#002B36] text-[#EEE8D5] select-none scroll-smooth px-6 sm:px-12 md:px-16 py-8"
       style={{
