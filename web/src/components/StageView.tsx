@@ -175,6 +175,12 @@ export const StageView: React.FC<StageViewProps> = ({
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollAnimRef = useRef<number | null>(null)
+  // Sub-pixel accumulator: iOS Safari rounds scrollTop to integers, so we accumulate
+  // fractional pixels here and only commit whole-pixel increments.
+  const accumulatedScrollRef = useRef<number>(0)
+  // Timestamp of the last autoscroll activation, used to guard against touch-cancel
+  // events firing immediately after the FAB is tapped on iOS.
+  const autoScrollStartedAtRef = useRef<number>(0)
 
   // Parse song with native v1.0.42 parser and active transpose offset
   const parsedSong = parseGtarSong(song.rawContent, transposeOffset)
@@ -291,7 +297,18 @@ export const StageView: React.FC<StageViewProps> = ({
     }
   }, [song.bpm])
 
-  // Continuous smooth auto-scroll loop with deceleration near the bottom
+  // ---------------------------------------------------------------------------
+  // Continuous smooth auto-scroll loop
+  // ---------------------------------------------------------------------------
+  // iOS Safari rounds scrollTop assignments to integers, which means small
+  // fractional increments (e.g. 35px/s @ 60fps → 0.58px/frame) are silently
+  // discarded and the loop appears frozen. We fix this with a float accumulator
+  // ref that tracks uncommitted sub-pixel progress and only writes integer-valued
+  // increments to scrollTop.
+  //
+  // We also clamp elapsed to ≤100ms to prevent a large first-frame jump when
+  // the loop is torn down and rebuilt (e.g. after a speed change).
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!isAutoScrolling) {
       if (scrollAnimRef.current) {
@@ -304,39 +321,52 @@ export const StageView: React.FC<StageViewProps> = ({
     const container = scrollContainerRef.current
     if (!container) return
 
+    // Reset accumulator each time the loop (re)starts so stale sub-pixels
+    // from a previous session don't cause an erroneous first-frame jump.
+    accumulatedScrollRef.current = container.scrollTop
+
     let lastTimestamp = performance.now()
 
     const scrollStep = (currentTimestamp: number) => {
-      const elapsed = (currentTimestamp - lastTimestamp) / 1000
+      // Clamp elapsed to 100ms to absorb tab-switch / background pauses
+      const elapsed = Math.min((currentTimestamp - lastTimestamp) / 1000, 0.1)
       lastTimestamp = currentTimestamp
 
-      if (container) {
-        const maxScroll = container.scrollHeight - container.clientHeight
-        if (maxScroll <= 0) {
-          setIsAutoScrolling(false)
-          return
-        }
+      const cont = scrollContainerRef.current
+      if (!cont) return
 
-        // Deceleration zone: last 15% of total scrollable content
-        const decelerationZoneStart = maxScroll * 0.85
-        const remaining = maxScroll - container.scrollTop
+      const maxScroll = cont.scrollHeight - cont.clientHeight
+      if (maxScroll <= 0) {
+        setIsAutoScrolling(false)
+        return
+      }
 
-        let effectiveSpeed = scrollSpeed
-        if (container.scrollTop >= decelerationZoneStart) {
-          // Linear ramp from scrollSpeed down to 0 over the deceleration zone
-          const decelerationRange = maxScroll - decelerationZoneStart
-          const progress = Math.min(1, remaining / decelerationRange)
-          effectiveSpeed = scrollSpeed * Math.max(0, progress)
-        }
+      // Deceleration zone: last 15% of total scrollable content
+      const decelerationZoneStart = maxScroll * 0.85
+      const remaining = maxScroll - cont.scrollTop
 
-        // Stop cleanly when at the bottom or speed is negligible
-        if (remaining <= 2 || effectiveSpeed < 0.5) {
-          container.scrollTop = maxScroll
-          setIsAutoScrolling(false)
-          return
-        }
+      let effectiveSpeed = scrollSpeed
+      if (cont.scrollTop >= decelerationZoneStart) {
+        // Linear ramp from scrollSpeed down to 0 over the deceleration zone
+        const decelerationRange = maxScroll - decelerationZoneStart
+        const progress = Math.min(1, remaining / decelerationRange)
+        effectiveSpeed = scrollSpeed * Math.max(0, progress)
+      }
 
-        container.scrollTop += effectiveSpeed * elapsed
+      // Stop cleanly when at the bottom or speed is negligible
+      if (remaining <= 2 || effectiveSpeed < 0.5) {
+        cont.scrollTop = maxScroll
+        setIsAutoScrolling(false)
+        return
+      }
+
+      // Accumulate sub-pixel progress and only write whole pixels to scrollTop.
+      // This is the critical fix for iOS Safari, which ignores fractional
+      // scrollTop assignments and rounds them to the nearest integer pixel.
+      accumulatedScrollRef.current += effectiveSpeed * elapsed
+      const nextScrollTop = Math.floor(accumulatedScrollRef.current)
+      if (nextScrollTop !== cont.scrollTop) {
+        cont.scrollTop = nextScrollTop
       }
 
       scrollAnimRef.current = requestAnimationFrame(scrollStep)
@@ -351,11 +381,19 @@ export const StageView: React.FC<StageViewProps> = ({
     }
   }, [isAutoScrolling, scrollSpeed])
 
-  // Broadcast scroll position to Stage Cast teleprompter & BandSync when HOST
+  // Broadcast scroll position to Stage Cast teleprompter & BandSync when HOST.
+  // Also keeps the sub-pixel accumulator in sync after a user manually drags
+  // the scroll position (e.g. touch-scroll during autoscroll pause).
   const handleContainerScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget
     const maxScroll = target.scrollHeight - target.clientHeight
     const fraction = maxScroll > 0 ? target.scrollTop / maxScroll : 0
+
+    // Keep accumulator in sync so the next autoscroll loop starts from the
+    // correct position after a manual scroll.
+    if (!isAutoScrolling) {
+      accumulatedScrollRef.current = target.scrollTop
+    }
 
     // Mirror to Stage Cast teleprompter screen in real time
     stageCast.broadcastScroll(target.scrollTop, fraction)
@@ -367,10 +405,26 @@ export const StageView: React.FC<StageViewProps> = ({
     }
   }
 
+  // Touch-cancel guard: stop autoscroll when the user deliberately drags the
+  // content, but NOT when the event is the touch-end bleed from tapping the FAB.
+  // We ignore touch events within 400ms of the last autoscroll activation.
+  const handleContainerTouchStart = () => {
+    if (!isAutoScrolling) return
+    const msSinceStart = performance.now() - autoScrollStartedAtRef.current
+    if (msSinceStart > 400) {
+      setIsAutoScrolling(false)
+    }
+  }
+
   // Toggle autoscroll and broadcast if HOST
   const handleToggleAutoScroll = () => {
     const nextVal = !isAutoScrolling
     setIsAutoScrolling(nextVal)
+    if (nextVal) {
+      // Record activation time so the touch-cancel guard knows not to kill this
+      // immediately when the FAB touch-end event propagates to the scroll container.
+      autoScrollStartedAtRef.current = performance.now()
+    }
     if (syncState.role === 'HOST') {
       bandSync.broadcastAutoScroll(nextVal, scrollSpeed)
     }
@@ -895,7 +949,8 @@ export const StageView: React.FC<StageViewProps> = ({
       <div
         ref={scrollContainerRef}
         onScroll={handleContainerScroll}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-4 select-text scroll-smooth"
+        onTouchStart={handleContainerTouchStart}
+        className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-4 select-text"
       >
         <div className={`mx-auto transition-all ${isTwoColumn ? 'max-w-[95vw]' : 'max-w-4xl'}`}>
           {/* Metadata Header Badges (Key, Capo, 2 Columns / Format) */}
