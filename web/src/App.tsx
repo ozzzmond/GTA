@@ -1,3 +1,4 @@
+import { validateBackupEntries } from './utils/jsonBackup'
 import { useState, useEffect, useMemo } from 'react'
 import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
@@ -1089,7 +1090,8 @@ function App() {
     importedSongs: Array<Partial<ActiveSongState>>,
     importedSetlists: WebSetlist[]
   ) => {
-    if (importedSongs.length === 0) return
+    const errors = validateBackupEntries(importedSongs, importedSetlists)
+    if (errors.length) throw new Error(errors.join('\n'))
     const completeSongs: ActiveSongState[] = importedSongs.map((s, idx) => ({
       id: s.id || Date.now() + idx,
       title: s.title || 'Imported Song',
@@ -1117,6 +1119,8 @@ function App() {
     importedSongs: Array<Partial<ActiveSongState>>,
     importedSetlists: WebSetlist[]
   ) => {
+    const errors = validateBackupEntries(importedSongs, importedSetlists)
+    if (errors.length) throw new Error(errors.join('\n'))
     // 1. Upsert songs by match (title + artist)
     setSongs((prev) => {
       const existingMap = new Map(

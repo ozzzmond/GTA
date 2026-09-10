@@ -14,6 +14,8 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [28])
 class BackupManagerTest {
 
     // In-memory fake implementation of SongDao for unit testing
@@ -253,8 +255,12 @@ class BackupManagerTest {
 
     @Test
     fun testFullRestoreWithZeroSetlistsDoesNotCreateSetlists() = runBlocking {
-        val songDao = FakeSongDao()
-        val setlistDao = FakeSetlistDao()
+        val database = androidx.room.Room.inMemoryDatabaseBuilder(
+            org.robolectric.RuntimeEnvironment.getApplication(),
+            com.joel.gta.data.local.GtaDatabase::class.java
+        ).build()
+        val songDao = database.songDao()
+        val setlistDao = database.setlistDao()
 
         // Seed with existing data
         songDao.insertSong(SongEntity(id = 1, title = "Old Song", rawContent = "lyrics"))
@@ -275,7 +281,7 @@ class BackupManagerTest {
         }
         """.trimIndent()
 
-        val summary = BackupManager.fullRestoreWipeAndReplace(backupJsonWithZeroSetlists, songDao, setlistDao)
+        val summary = BackupManager.fullRestoreWipeAndReplace(backupJsonWithZeroSetlists, database)
         assertEquals(2, summary.songsRestored)
         assertEquals(0, summary.setlistsRestored)
 
@@ -285,6 +291,48 @@ class BackupManagerTest {
         // CRITICAL: Verify NO synthetic setlists were created for the library!
         val remainingSetlists = setlistDao.getAllSetlistsDirect()
         assertEquals(0, remainingSetlists.size)
+        database.close()
     }
+    @Test
+    fun invalidBackupsAndInsertionFailuresPreserveAllData() = runBlocking {
+        val database = androidx.room.Room.inMemoryDatabaseBuilder(
+            org.robolectric.RuntimeEnvironment.getApplication(),
+            com.joel.gta.data.local.GtaDatabase::class.java
+        ).build()
+        try {
+            val song = SongEntity(id = 1, title = "Original", rawContent = "Original lyrics")
+            val setlist = SetlistEntity(id = 1, name = "Original setlist")
+            val ref = SetlistSongCrossRef(setlistId = 1, songId = 1, position = 0)
+            database.songDao().insertSong(song)
+            database.setlistDao().insertSetlist(setlist)
+            database.setlistDao().addSongToSetlist(ref)
+            val invalid = listOf(
+                "{", "{}", """{"songs":[]} trailing garbage""", """{"songs":null}""",
+                """{"songs":[{"title":"Valid","rawContent":"ok"},{}]}""",
+                """{"songs":[{"title":42,"rawContent":"ok"}]}""",
+                """{"songs":[{"title":"Bad","rawContent":{}}]}""",
+                """{"songs":[null]}""",
+                """{"songs":[],"setlists":[{"name":"Gig","songs":[{"title":"Missing"}]}]}"""
+            )
+            database.openHelper.writableDatabase.execSQL(
+                "CREATE TRIGGER fail_restore BEFORE INSERT ON songs WHEN NEW.title = 'Fail' BEGIN SELECT RAISE(ABORT, 'forced insertion failure'); END"
+            )
+            for (payload in invalid + """{"songs":[{"title":"Inserted","rawContent":"ok"},{"title":"Fail","rawContent":"ok"}],"setlists":[]}""") {
+                try {
+                    BackupManager.fullRestoreWipeAndReplace(payload, database)
+                    fail("Restore should fail: $payload")
+                } catch (_: Exception) { }
+                assertEquals(listOf(song), database.songDao().getAllSongsDirect())
+                assertEquals(listOf(setlist), database.setlistDao().getAllSetlistsDirect())
+                assertEquals(listOf(ref), database.setlistDao().getCrossRefsForSetlist(1))
+            }
+            BackupManager.fullRestoreWipeAndReplace("""{"songs":[],"setlists":[]}""", database)
+            assertTrue(database.songDao().getAllSongsDirect().isEmpty())
+            assertTrue(database.setlistDao().getAllSetlistsDirect().isEmpty())
+        } finally {
+            database.close()
+        }
+    }
+
 }
 

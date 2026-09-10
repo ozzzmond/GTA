@@ -1,5 +1,7 @@
 package com.joel.gta.data.backup
 
+import androidx.room.withTransaction
+import com.joel.gta.data.local.GtaDatabase
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -14,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -122,11 +125,20 @@ object BackupManager {
      */
     suspend fun fullRestoreWipeAndReplace(
         jsonString: String,
+        database: GtaDatabase
+    ): RestoreSummary = withContext(Dispatchers.IO) {
+        val root = validateBackup(jsonString)
+        database.withTransaction {
+            replaceValidatedBackup(root, database.songDao(), database.setlistDao())
+        }
+    }
+
+    private suspend fun replaceValidatedBackup(
+        root: JSONObject,
         songDao: SongDao,
         setlistDao: SetlistDao
-    ): RestoreSummary = withContext(Dispatchers.IO) {
-        val root = JSONObject(jsonString)
-        val songsArray = root.optJSONArray("songs") ?: JSONArray()
+    ): RestoreSummary {
+        val songsArray = root.getJSONArray("songs")
         val setlistsArray = root.optJSONArray("setlists") ?: JSONArray()
 
         // 1. Wipe existing songs and setlists
@@ -191,33 +203,84 @@ object BackupManager {
                 val songArtist = sRef.optString("artist").takeIf { it.isNotBlank() }
 
                 val songLookupKey = normalizeKey(songTitle, songArtist)
-                var resolvedSongId = resolvedSongIdMap[songLookupKey]
-
-                if (resolvedSongId == null) {
-                    resolvedSongId = resolvedSongIdMap.entries.firstOrNull {
-                        it.key.startsWith(songTitle.lowercase() + "|")
-                    }?.value
-                }
-
-                if (resolvedSongId != null) {
-                    setlistDao.addSongToSetlist(
-                        SetlistSongCrossRef(
-                            setlistId = targetSetlistId,
-                            songId = resolvedSongId,
-                            position = nextPos++
-                        )
+                val resolvedSongId = resolvedSongIdMap.getValue(songLookupKey)
+                setlistDao.addSongToSetlist(
+                    SetlistSongCrossRef(
+                        setlistId = targetSetlistId,
+                        songId = resolvedSongId,
+                        position = nextPos++
                     )
-                }
+                )
             }
         }
 
-        RestoreSummary(
+        return RestoreSummary(
             songsRestored = songsRestoredCount,
             songsUpdated = 0,
             setlistsRestored = setlistsRestoredCount,
             totalSongsInBackup = songsArray.length(),
             message = "Successfully restored $songsRestoredCount songs and $setlistsRestoredCount setlists"
         )
+    }
+
+    /** Fully validate before opening a transaction or touching any DAO. Explicit songs: [] is empty. */
+    internal fun validateBackup(jsonString: String): JSONObject {
+        val tokener = JSONTokener(jsonString)
+        val root = tokener.nextValue() as? JSONObject
+            ?: throw IllegalArgumentException("Backup must be a JSON object")
+        require(tokener.nextClean() == '\u0000') { "Unexpected data after backup JSON" }
+        require(root.opt("songs") is JSONArray) { "songs must be an array (use [] for an empty backup)" }
+        require(!root.has("setlists") || root.opt("setlists") is JSONArray) { "setlists must be an array" }
+        fun string(obj: JSONObject, field: String, path: String, required: Boolean = false) {
+            require((!required && !obj.has(field)) || obj.opt(field) is String) { "$path.$field must be a string" }
+            if (required) require(obj.getString(field).isNotBlank()) { "$path.$field must not be blank" }
+        }
+        fun number(obj: JSONObject, field: String, path: String) {
+            if (obj.has(field)) {
+                val value = obj.opt(field)
+                require(value is Number && value.toDouble().isFinite() && value.toDouble() % 1.0 == 0.0) {
+                    "$path.$field must be an integer"
+                }
+                if (field == "transposeOffset" || field == "position") {
+                    require((value as Number).toDouble() in Int.MIN_VALUE.toDouble()..Int.MAX_VALUE.toDouble()) {
+                        "$path.$field is out of range"
+                    }
+                }
+            }
+        }
+        val keys = mutableSetOf<String>()
+        val songs = root.getJSONArray("songs")
+        for (i in 0 until songs.length()) {
+            val path = "songs[$i]"
+            val song = songs.optJSONObject(i) ?: throw IllegalArgumentException("$path must be an object")
+            string(song, "title", path, true)
+            require(song.has("rawContent")) { "$path.rawContent is required" }
+            for (field in listOf("artist", "key", "capo", "rawContent", "format", "tags")) string(song, field, path)
+            for (field in listOf("createdAt", "lastOpenedAt", "transposeOffset")) number(song, field, path)
+            for (field in listOf("isFavorite", "isDeleted")) {
+                require(!song.has(field) || song.opt(field) is Boolean) { "$path.$field must be a boolean" }
+            }
+            keys.add(normalizeKey(song.getString("title"), song.optString("artist")))
+        }
+        val setlists = root.optJSONArray("setlists") ?: JSONArray()
+        for (i in 0 until setlists.length()) {
+            val path = "setlists[$i]"
+            val setlist = setlists.optJSONObject(i) ?: throw IllegalArgumentException("$path must be an object")
+            string(setlist, "name", path, true)
+            number(setlist, "createdAt", path)
+            val refs = setlist.optJSONArray("songs") ?: throw IllegalArgumentException("$path.songs must be an array")
+            for (j in 0 until refs.length()) {
+                val refPath = "$path.songs[$j]"
+                val ref = refs.optJSONObject(j) ?: throw IllegalArgumentException("$refPath must be an object")
+                string(ref, "title", refPath, true)
+                string(ref, "artist", refPath)
+                number(ref, "position", refPath)
+                require(normalizeKey(ref.getString("title"), ref.optString("artist")) in keys) {
+                    "$refPath refers to a song missing from the backup"
+                }
+            }
+        }
+        return root
     }
 
     /**
@@ -232,7 +295,7 @@ object BackupManager {
         songDao: SongDao,
         setlistDao: SetlistDao
     ): RestoreSummary = withContext(Dispatchers.IO) {
-        val root = JSONObject(jsonString)
+        val root = validateBackup(jsonString)
         val metaObj = root.optJSONObject("metadata")
         val exportTimestamp = metaObj?.optLong("exportTimestamp", 0L) ?: 0L
         val songsArray = root.optJSONArray("songs") ?: JSONArray()

@@ -1,3 +1,6 @@
+import java.security.KeyStore
+import java.security.PrivateKey
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -21,12 +24,17 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
     }
 
-    val releaseStoreFilePath = System.getenv("KEYSTORE_PATH")
+    val releaseStoreFilePath = System.getenv("KEYSTORE_FILE")
+        ?: (project.findProperty("KEYSTORE_FILE") as? String)
+        ?: System.getenv("KEYSTORE_PATH")
         ?: System.getenv("RELEASE_STORE_FILE")
         ?: (project.findProperty("KEYSTORE_PATH") as? String)
-    val releaseStorePassword = System.getenv("KEY_STORE_PASSWORD")
+    val releaseStorePassword = System.getenv("KEYSTORE_PASSWORD")
+        ?: (project.findProperty("KEYSTORE_PASSWORD") as? String)
+        ?: System.getenv("KEY_STORE_PASSWORD")
         ?: (project.findProperty("KEY_STORE_PASSWORD") as? String)
     val releaseKeyAlias = System.getenv("ALIAS")
         ?: System.getenv("KEY_ALIAS")
@@ -40,6 +48,30 @@ android {
         && !releaseStorePassword.isNullOrBlank()
         && !releaseKeyAlias.isNullOrBlank()
         && !releaseKeyPassword.isNullOrBlank()
+
+    val validateReleaseCredentials = tasks.register("validateReleaseCredentials") {
+        doLast {
+            check(isReleaseSigningConfigured) {
+                "Release signing requires valid KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD."
+            }
+            val keystoreFile = file(releaseStoreFilePath!!)
+            check(keystoreFile.name != "debug.keystore" && releaseKeyAlias != "androiddebugkey") {
+                "Debug signing credentials cannot be used for release builds."
+            }
+            try {
+                val store = KeyStore.getInstance(keystoreFile, releaseStorePassword!!.toCharArray())
+                check(store.getKey(releaseKeyAlias, releaseKeyPassword!!.toCharArray()) is PrivateKey)
+                check(store.getCertificate(releaseKeyAlias) != null)
+            } catch (e: Exception) {
+                throw GradleException("Invalid release keystore, alias or signing passwords.", e)
+            }
+        }
+    }
+    tasks.configureEach {
+        if (name.contains("Release") && name != "validateReleaseCredentials") {
+            dependsOn(validateReleaseCredentials)
+        }
+    }
 
     signingConfigs {
         getByName("debug") {
@@ -66,15 +98,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = if (isReleaseSigningConfigured) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-dev.2"
+            versionNameSuffix = "-dev.3"
             manifestPlaceholders["appName"] = "GTAR-Dev"
             signingConfig = signingConfigs.getByName("debug")
         }
@@ -129,5 +157,6 @@ dependencies {
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("org.json:json:20240303")
 }

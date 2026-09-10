@@ -163,6 +163,45 @@ export function exportSingleSetlistJson(
   return fileName
 }
 
+/** Validate every entry before normalization or any caller can mutate library state. */
+export function validateBackupEntries(songs: unknown[], setlists: unknown[], embedded = false): string[] {
+  const errors: string[] = []
+  const object = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value)
+  const check = (value: unknown, path: string, song: boolean) => {
+    if (!object(value)) { errors.push(`${path}: must be an object`); return }
+    const required = song ? 'title' : 'name'
+    if (typeof value[required] !== 'string' || !value[required].trim()) errors.push(`${path}.${required}: must be a non-empty string`)
+    for (const field of ['artist', 'key', 'capo', 'bpm', 'format', 'tags', 'rawContent', 'content']) {
+      if (field in value && typeof value[field] !== 'string') errors.push(`${path}.${field}: must be a string`)
+    }
+    if (song && !('rawContent' in value) && !('content' in value)) errors.push(`${path}.rawContent: provide rawContent or content as a string`)
+    if ('id' in value && !(typeof value.id === 'string' && value.id.trim()) && !(typeof value.id === 'number' && Number.isSafeInteger(value.id))) errors.push(`${path}.id: must be a non-empty string or integer`)
+    for (const field of ['transposeOffset', 'createdAt', 'lastOpenedAt']) {
+      if (field in value && (typeof value[field] !== 'number' || !Number.isFinite(value[field]))) errors.push(`${path}.${field}: must be a finite number`)
+    }
+    for (const field of ['isFavorite', 'isDeleted']) {
+      if (field in value && typeof value[field] !== 'boolean') errors.push(`${path}.${field}: must be a boolean`)
+    }
+    if ('format' in value && !['CHORD_PRO', 'TWO_LINE', 'PLAIN'].includes(value.format)) errors.push(`${path}.format: unsupported song format`)
+  }
+  songs.forEach((song, i) => check(song, `songs[${i}]`, true))
+  setlists.forEach((sl, i) => {
+    const path = `setlists[${i}]`
+    check(sl, path, false)
+    if (!object(sl)) return
+    if (!Array.isArray(sl.songs)) { errors.push(`${path}.songs: must be an array`); return }
+    sl.songs.forEach((ref: unknown, j: number) => {
+      const refPath = `${path}.songs[${j}]`
+      if (embedded) { check(ref, refPath, true); return }
+      if (!object(ref)) { errors.push(`${refPath}: must be an object`); return }
+      if (typeof ref.title !== 'string' || !ref.title.trim()) errors.push(`${refPath}.title: must be a non-empty string`)
+      if ('artist' in ref && typeof ref.artist !== 'string') errors.push(`${refPath}.artist: must be a string`)
+      if ('id' in ref && !(typeof ref.id === 'string' && ref.id.trim()) && !(typeof ref.id === 'number' && Number.isSafeInteger(ref.id))) errors.push(`${refPath}.id: must be a non-empty string or integer`)
+    })
+  })
+  return errors
+}
+
 /**
  * Parses and validates any GTAR JSON backup, setlist export, or song list
  */
@@ -172,6 +211,18 @@ export function parseBackupJson(rawText: string): ParsedBackupResult {
     if (!data || typeof data !== 'object') {
       return { isValid: false, isSingleSetlist: false, songs: [], setlists: [], error: 'JSON is empty or invalid.' }
     }
+
+    const single = data.exportType === 'SINGLE_SETLIST' || 'setlist' in data
+    const errors: string[] = []
+    if (single) {
+      errors.push(...validateBackupEntries([], [data.setlist], true))
+    } else {
+      if (!Array.isArray(data) && !('songs' in data) && !('title' in data)) errors.push('songs: expected a backup songs array or a song object')
+      if ('songs' in data && !Array.isArray(data.songs)) errors.push('songs: must be an array')
+      if ('setlists' in data && !Array.isArray(data.setlists)) errors.push('setlists: must be an array')
+      errors.push(...validateBackupEntries(Array.isArray(data) ? data : Array.isArray(data.songs) ? data.songs : 'title' in data ? [data] : [], Array.isArray(data.setlists) ? data.setlists : []))
+    }
+    if (errors.length) return { isValid: false, isSingleSetlist: single, songs: [], setlists: [], error: `Backup rejected:\n${errors.map(error => `? ${error}`).join('\n')}` }
 
     // 1. Single Setlist Export Check
     if (data.exportType === 'SINGLE_SETLIST' || (data.setlist && typeof data.setlist.name === 'string')) {
@@ -188,7 +239,7 @@ export function parseBackupJson(rawText: string): ParsedBackupResult {
         bpm: s.bpm || '120',
         format: s.format || 'CHORD_PRO',
         transposeOffset: s.transposeOffset || 0,
-        rawContent: s.rawContent || `{title: ${s.title}}\n{artist: ${s.artist || ''}}\n\n`,
+        rawContent: s.rawContent ?? s.content,
       }))
 
       const extractedSetlist: WebSetlist = {
@@ -236,7 +287,7 @@ export function parseBackupJson(rawText: string): ParsedBackupResult {
       bpm: s.bpm || '120',
       format: s.format || 'CHORD_PRO',
       transposeOffset: s.transposeOffset || 0,
-      rawContent: s.rawContent || s.content || '',
+      rawContent: s.rawContent ?? s.content ?? '',
     }))
 
     const normalizedSetlists: WebSetlist[] = incomingSetlists.map((sl, idx) => ({
@@ -253,7 +304,7 @@ export function parseBackupJson(rawText: string): ParsedBackupResult {
     }))
 
     return {
-      isValid: normalizedSongs.length > 0 || normalizedSetlists.length > 0,
+      isValid: true,
       isSingleSetlist: false,
       songs: normalizedSongs,
       setlists: normalizedSetlists,

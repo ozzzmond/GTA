@@ -58,7 +58,30 @@ jobs:
           echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
           echo "Release Version: ${VERSION}, Prerelease: ${IS_PRE}"
 
+      - name: Validate and decode production signing credentials
+        if: env.IS_PRERELEASE != 'true'
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in SIGNING_KEY KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [[ -z "${!name//[[:space:]]/}" ]]; then
+              echo "::error::Required signing secret $name is missing"
+              exit 1
+            fi
+          done
+          printf '%s' "$SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          test -s "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
       - name: Run Unit Tests
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ "${{ env.IS_PRERELEASE }}" = "true" ]; then
             ./gradlew testDebugUnitTest --no-daemon --stacktrace
@@ -66,23 +89,11 @@ jobs:
             ./gradlew testReleaseUnitTest --no-daemon --stacktrace
           fi
 
-      - name: Decode Release Keystore (Production Only)
-        if: env.IS_PRERELEASE != 'true'
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        run: |
-          if [ -n "$SIGNING_KEY" ]; then
-            echo "$SIGNING_KEY" | base64 --decode > "${{ runner.temp }}/release.jks"
-            echo "Release keystore decoded successfully."
-          else
-            echo "SIGNING_KEY secret not found. Using fallback debug signature."
-          fi
-
       - name: Build APK
         env:
-          KEYSTORE_PATH: ${{ runner.temp }}/release.jks
-          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
-          ALIAS: ${{ secrets.ALIAS }}
+          KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ "${{ env.IS_PRERELEASE }}" = "true" ]; then

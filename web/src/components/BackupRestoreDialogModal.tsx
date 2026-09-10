@@ -40,6 +40,7 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message })
+    if (type === 'error') return
     setTimeout(() => {
       setFeedback(null)
       if (type === 'success') {
@@ -236,7 +237,7 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
               ) : (
                 <AlertCircle className="w-4 h-4 shrink-0" />
               )}
-              <span>{feedback.message}</span>
+              <span className="whitespace-pre-wrap">{feedback.message}</span>
             </div>
           )}
 
