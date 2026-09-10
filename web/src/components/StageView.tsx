@@ -12,7 +12,6 @@ import {
   Minimize2,
   ChevronDown,
   RotateCcw,
-  ListMusic,
   Columns2,
   Square,
   Minus,
@@ -22,9 +21,10 @@ import {
   Radio,
   Users,
   Wifi,
-  BookOpen,
   ArrowLeft,
   Cast,
+  MoreHorizontal,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { transposeKey, formatTransposeOffset } from '../utils/chordTransposer'
 import { parseGtarSong, splitSongLinesForColumns } from '../utils/songParser'
@@ -157,6 +157,8 @@ export const StageView: React.FC<StageViewProps> = ({
   const [isSpeedPromptOpen, setIsSpeedPromptOpen] = useState(false)
   const [speedInputText, setSpeedInputText] = useState('35')
   const [isBandSyncModalOpen, setIsBandSyncModalOpen] = useState(false)
+  // Stage floating options menu (replaces top HUD)
+  const [isStageMenuOpen, setIsStageMenuOpen] = useState(false)
 
   // Band Sync State
   const [syncState, setSyncState] = useState<BandSyncState>(() => bandSync.getState())
@@ -580,104 +582,27 @@ export const StageView: React.FC<StageViewProps> = ({
       style={{ height: inPerformanceMode ? '100vh' : 'calc(100vh - 4rem)' }}
     >
       {/* =================================================================== */}
-      {/* PERFORMANCE HUD — Unified floating mini-toolbar (fullscreen / focus) */}
-      {/* Shown INSTEAD of the sub-header when isPerformanceMode is true.     */}
+      {/* PERFORMANCE MODE — discreet top-edge safe-area exit tap zone only.  */}
+      {/* No HUD here: avoids Dynamic Island / notch on iOS.                  */}
       {/* =================================================================== */}
       {inPerformanceMode && (
-        <div
-          className="absolute z-50 flex items-center gap-1 px-2 py-1.5 rounded-2xl
-                     bg-black/50 backdrop-blur-xl border border-white/10 shadow-2xl
-                     transition-opacity duration-300"
-          style={{
-            top: 'max(10px, env(safe-area-inset-top, 10px))',
-            left: '50%',
-            transform: 'translateX(-50%)',
+        <button
+          type="button"
+          onClick={() => {
+            if (isFullscreen && fullscreenCtrl.isSupported) fullscreenCtrl.toggle()
+            else setIsDistractionFree(false)
           }}
+          className="absolute z-50 left-1/2 -translate-x-1/2 opacity-0 hover:opacity-100
+                     focus:opacity-100 transition-opacity duration-300
+                     flex items-center gap-1 px-3 py-1 rounded-b-xl
+                     bg-black/50 backdrop-blur-md text-white/60 text-[10px]
+                     font-mono uppercase tracking-widest cursor-pointer border-x border-b border-white/10"
+          style={{ top: 'env(safe-area-inset-top, 0px)' }}
+          aria-label="Exit performance mode"
+          title="Exit performance mode (tap or press Esc)"
         >
-          {/* Transpose: b / Key / # / Reset */}
-          <button
-            type="button"
-            onClick={() => onTransposeChange(transposeOffset - 1)}
-            className="p-1.5 rounded-xl text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer text-xs font-bold"
-            title="Transpose Down (-1)"
-          >♭</button>
-
-          <button
-            type="button"
-            onClick={() => setIsKeyPickerOpen(true)}
-            className="px-2.5 py-1 rounded-xl text-xs font-mono font-extrabold cursor-pointer transition-colors
-                       text-[#B58900] hover:bg-white/10"
-            title="Select Key"
-          >
-            {transposeOffset !== 0 ? `${effectiveKey} (${offsetStr})` : (effectiveKey || 'Key')}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onTransposeChange(transposeOffset + 1)}
-            className="p-1.5 rounded-xl text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer text-xs font-bold"
-            title="Transpose Up (+1)"
-          >♯</button>
-
-          {transposeOffset !== 0 && (
-            <button
-              type="button"
-              onClick={() => onTransposeChange(0)}
-              className="p-1 rounded-xl text-white/50 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
-              title="Reset Transposition"
-            >
-              <RotateCcw className="w-3 h-3" />
-            </button>
-          )}
-
-          {/* Divider */}
-          <span className="w-px h-4 bg-white/20 mx-0.5" />
-
-          {/* Font Size A- / A+ */}
-          <button
-            type="button"
-            onClick={() => {
-              const next = Math.max(12, fontSizePx - 1)
-              setFontSizePx(next)
-              localStorage.setItem('gtar_stage_font_size', String(next))
-            }}
-            className="px-1.5 py-1 rounded-xl text-[11px] font-extrabold text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
-            title="Decrease Font Size"
-          >A-</button>
-          <span className="text-[10px] font-mono text-white/40 w-5 text-center">{fontSizePx}</span>
-          <button
-            type="button"
-            onClick={() => {
-              const next = Math.min(38, fontSizePx + 1)
-              setFontSizePx(next)
-              localStorage.setItem('gtar_stage_font_size', String(next))
-            }}
-            className="px-1.5 py-1 rounded-xl text-[11px] font-extrabold text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
-            title="Increase Font Size"
-          >A+</button>
-
-          {/* Divider */}
-          <span className="w-px h-4 bg-white/20 mx-0.5" />
-
-          {/* Exit performance mode button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (isFullscreen && fullscreenCtrl.isSupported) {
-                fullscreenCtrl.toggle()
-              } else {
-                setIsDistractionFree(false)
-              }
-            }}
-            className="flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-mono font-bold
-                       text-white/60 hover:text-white hover:bg-white/15 transition-colors cursor-pointer
-                       uppercase tracking-wider"
-            title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Exit Focus Mode'}
-          >
-            <Minimize2 className="w-3 h-3" />
-            <span className="hidden sm:inline">Exit</span>
-          </button>
-        </div>
+          <Minimize2 className="w-2.5 h-2.5" /> Exit
+        </button>
       )}
 
       {/* =================================================================== */}
@@ -1031,167 +956,108 @@ export const StageView: React.FC<StageViewProps> = ({
       </div>
 
       {/* =================================================================== */}
-      {/* 3. BOTTOM BAR (Gig Navigation Strip & Floating Glassmorphic Stage)   */}
-      {/* Safe-area-inset-bottom ensures it clears iOS home indicator.        */}
+      {/* 3. BOTTOM DOCK — Android-style FABs + bottom-center setlist strip    */}
       {/* =================================================================== */}
+
+      {/* --- Bottom-center setlist navigator pill --- */}
+      {((isInSetlistMode && activeSetlistSongs.length > 1) ||
+        (!isInSetlistMode && songs.length > 1)) && (
+        <div
+          className="absolute bottom-0 left-1/2 -translate-x-1/2 z-30 flex items-center gap-0 pointer-events-auto
+                     bg-[#073642]/90 backdrop-blur-md rounded-t-2xl border-x border-t shadow-xl text-xs font-mono select-none"
+          style={{
+            borderColor: isInSetlistMode ? 'rgba(181,137,0,0.35)' : 'rgba(42,161,152,0.35)',
+            paddingBottom: 'max(10px, env(safe-area-inset-bottom, 10px))',
+          }}
+        >
+          <button
+            type="button"
+            disabled={isInSetlistMode ? activeSetlistSongIndex <= 0 : activeSongIndex <= 0}
+            onClick={() => {
+              if (isInSetlistMode && onSelectSetlistSongIndex) onSelectSetlistSongIndex(activeSetlistSongIndex - 1)
+              else if (!isInSetlistMode) onSelectSongIndex(activeSongIndex - 1)
+            }}
+            className={`px-3 py-2 transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed ${
+              isInSetlistMode ? 'text-[#B58900] hover:text-white' : 'text-[#2AA198] hover:text-white'
+            }`}
+            title="Previous Song"
+          >
+            <SkipBack className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenSetlistDrawer}
+            className={`px-3 py-2 font-extrabold text-[11px] transition-colors cursor-pointer ${
+              isInSetlistMode ? 'text-[#B58900] hover:text-white' : 'text-[#2AA198] hover:text-white'
+            }`}
+            title="Open setlist / library"
+          >
+            {isInSetlistMode
+              ? `${activeSetlistSongIndex + 1} / ${activeSetlistSongs.length}`
+              : `${activeSongIndex + 1} / ${songs.length}`}
+          </button>
+
+          <button
+            type="button"
+            disabled={isInSetlistMode ? activeSetlistSongIndex >= activeSetlistSongs.length - 1 : activeSongIndex >= songs.length - 1}
+            onClick={() => {
+              if (isInSetlistMode && onSelectSetlistSongIndex) onSelectSetlistSongIndex(activeSetlistSongIndex + 1)
+              else if (!isInSetlistMode) onSelectSongIndex(activeSongIndex + 1)
+            }}
+            className={`px-3 py-2 transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed ${
+              isInSetlistMode ? 'text-[#B58900] hover:text-white' : 'text-[#2AA198] hover:text-white'
+            }`}
+            title="Next Song"
+          >
+            <SkipForward className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* --- Bottom-right FAB stack (autoscroll + options) --- */}
       <div
-        className="absolute bottom-0 right-0 z-30 flex flex-col items-end gap-2.5 pointer-events-none"
+        className="absolute bottom-0 right-0 z-30 flex flex-col items-end gap-3 pointer-events-none"
         style={{
-          paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))',
+          paddingBottom: 'max(20px, env(safe-area-inset-bottom, 20px))',
           paddingRight: 'max(16px, env(safe-area-inset-right, 16px))',
         }}
       >
-        {/* Dynamic Gig Performance Navigation Strip (Strictly navigates within current active scope) */}
-        {((isInSetlistMode && activeSetlistSongs.length > 1) ||
-          (!isInSetlistMode && songs.length > 1)) && (
-          <div
-            className="pointer-events-auto flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-2xl bg-[#073642]/95 border backdrop-blur-md shadow-xl text-xs font-mono select-none"
-            style={{
-              borderColor: isInSetlistMode ? 'rgba(181, 137, 0, 0.45)' : 'rgba(42, 161, 152, 0.45)',
-            }}
-          >
-            <button
-              type="button"
-              disabled={isInSetlistMode ? activeSetlistSongIndex <= 0 : activeSongIndex <= 0}
-              onClick={() => {
-                if (isInSetlistMode && onSelectSetlistSongIndex) {
-                  onSelectSetlistSongIndex(activeSetlistSongIndex - 1)
-                } else if (!isInSetlistMode) {
-                  onSelectSongIndex(activeSongIndex - 1)
-                }
-              }}
-              className={`flex items-center gap-1 font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                isInSetlistMode
-                  ? 'text-[#B58900] hover:text-[#2AA198]'
-                  : 'text-[#2AA198] hover:text-[#FDF6E3]'
-              }`}
-              title={
-                isInSetlistMode
-                  ? "Previous Song in Setlist (ArrowLeft or 'p')"
-                  : "Previous Song in Library (ArrowLeft or 'p')"
-              }
-            >
-              <SkipBack className="w-3.5 h-3.5" />
-              <span>PREV</span>
-            </button>
+        {/* ··· Stage Options FAB */}
+        <button
+          type="button"
+          onClick={() => setIsStageMenuOpen(true)}
+          className="pointer-events-auto w-11 h-11 rounded-full flex items-center justify-center
+                     bg-[#073642]/90 backdrop-blur-md border border-[#1A4A55] shadow-xl
+                     text-[#93A1A1] hover:text-[#EEE8D5] hover:border-[#2AA198]
+                     transition-all active:scale-90 cursor-pointer"
+          title="Stage options (transpose, font, speed, exit)"
+          aria-label="Open stage options"
+        >
+          <MoreHorizontal className="w-5 h-5" />
+        </button>
 
-            <button
-              type="button"
-              onClick={onOpenSetlistDrawer}
-              className={`px-2.5 py-1 rounded-lg font-extrabold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer ${
-                isInSetlistMode
-                  ? 'bg-[#B58900]/15 text-[#B58900] hover:bg-[#B58900]/25'
-                  : 'bg-[#2AA198]/20 text-[#2AA198] hover:bg-[#2AA198]/30'
-              }`}
-              title="Click to open setlists and library drawer"
-            >
-              {isInSetlistMode ? (
-                <ListMusic className="w-3.5 h-3.5" />
-              ) : (
-                <BookOpen className="w-3.5 h-3.5" />
-              )}
-              <span>
-                {isInSetlistMode
-                  ? `SETLIST ${activeSetlistSongIndex + 1}/${activeSetlistSongs.length || 1}`
-                  : `LIBRARY ${activeSongIndex + 1}/${songs.length}`}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              disabled={
-                isInSetlistMode
-                  ? activeSetlistSongIndex >= activeSetlistSongs.length - 1
-                  : activeSongIndex >= songs.length - 1
-              }
-              onClick={() => {
-                if (isInSetlistMode && onSelectSetlistSongIndex) {
-                  onSelectSetlistSongIndex(activeSetlistSongIndex + 1)
-                } else if (!isInSetlistMode) {
-                  onSelectSongIndex(activeSongIndex + 1)
-                }
-              }}
-              className={`flex items-center gap-1 font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                isInSetlistMode
-                  ? 'text-[#B58900] hover:text-[#2AA198]'
-                  : 'text-[#2AA198] hover:text-[#FDF6E3]'
-              }`}
-              title={
-                isInSetlistMode
-                  ? "Next Song in Setlist (ArrowRight or 'n')"
-                  : "Next Song in Library (ArrowRight or 'n')"
-              }
-            >
-              <span>NEXT</span>
-              <SkipForward className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Floating Glassmorphic Stage Controller (Compose lines 742-848) */}
-        <div className="pointer-events-auto flex items-center gap-2.5 sm:gap-3 bg-[#073642]/95 backdrop-blur-md px-3 sm:px-4 py-2 rounded-2xl border border-[#1A4A55] shadow-2xl shadow-black/80">
-          {/* Primary Stage Play/Pause Action Button */}
-          <button
-            type="button"
-            onClick={handleToggleAutoScroll}
-            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs tracking-wider transition-all cursor-pointer shadow-lg active:scale-95 select-none ${
-              isAutoScrolling
-                ? 'bg-[#EF4444] text-white hover:bg-[#DC2626]'
-                : 'bg-[#B58900] text-black hover:bg-[#C89600]'
-            }`}
-          >
-            {isAutoScrolling ? (
-              <>
-                <Pause className="w-4 h-4 fill-current" />
-                <span>PAUSE</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 fill-current" />
-                <span>SCROLL</span>
-              </>
-            )}
-          </button>
-
-          {/* Pro dp/s (px/s) Speed Controls: (-) [35 dp/s] (+) */}
-          <div className="flex items-center bg-[#002B36] rounded-xl px-1.5 py-1 border border-[#1A4A55]/60">
-            <button
-              type="button"
-              onClick={() => handleAdjustSpeed(Math.max(5, scrollSpeed - 2))}
-              className="p-1.5 text-[#EEE8D5] hover:text-[#2AA198] rounded cursor-pointer"
-              title="Slower (-2 dp/s)"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Center Speed Badge: Tap to type */}
-            <div
-              onClick={() => {
-                setSpeedInputText(scrollSpeed.toString())
-                setIsSpeedPromptOpen(true)
-              }}
-              className="px-2.5 py-0.5 rounded-lg bg-[#073642] border border-[#B58900]/50 text-center cursor-pointer hover:border-[#2AA198] transition-colors mx-1 select-none"
-              title="Click to type exact scroll speed"
-            >
-              <div className="text-xs font-mono font-extrabold text-[#B58900] leading-tight">
-                {scrollSpeed} dp/s
-              </div>
-              <div className="text-[9px] text-[#93A1A1] leading-none">Tap to type</div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => handleAdjustSpeed(Math.min(180, scrollSpeed + 2))}
-              className="p-1.5 text-[#EEE8D5] hover:text-[#2AA198] rounded cursor-pointer"
-              title="Faster (+2 dp/s)"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
+        {/* Autoscroll FAB — circular, Android yellow/red */}
+        <button
+          type="button"
+          onClick={handleToggleAutoScroll}
+          className={`pointer-events-auto w-14 h-14 rounded-full flex items-center justify-center
+                     shadow-2xl transition-all active:scale-90 cursor-pointer select-none
+                     border-2 ${
+            isAutoScrolling
+              ? 'bg-[#EF4444] border-[#EF4444]/60 text-white hover:bg-[#DC2626] shadow-red-900/50'
+              : 'bg-[#B58900] border-[#B58900]/60 text-black hover:bg-[#C89600] shadow-amber-900/40'
+          }`}
+          title={isAutoScrolling ? 'Pause autoscroll (Space)' : 'Start autoscroll (Space)'}
+          aria-label={isAutoScrolling ? 'Pause autoscroll' : 'Start autoscroll'}
+        >
+          {isAutoScrolling
+            ? <Pause className="w-6 h-6 fill-current" />
+            : <Play className="w-6 h-6 fill-current" />}
+        </button>
       </div>
 
-      {/* Tap to type custom scroll speed popup */}
+      {/* Speed input popup */}
       {isSpeedPromptOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
@@ -1203,9 +1069,7 @@ export const StageView: React.FC<StageViewProps> = ({
             className="w-full max-w-xs rounded-2xl bg-[#073642] border border-[#1A4A55] p-5 shadow-2xl text-[#EEE8D5]"
           >
             <h3 className="text-base font-bold text-[#B58900] mb-2">Set Scroll Speed</h3>
-            <p className="text-xs text-[#93A1A1] mb-4">
-              Enter scroll speed in dp/s (pixels per second, 5 - 180):
-            </p>
+            <p className="text-xs text-[#93A1A1] mb-4">Enter scroll speed in dp/s (5–180):</p>
             <input
               type="number"
               min="5"
@@ -1216,21 +1080,153 @@ export const StageView: React.FC<StageViewProps> = ({
               className="w-full px-3 py-2 rounded-xl bg-[#002B36] border border-[#1A4A55] text-center text-lg font-mono font-bold text-[#B58900] focus:outline-none focus:border-[#2AA198]"
             />
             <div className="flex items-center justify-end gap-2 mt-4">
-              <button
-                type="button"
-                onClick={() => setIsSpeedPromptOpen(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#93A1A1] hover:text-[#EEE8D5]"
-              >
+              <button type="button" onClick={() => setIsSpeedPromptOpen(false)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#93A1A1] hover:text-[#EEE8D5]">
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-4 py-1.5 rounded-lg bg-[#2AA198] text-[#002B36] text-xs font-bold hover:bg-[#35B8AD]"
-              >
+              <button type="submit"
+                className="px-4 py-1.5 rounded-lg bg-[#2AA198] text-[#002B36] text-xs font-bold hover:bg-[#35B8AD]">
                 Apply
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* Stage Options Bottom Sheet                                         */}
+      {/* ================================================================== */}
+      {isStageMenuOpen && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end"
+          onClick={() => setIsStageMenuOpen(false)}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+          {/* Sheet */}
+          <div
+            className="relative z-10 rounded-t-3xl bg-[#073642] border-t border-x border-[#1A4A55] shadow-2xl px-5 pt-3"
+            style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom, 24px))' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drag handle */}
+            <div className="w-10 h-1 bg-[#1A4A55] rounded-full mx-auto mb-4" />
+
+            <h2 className="text-sm font-extrabold text-[#EEE8D5] tracking-wide uppercase mb-4 flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-[#2AA198]" /> Stage Options
+            </h2>
+
+            {/* --- Transpose row --- */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs font-mono text-[#93A1A1] w-20 shrink-0">Transpose</span>
+              <div className={`flex items-center rounded-xl border p-0.5 flex-1 ${
+                transposeOffset !== 0 ? 'bg-[#B58900]/10 border-[#B58900]' : 'bg-[#002B36] border-[#1A4A55]'
+              }`}>
+                <button type="button" onClick={() => onTransposeChange(transposeOffset - 1)}
+                  className="p-2 text-[#EEE8D5] hover:text-[#2AA198] cursor-pointer">
+                  <Minus className="w-4 h-4" />
+                </button>
+                <button type="button" onClick={() => setIsKeyPickerOpen(true)}
+                  className={`flex-1 text-center text-sm font-mono font-extrabold cursor-pointer ${
+                    transposeOffset !== 0 ? 'text-[#B58900]' : 'text-[#EEE8D5]'
+                  }`}>
+                  {transposeOffset !== 0 ? `${effectiveKey} (${offsetStr})` : `Key: ${effectiveKey || 'Orig'}`}
+                </button>
+                {transposeOffset !== 0 && (
+                  <button type="button" onClick={() => onTransposeChange(0)}
+                    className="p-2 text-[#93A1A1] hover:text-[#DC6E67] cursor-pointer">
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button type="button" onClick={() => onTransposeChange(transposeOffset + 1)}
+                  className="p-2 text-[#EEE8D5] hover:text-[#2AA198] cursor-pointer">
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* --- Font size row --- */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs font-mono text-[#93A1A1] w-20 shrink-0">Font Size</span>
+              <div className="flex items-center bg-[#002B36] rounded-xl border border-[#1A4A55] flex-1">
+                <button type="button"
+                  onClick={() => { const n = Math.max(12, fontSizePx - 1); setFontSizePx(n); localStorage.setItem('gtar_stage_font_size', String(n)) }}
+                  className="px-4 py-2 text-sm font-extrabold text-[#EEE8D5] hover:text-[#2AA198] cursor-pointer">
+                  A-
+                </button>
+                <span className="flex-1 text-center text-sm font-mono font-bold text-[#B58900]">{fontSizePx}px</span>
+                <button type="button"
+                  onClick={() => { const n = Math.min(38, fontSizePx + 1); setFontSizePx(n); localStorage.setItem('gtar_stage_font_size', String(n)) }}
+                  className="px-4 py-2 text-sm font-extrabold text-[#EEE8D5] hover:text-[#2AA198] cursor-pointer">
+                  A+
+                </button>
+              </div>
+            </div>
+
+            {/* --- Autoscroll speed row --- */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs font-mono text-[#93A1A1] w-20 shrink-0">Speed</span>
+              <div className="flex items-center bg-[#002B36] rounded-xl border border-[#1A4A55] flex-1">
+                <button type="button"
+                  onClick={() => handleAdjustSpeed(Math.max(5, scrollSpeed - 5))}
+                  className="px-4 py-2 text-[#EEE8D5] hover:text-[#2AA198] cursor-pointer">
+                  <Minus className="w-4 h-4" />
+                </button>
+                <button type="button"
+                  onClick={() => { setSpeedInputText(scrollSpeed.toString()); setIsStageMenuOpen(false); setIsSpeedPromptOpen(true) }}
+                  className="flex-1 text-center text-sm font-mono font-bold text-[#B58900] cursor-pointer py-2">
+                  {scrollSpeed} dp/s
+                </button>
+                <button type="button"
+                  onClick={() => handleAdjustSpeed(Math.min(150, scrollSpeed + 5))}
+                  className="px-4 py-2 text-[#EEE8D5] hover:text-[#2AA198] cursor-pointer">
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* --- Column toggle + Font style row --- */}
+            <div className="flex items-center gap-2 mb-5">
+              <span className="text-xs font-mono text-[#93A1A1] w-20 shrink-0">Layout</span>
+              <div className="flex items-center gap-2 flex-1 flex-wrap">
+                <button type="button"
+                  onClick={() => setIsTwoColumn(!isTwoColumn)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono font-semibold cursor-pointer transition-all ${
+                    isTwoColumn ? 'bg-[#B58900]/20 border-[#B58900] text-[#B58900]' : 'bg-[#002B36] border-[#1A4A55] text-[#EEE8D5]'
+                  }`}>
+                  {isTwoColumn ? <Columns2 className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                  {isTwoColumn ? '2-Col' : '1-Col'}
+                </button>
+                {(['mono','sans','serif'] as const).map((fs) => (
+                  <button key={fs} type="button" onClick={() => setFontStyle(fs)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                      fontStyle === fs ? 'bg-[#2AA198] border-[#2AA198] text-[#002B36] font-extrabold' : 'bg-[#002B36] border-[#1A4A55] text-[#EEE8D5]'
+                    }`}>
+                    {fs.charAt(0).toUpperCase() + fs.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* --- Exit performance mode --- */}
+            {inPerformanceMode && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsStageMenuOpen(false)
+                  if (isFullscreen && fullscreenCtrl.isSupported) fullscreenCtrl.toggle()
+                  else setIsDistractionFree(false)
+                }}
+                className="w-full py-3 rounded-2xl bg-[#002B36] border border-[#1A4A55]
+                           text-sm font-bold text-[#EEE8D5] hover:border-[#DC6E67] hover:text-[#DC6E67]
+                           transition-colors cursor-pointer flex items-center justify-center gap-2 mb-2"
+              >
+                <Minimize2 className="w-4 h-4" />
+                {isFullscreen ? 'Exit Fullscreen' : 'Exit Focus Mode'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
