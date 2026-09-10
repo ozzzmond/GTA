@@ -10,6 +10,21 @@ import org.junit.Test
 class SongParserTest {
 
     @Test
+    fun mixedBracketsDirectivesAndTrailingChords() {
+        val song = SongParser.parse("{title: Test}\n(Verse I)\n{Cadd9}Sing [G/B]on{D}\n{soc}\n[Cadd9]Again\n{eoc}")
+        assertEquals("Test", song.title)
+        assertEquals(listOf("Verse I", "Chorus"), song.lines.filterIsInstance<SongLine.SectionHeader>().map { it.title })
+        val line = song.lines.filterIsInstance<SongLine.ChordProLine>().first()
+        assertEquals(listOf("Cadd9", "G/B", "D"), line.segments.map { it.chord })
+        assertEquals(listOf("Sing ", "on", ""), line.segments.map { it.text })
+        val shifted = com.joel.gta.data.engine.TransposeEngine.transposeSong(song, 2)
+        val segments = shifted.lines.filterIsInstance<SongLine.ChordProLine>().first().segments
+        assertEquals(listOf("Dadd9", "A/C#", "E"), segments.map { it.chord })
+        assertEquals(line.segments.map { it.text }, segments.map { it.text })
+        assertEquals("Cadd9", (SongParser.parse("{Cadd9}").lines.single() as SongLine.ChordLine).chords)
+    }
+
+    @Test
     fun testChordRegexValidChords() {
         val validChords = listOf(
             "C", "G", "Em", "Am7", "F#m", "Bb", "Dsus4", "Cadd9",
@@ -170,16 +185,10 @@ class SongParserTest {
         assertEquals("A", song.key)
         assertEquals(SongFormat.CHORD_PRO, song.format)
 
-        // Verifies chords are converted to chords-over-lyrics (ChordLine + LyricLine)
-        val chordLines = song.lines.filterIsInstance<SongLine.ChordLine>()
-        val lyricLines = song.lines.filterIsInstance<SongLine.LyricLine>()
-        assertTrue("Should contain converted ChordLine elements", chordLines.isNotEmpty())
-        assertTrue("Should contain clean LyricLine elements", lyricLines.isNotEmpty())
+        val inlineLines = song.lines.filterIsInstance<SongLine.ChordProLine>()
+        assertTrue("Should preserve chord and lyric segments", inlineLines.isNotEmpty())
+        assertTrue(inlineLines.flatMap { it.segments }.none { it.text.contains("[A]") })
 
-        // Ensure NO raw bracketed chords remain in lyric lines
-        for (line in lyricLines) {
-            assertFalse("Lyric line '${line.lyrics}' should not contain bracketed chords", line.lyrics.contains("[A]"))
-        }
     }
 
     @Test

@@ -74,7 +74,7 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-dev.1"
+            versionNameSuffix = "-dev.2"
             manifestPlaceholders["appName"] = "GTAR-Dev"
             signingConfig = signingConfigs.getByName("debug")
         }

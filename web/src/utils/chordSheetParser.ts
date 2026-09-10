@@ -1,4 +1,5 @@
 import ChordSheetJS from 'chordsheetjs'
+import { normalizeAngleBrackets, parseGtarSong } from './songParser'
 import type { SongFormat } from '../types/gtar'
 
 export interface ParsedSongResult {
@@ -129,13 +130,7 @@ export function extractDirectives(rawText: string) {
  * Slash chords (D/F#, G/B, Bb/D) are correctly recognised as valid chord tokens.
  */
 export function detectFormat(rawText: string): SongFormat {
-  // Match inline chord tokens: [A], [Bm], [C#maj7], [D/F#], [Bb], [G/B], etc.
-  // Must start with a note letter (A–G) optionally followed by b/#, chord quality, and an
-  // optional slash bass note. Does NOT match pure-word labels like [Intro] or [Verse 1].
-  const chordTokenRegex = /\[([A-G][b#]?(?:maj|min|m|M|sus|add|aug|dim|dom)?[0-9]?(?:\/[A-G][b#]?)?)\]/g
-  const chordMatches = (rawText.match(chordTokenRegex) || []).length
-  if (chordMatches >= 2) return 'CHORD_PRO'
-  return 'TWO_LINE'
+  return parseGtarSong(rawText).format === 'CHORD_PRO' ? 'CHORD_PRO' : 'TWO_LINE'
 }
 
 /**
@@ -144,7 +139,7 @@ export function detectFormat(rawText: string): SongFormat {
  * so ChordSheetJS formats them as section titles rather than chord tokens.
  */
 function prepareTextForChordSheet(rawText: string): string {
-  const lines = rawText.split('\n')
+  const lines = normalizeAngleBrackets(rawText).split('\n')
   const processed: string[] = []
 
   // Matches standalone section headers on their own line only — never slash chords or inline brackets.

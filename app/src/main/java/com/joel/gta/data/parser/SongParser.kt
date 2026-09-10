@@ -22,7 +22,11 @@ object SongParser {
         var chordProLineCount = 0
         var twoLineChordCount = 0
 
-        for ((index, rawLine) in lines.withIndex()) {
+        for (sourceLine in lines) {
+            val rawLine = sourceLine.replace(Regex("""\{([^{}]*)\}""")) { match ->
+                if (ChordRegex.CHORD_TOKEN_REGEX.matches(match.groupValues[1].trim())) "[${match.groupValues[1].trim()}]"
+                else if (sourceLine.trim() == match.value) match.value else ""
+            }
             val trimmed = rawLine.trim()
 
             // 1. Empty lines
@@ -42,6 +46,7 @@ object SongParser {
                     "key" -> key = value
                     "capo" -> capo = value
                     "tempo" -> tempo = value
+                    "soc", "start_of_chorus" -> parsedLines.add(SongLine.SectionHeader(value.ifBlank { "Chorus" }))
                     "c", "comment" -> parsedLines.add(SongLine.SectionHeader(value))
                 }
                 chordProLineCount++
@@ -61,21 +66,26 @@ object SongParser {
             ).matchEntire(trimmed)
             if (combinedHeaderMatch != null) {
                 val headerRaw = combinedHeaderMatch.groupValues[1]
-                val headerPart = headerRaw.trim('[', ']', '<', '>', ':').trim()
+                val headerPart = headerRaw.trim('[', ']', '<', '>', '(', ')', ':').trim()
                 val restPart = combinedHeaderMatch.groupValues[2].trim()
 
-                // Ensure headerPart is not a single chord (e.g. "[G] Em C D")
-                if (!ChordRegex.CHORD_TOKEN_REGEX.matches(headerPart) && isChordLine(restPart)) {
+                val restBrackets = findBracketedChords(restPart)
+                if (isSectionHeader("[$headerPart]") && (restBrackets.isNotEmpty() || isChordLine(restPart))) {
                     parsedLines.add(SongLine.SectionHeader(headerPart))
-                    parsedLines.add(SongLine.ChordLine(restPart))
-                    twoLineChordCount++
+                    if (restBrackets.isNotEmpty() && hasInlineLyricContent(restPart, restBrackets)) {
+                        parsedLines.add(SongLine.ChordProLine(restPart, parseChordProLine(restPart)))
+                        chordProLineCount++
+                    } else {
+                        parsedLines.add(SongLine.ChordLine(normalizeChordLineBrackets(restPart, restBrackets)))
+                        twoLineChordCount++
+                    }
                     continue
                 }
             }
 
             // 4b. Standalone section headers like [Verse 03], [Repeat Chorus], [To Transposed], [Transposed Chorus], [Chorus], [Intro], [Solo]
             if (isSectionHeader(trimmed)) {
-                val cleanTitle = trimmed.trim('[', ']', '<', '>', ':').trim()
+                val cleanTitle = trimmed.trim('[', ']', '<', '>', '(', ')', ':').trim()
                 parsedLines.add(SongLine.SectionHeader(cleanTitle))
                 continue
             }
@@ -85,13 +95,7 @@ object SongParser {
             if (bracketedChords.isNotEmpty()) {
                 if (hasInlineLyricContent(rawLine, bracketedChords)) {
                     // 5a. Inline ChordPro line (chords embedded within lyrics on the same line)
-                    val (chordLine, lyricLine) = convertChordProToTwoLine(rawLine)
-                    if (chordLine.isNotBlank()) {
-                        parsedLines.add(SongLine.ChordLine(chordLine))
-                    }
-                    if (lyricLine.isNotBlank()) {
-                        parsedLines.add(SongLine.LyricLine(lyricLine))
-                    }
+                    parsedLines.add(SongLine.ChordProLine(rawLine, parseChordProLine(rawLine)))
                     chordProLineCount++
                 } else {
                     // 5b. 2-line standalone chord row with bracketed chords: e.g. "<G>              <A7>"
@@ -145,7 +149,7 @@ object SongParser {
     fun findBracketedChords(line: String): List<BracketedChordMatch> {
         return ChordRegex.CHORDPRO_INLINE_REGEX.findAll(line)
             .mapNotNull { match ->
-                val chordCandidate = match.groupValues[1].trim()
+                val chordCandidate = match.groupValues.drop(1).first { it.isNotEmpty() }.trim()
                 if (ChordRegex.CHORD_TOKEN_REGEX.matches(chordCandidate)) {
                     BracketedChordMatch(
                         chord = chordCandidate,
@@ -228,6 +232,7 @@ object SongParser {
      * Distinguishes section headers from bracketed chords like [G], [Am7], [D/F#].
      */
     fun isSectionHeader(line: String): Boolean {
+        if (line.trim().startsWith("(") && line.trim().endsWith(")")) return isSectionHeader(line.trim().drop(1).dropLast(1))
         val trimmed = line.trim()
         if (trimmed.isEmpty() || trimmed.length > 50) return false
 

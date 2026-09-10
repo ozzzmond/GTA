@@ -1,4 +1,5 @@
 import type {
+  ChordSegment,
   SongFormat,
   SongLine,
   ParsedGtarSong
@@ -58,7 +59,7 @@ function cleanChordWrapper(token: string): string {
 
 // Check if a line is a section header like [Verse 1], Chorus:, Intro:
 export function isSectionHeader(line: string): boolean {
-  const trimmed = line.trim()
+  const trimmed = line.trim().replace(/^\((.*)\)$/, '$1')
   if (!trimmed || trimmed.length > 50) return false
   if (TAB_LINE_REGEX.test(trimmed)) return false
 
@@ -115,6 +116,7 @@ const COMMON_PROSE_WORDS = new Set([
  */
 export function normalizeAngleBrackets(text: string): string {
   // 1. Compound hyphenated angle bracket chords like <C#m>-<B> or <C#m-B>
+  text = text.replace(/\{([^{}]+)\}/g, (match, chord: string) => CHORD_TOKEN_REGEX.test(chord.trim()) ? `[${chord.trim()}]` : match)
   let res = text.replace(/<([A-G][b#]?[^>]*)-([A-G][b#]?[^>]*)>/gi, (match, c1, c2) => {
     if (CHORD_TOKEN_REGEX.test(c1.trim()) && CHORD_TOKEN_REGEX.test(c2.trim())) {
       return `[${c1.trim()}]-[${c2.trim()}]`
@@ -288,6 +290,19 @@ function findBracketedChords(line: string): BracketedMatch[] {
   return matches
 }
 
+export function parseChordProLine(line: string, transposeOffset = 0): ChordSegment[] {
+  const matches = findBracketedChords(normalizeAngleBrackets(line))
+  line = normalizeAngleBrackets(line)
+  if (!matches.length) return [{ chord: null, text: line }]
+  const segments: ChordSegment[] = []
+  if (matches[0].startIndex > 0) segments.push({ chord: null, text: line.slice(0, matches[0].startIndex) })
+  matches.forEach((match, index) => segments.push({
+    chord: transposeChordToken(match.chord, transposeOffset),
+    text: line.slice(match.endIndex, matches[index + 1]?.startIndex ?? line.length),
+  }))
+  return segments
+}
+
 // Checks if line has meaningful lyric content outside bracketed chords
 function hasInlineLyricContent(line: string, bracketed: BracketedMatch[]): boolean {
   let lyricOnly = ''
@@ -413,7 +428,8 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
   let chordProCount = 0
   let twoLineCount = 0
 
-  for (const rawLine of lines) {
+  for (const sourceLine of lines) {
+    const rawLine = sourceLine.replace(/\{([^{}]*)\}/g, (match) => sourceLine.trim() === match ? match : '')
     const trimmed = rawLine.trim()
 
     // 1. Empty lines
@@ -423,12 +439,16 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
     }
 
     // 2. ChordPro Directives: {key: value}
-    const directiveMatch = /^\{([a-zA-Z]+)(?::\s*([^}]+))?\}$/.exec(trimmed)
+    const directiveMatch = /^\{([a-zA-Z_-]+)(?::\s*([^}]+))?\}$/.exec(trimmed)
     if (directiveMatch) {
       const tag = directiveMatch[1].toLowerCase()
       const value = (directiveMatch[2] || '').trim()
 
       switch (tag) {
+        case 'soc':
+        case 'start_of_chorus':
+          parsedLines.push({ type: 'SECTION_HEADER', title: value || 'Chorus' })
+          break
         case 't':
         case 'title':
           title = value
@@ -499,28 +519,7 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
               isOverLyric: false,
             })
           } else {
-            // Inline ChordPro with lyrics: convert to stacked 2-line format
-            const [chordLine, lyricLine] = convertChordProToTwoLine(restPart)
-            const transposedChordLine =
-              transposeOffset !== 0 ? transposeChordLine(chordLine, transposeOffset) : chordLine
-            const chordTokens = restBrackets.map((b) =>
-              transposeOffset !== 0 ? transposeChordToken(b.chord, transposeOffset) : b.chord
-            )
-
-            if (transposedChordLine.trim()) {
-              parsedLines.push({
-                type: 'CHORD_ROW',
-                chords: chordTokens,
-                raw: transposedChordLine,
-                isOverLyric: true,
-              })
-            }
-            if (lyricLine.trim()) {
-              parsedLines.push({
-                type: 'LYRIC',
-                lyrics: lyricLine,
-              })
-            }
+            parsedLines.push({ type: 'CHORD_PRO', raw: restPart, segments: parseChordProLine(restPart, transposeOffset) })
           }
           chordProCount++
           continue
@@ -545,7 +544,7 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
 
     // 4b. Standalone Section Header e.g. "[Intro]", "[Verse 1]", "[Chorus]"
     if (isSectionHeader(trimmed)) {
-      const cleanTitle = trimmed.replace(/[[\]<>:]/g, '').trim()
+      const cleanTitle = trimmed.replace(/[[\]<>():]/g, '').trim()
       parsedLines.push({ type: 'SECTION_HEADER', title: cleanTitle })
       continue
     }
@@ -566,33 +565,10 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
           type: 'CHORD_ROW',
           chords: chordTokens,
           raw: transposedRaw,
-          isOverLyric: false,
         })
         chordProCount++
       } else {
-        // 5b. INLINE CHORDPRO LINE (Chords embedded within lyrics on the same line)
-        // Convert to stacked 2-line chords-over-lyrics format (exact Android SongParser.kt behavior)
-        const [chordLine, lyricLine] = convertChordProToTwoLine(rawLine)
-        const transposedChordLine =
-          transposeOffset !== 0 ? transposeChordLine(chordLine, transposeOffset) : chordLine
-        const chordTokens = bracketed.map((b) =>
-          transposeOffset !== 0 ? transposeChordToken(b.chord, transposeOffset) : b.chord
-        )
-
-        if (transposedChordLine.trim()) {
-          parsedLines.push({
-            type: 'CHORD_ROW',
-            chords: chordTokens,
-            raw: transposedChordLine,
-            isOverLyric: true,
-          })
-        }
-        if (lyricLine.trim()) {
-          parsedLines.push({
-            type: 'LYRIC',
-            lyrics: lyricLine,
-          })
-        }
+        parsedLines.push({ type: 'CHORD_PRO', raw: rawLine, segments: parseChordProLine(rawLine, transposeOffset) })
         chordProCount++
       }
       continue
@@ -717,5 +693,6 @@ export function splitSongLinesForColumns(lines: SongLine[]): [SongLine[], SongLi
     }
   }
 
+  if (lines[splitIndex]?.type === 'LYRIC' && lines[splitIndex - 1]?.type === 'CHORD_ROW') splitIndex--
   return [lines.slice(0, splitIndex), lines.slice(splitIndex)]
 }

@@ -165,7 +165,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
                         letterSpacing: '0.8px',
                         color: '#B58900',
                       }}
-                      className={`${fontClass} stage-chord-text font-bold hover:text-[#2AA198] hover:underline cursor-pointer active:scale-95 transition-colors select-none`}
+                      className={`stage-mono stage-chord-text font-bold hover:text-[#2AA198] hover:underline cursor-pointer active:scale-95 transition-colors select-none`}
                       title={`View ${chord} fretboard diagram`}
                     >
                       {chord}
@@ -187,7 +187,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
                   letterSpacing: '0.8px',
                   color: '#B58900',
                 }}
-                className={`${fontClass} stage-chord-text font-bold whitespace-pre select-text`}
+                className={`stage-mono stage-chord-text font-bold whitespace-pre select-text`}
               >
                 {renderInteractiveChordLine(line.raw, onChordClick)}
               </div>
@@ -210,7 +210,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
                         letterSpacing: '0.8px',
                         color: '#B58900',
                       }}
-                      className={`${fontClass} stage-chord-text font-bold whitespace-pre`}
+                      className={`stage-mono stage-chord-text font-bold whitespace-pre`}
                     >
                       {renderInteractiveChordLine(chordLine, onChordClick)}
                     </div>
@@ -225,7 +225,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
                         letterSpacing: '0.8px',
                         color: '#EEE8D5',
                       }}
-                      className={`${fontClass} stage-lyric-text font-normal whitespace-pre`}
+                      className={`stage-mono stage-lyric-text font-normal whitespace-pre`}
                     >
                       {lyricLine}
                     </div>
@@ -247,7 +247,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
                   letterSpacing: '0.8px',
                   color: '#EEE8D5',
                 }}
-                className={`${fontClass} stage-lyric-text font-normal whitespace-pre select-text`}
+                className={`stage-mono stage-lyric-text font-normal whitespace-pre select-text`}
               >
                 {line.lyrics}
               </div>
@@ -278,40 +278,16 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
             }
 
           case 'CHORD_PRO': {
-            // Stacked chords-over-lyrics without inline brackets
-            const [chordLine, lyricLine] = convertChordProToTwoLine(line.raw || '')
             return (
-              <div key={idx} className="select-text">
-                {chordLine.trim() && (
-                  <div
-                    style={{
-                      paddingTop: '4px',
-                      paddingBottom: '1px',
-                      fontSize: `${fontSizePx}px`,
-                      lineHeight: `${fontSizePx * 1.35}px`,
-                      letterSpacing: '0.8px',
-                      color: '#B58900',
-                    }}
-                    className={`${fontClass} stage-chord-text font-bold whitespace-pre`}
-                  >
-                    {renderInteractiveChordLine(chordLine, onChordClick)}
-                  </div>
-                )}
-                {lyricLine && (
-                  <div
-                    style={{
-                      paddingTop: '1px',
-                      paddingBottom: '5px',
-                      fontSize: `${fontSizePx}px`,
-                      lineHeight: `${fontSizePx * 1.35}px`,
-                      letterSpacing: '0.8px',
-                      color: '#EEE8D5',
-                    }}
-                    className={`${fontClass} stage-lyric-text font-normal whitespace-pre`}
-                  >
-                    {lyricLine}
-                  </div>
-                )}
+              <div key={idx} className={`${fontClass} select-text`} style={{ fontSize: fontSizePx, padding: '4px 0 5px' }}>
+                {line.segments.map((segment, index) => (
+                  <span key={index} className="inline-flex flex-col align-bottom" style={{ whiteSpace: 'pre-wrap', maxWidth: '100%' }}>
+                    <span className="text-amber-400 font-bold font-mono text-[0.85em] leading-none mb-1 select-none">
+                      {segment.chord ? renderInteractiveChordLine(segment.chord, onChordClick) : '\u00a0'}
+                    </span>
+                    <span className="leading-normal stage-lyric-text">{segment.text || '\u00a0'}</span>
+                  </span>
+                ))}
               </div>
             )
           }

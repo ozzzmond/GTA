@@ -33,9 +33,7 @@ object ChordRegex {
     )
 
     /** Matches inline bracketed chord in either square brackets [G] or angle brackets <G> */
-    val CHORDPRO_INLINE_REGEX = Regex(
-        "[\\[<]([A-G][#b♯♭]?(?:[a-zA-Z0-9#b♯♭\\/+\\-()ø°Δ,]+)?|N\\.?C\\.?)[\\]>]"
-    )
+    val CHORDPRO_INLINE_REGEX = Regex("""\[([^\[\]]+)\]|<([^<>]+)>|\{([^{}]+)\}""")
 
     val BRACKETED_CHORD_REGEX = CHORDPRO_INLINE_REGEX
 

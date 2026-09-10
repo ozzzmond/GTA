@@ -1,5 +1,10 @@
 package com.joel.gta.ui.components
 
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.clickable
+
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,10 +58,12 @@ fun splitSongLinesForColumns(lines: List<SongLine>): Pair<List<SongLine>, List<S
             break
         }
     }
+    if (lines.getOrNull(splitIndex) is SongLine.LyricLine && lines.getOrNull(splitIndex - 1) is SongLine.ChordLine) splitIndex--
     return lines.take(splitIndex) to lines.drop(splitIndex)
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun RenderSongLine(
     line: SongLine,
     fontSizeSp: Float,
@@ -84,11 +91,11 @@ fun RenderSongLine(
             Text(
                 text = line.chords,
                 style = ChordMonospaceStyle.copy(
-                    fontFamily = songFontStyle.fontFamily,
+                    fontFamily = FontFamily.Monospace,
                     fontWeight = songFontStyle.chordFontWeight,
                     fontSize = fontSizeSp.sp,
                     lineHeight = (fontSizeSp * 1.35f).sp,
-                    letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
+                    letterSpacing = 0.8.sp,
                     color = customColors.chordAccent
                 ),
                 onTextLayout = { layoutResult = it },
@@ -112,11 +119,11 @@ fun RenderSongLine(
             Text(
                 text = line.lyrics,
                 style = LyricMonospaceStyle.copy(
-                    fontFamily = songFontStyle.fontFamily,
+                    fontFamily = FontFamily.Monospace,
                     fontWeight = songFontStyle.lyricFontWeight,
                     fontSize = fontSizeSp.sp,
                     lineHeight = (fontSizeSp * 1.35f).sp,
-                    letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
+                    letterSpacing = 0.8.sp,
                     color = customColors.textPrimary
                 ),
                 modifier = Modifier.padding(top = 1.dp, bottom = 5.dp)
@@ -124,65 +131,30 @@ fun RenderSongLine(
         }
 
         is SongLine.ChordProLine -> {
-            var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-            val annotatedText = buildAnnotatedString {
-                for (segment in line.segments) {
-                    if (segment.chord != null) {
-                        pushStringAnnotation(tag = "CHORD", annotation = segment.chord)
-                        withStyle(
-                            style = SpanStyle(
-                                color = customColors.chordAccent,
-                                fontWeight = songFontStyle.chordFontWeight
+            FlowRow(modifier = Modifier.padding(vertical = 3.dp)) {
+                line.segments.forEach { segment ->
+                    Column {
+                        Text(
+                            text = segment.chord ?: " ",
+                            color = customColors.chordAccent,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = songFontStyle.chordFontWeight,
+                            fontSize = (fontSizeSp * 0.85f).sp,
+                            modifier = Modifier.padding(bottom = 4.dp).then(
+                                if (segment.chord != null) Modifier.clickable { onChordClick(segment.chord) } else Modifier
                             )
-                        ) {
-                            append("[${segment.chord}]")
-                        }
-                        pop()
-                    }
-                    withStyle(
-                        style = SpanStyle(
-                            color = customColors.textPrimary,
-                            fontWeight = songFontStyle.lyricFontWeight
                         )
-                    ) {
-                        append(segment.text)
+                        Text(
+                            text = segment.text.ifEmpty { " " },
+                            color = customColors.textPrimary,
+                            fontFamily = songFontStyle.fontFamily,
+                            fontWeight = songFontStyle.lyricFontWeight,
+                            fontSize = fontSizeSp.sp,
+                            lineHeight = (fontSizeSp * 1.4f).sp
+                        )
                     }
                 }
             }
-            Text(
-                text = annotatedText,
-                fontFamily = songFontStyle.fontFamily,
-                fontSize = fontSizeSp.sp,
-                lineHeight = (fontSizeSp * 1.4f).sp,
-                letterSpacing = if (songFontStyle == SongFontStyle.MONOSPACE) 0.8.sp else 0.5.sp,
-                onTextLayout = { layoutResult = it },
-                modifier = Modifier
-                    .padding(vertical = 3.dp)
-                    .pointerInput(annotatedText) {
-                        detectTapGestures { tapOffset ->
-                            layoutResult?.let { layout ->
-                                val offset = layout.getOffsetForPosition(tapOffset)
-                                val clickedChord = annotatedText
-                                    .getStringAnnotations(tag = "CHORD", start = offset, end = offset)
-                                    .firstOrNull()?.item
-                                    ?: if (offset > 0) {
-                                        annotatedText
-                                            .getStringAnnotations(tag = "CHORD", start = offset - 1, end = offset - 1)
-                                            .firstOrNull()?.item
-                                    } else null
-                                    ?: if (offset < annotatedText.length - 1) {
-                                        annotatedText
-                                            .getStringAnnotations(tag = "CHORD", start = offset + 1, end = offset + 1)
-                                            .firstOrNull()?.item
-                                    } else null
-
-                                if (clickedChord != null) {
-                                    onChordClick(clickedChord)
-                                }
-                            }
-                        }
-                    }
-            )
         }
 
         is SongLine.TabLine -> {
