@@ -3,7 +3,7 @@
  */
 
 export const GTAR_APP_VERSION = '1.1.62'
-export const GTAR_DEV_VERSION = '1.0.62-dev.3'
+export const GTAR_DEV_VERSION = '1.0.62-dev.3a'
 export const GTAR_SETLIST_VERSION = 1
 export const GTAR_SETLIST_TYPE = 'GTAR_SETLIST'
 

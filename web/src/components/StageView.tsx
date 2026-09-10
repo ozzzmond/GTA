@@ -569,6 +569,43 @@ export const StageView: React.FC<StageViewProps> = ({
       {/* 1. TOP APP BAR (Exact 1:1 Jetpack Compose SongViewerScreen.kt)       */}
       {/*    On iOS PWA, collapsed when isDistractionFree is true.             */}
       {/* =================================================================== */}
+
+      {/* --- Distraction-Free escape hatch ---------------------------------- */}
+      {/* Floating restore button: visible only when the top bar is hidden.    */}
+      {/* Positioned top-right with safe-area-inset padding for iOS notch.     */}
+      {isDistractionFree && (
+        <>
+          {/* Invisible full-width tap zone at the very top edge (32px tall).
+              Lets the user "swipe down" on the header area to restore it. */}
+          <div
+            className="absolute top-0 left-0 right-0 h-8 z-40 cursor-pointer"
+            onClick={() => setIsDistractionFree(false)}
+            aria-label="Tap top edge to restore header"
+          />
+          {/* Discreet icon pill — top-right, above safe-area, low opacity */}
+          <button
+            type="button"
+            onClick={() => setIsDistractionFree(false)}
+            className="absolute z-50 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full
+                       bg-black/40 backdrop-blur-md border border-white/10
+                       text-white/60 hover:text-white hover:bg-black/70
+                       transition-all duration-200 opacity-60 hover:opacity-100
+                       active:scale-95 cursor-pointer select-none"
+            style={{
+              top: 'max(12px, env(safe-area-inset-top, 12px))',
+              right: 'max(12px, env(safe-area-inset-right, 12px))',
+            }}
+            title="Exit Focus Mode — restore header"
+            aria-label="Exit Focus Mode and restore header"
+          >
+            <Minimize2 className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">
+              Exit
+            </span>
+          </button>
+        </>
+      )}
+
       <div
         className={`border-b border-[#1A4A55] bg-[#073642] px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3 z-20 shadow-md transition-all duration-300 ${
           isDistractionFree ? 'opacity-0 pointer-events-none h-0 py-0 overflow-hidden' : 'opacity-100'
