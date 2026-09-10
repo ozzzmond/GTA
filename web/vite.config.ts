@@ -209,7 +209,7 @@ ${cleanContent}`
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const isDebug = mode === 'debug' || process.env.VITE_APP_ENV === 'debug'
+  const isDebug = mode === 'debug' || process.env.VITE_APP_ENV === 'debug' || process.env.CF_PAGES_BRANCH === 'dev'
   // isDev covers both standard dev server (mode='development') and the debug variant
   const isDev = mode === 'development' || isDebug
   const appEnv = isDebug ? 'debug' : 'production'
