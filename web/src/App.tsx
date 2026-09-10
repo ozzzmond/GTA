@@ -438,6 +438,8 @@ function App() {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
   const [showUpdateSuccessModal, setShowUpdateSuccessModal] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+  // True when StageView enters fullscreen or focus mode — hides the global Header
+  const [isStagePerformanceMode, setIsStagePerformanceMode] = useState(false)
 
   // Band Sync: listen to leader song sync events when client
   useEffect(() => {
@@ -1207,48 +1209,50 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#002B36] text-[#EEE8D5]">
-      {/* Unified Android v1.0.44 Top Bar */}
-      <Header
-        activeView={activeView}
-        onViewChange={setActiveView}
-        song={currentSong}
-        allSongs={songs}
-        songsCount={filteredSongs.length > 0 ? filteredSongs.length : songs.length}
-        deletedSongsCount={deletedSongs.length}
-        activeSongIndex={activeSongIndex}
-        queueMode={queueMode}
-        activeSetlistSongsCount={activeSetlistSongs.length}
-        activeSetlistSongIndex={activeSetlistSongIndex}
-        searchQuery={searchQuery}
-        onSearchQueryChange={setSearchQuery}
-        onSelectSearchSong={(songIdx) => {
-          handleSelectLibrarySong(songIdx)
-          setActiveView('stage')
-        }}
-        onSearchWebExternal={(query) => {
-          setSearchQuery(query)
-          setIsWebsiteUrlModalOpen(true)
-        }}
-        onNavigateHome={handleNavigateHome}
-        onOpenWebsiteUrlSource={() => setIsWebsiteUrlModalOpen(true)}
-        onOpenStageTools={() => setIsStageToolsModalOpen(true)}
-        onToggleTheme={() => setIsThemeModalOpen(true)}
-        onOpenStageSettings={() => setIsStageSettingsModalOpen(true)}
-        onOpenImportModal={() => setIsImportModalOpen(true)}
-        onOpenBackupRestoreModal={() => setIsBackupRestoreModalOpen(true)}
-        onCheckForUpdates={handleCheckForUpdates}
-        isCheckingUpdates={isCheckingUpdates}
-        onOpenSetlistDrawer={() => setIsSetlistDrawerOpen(true)}
-        setlists={setlists}
-        activeSetlistId={activeSetlistId}
-        activeSetlistName={activeSetlist?.name}
-        activeSetlistSongs={activeSetlistSongs}
-        onSelectSetlistSong={handleSelectSetlistSong}
-        onSelectSetlist={handleSelectSetlist}
-        onPushSetlistToBandSync={handlePushSetlistToMembers}
-        onShareSetlist={handleShareSetlist}
-        onDirectImportOnlineSong={handleImportOnlineChordSheet}
-      />
+      {/* Unified Android v1.0.44 Top Bar — hidden in stage performance mode */}
+      {!isStagePerformanceMode && (
+        <Header
+          activeView={activeView}
+          onViewChange={setActiveView}
+          song={currentSong}
+          allSongs={songs}
+          songsCount={filteredSongs.length > 0 ? filteredSongs.length : songs.length}
+          deletedSongsCount={deletedSongs.length}
+          activeSongIndex={activeSongIndex}
+          queueMode={queueMode}
+          activeSetlistSongsCount={activeSetlistSongs.length}
+          activeSetlistSongIndex={activeSetlistSongIndex}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          onSelectSearchSong={(songIdx) => {
+            handleSelectLibrarySong(songIdx)
+            setActiveView('stage')
+          }}
+          onSearchWebExternal={(query) => {
+            setSearchQuery(query)
+            setIsWebsiteUrlModalOpen(true)
+          }}
+          onNavigateHome={handleNavigateHome}
+          onOpenWebsiteUrlSource={() => setIsWebsiteUrlModalOpen(true)}
+          onOpenStageTools={() => setIsStageToolsModalOpen(true)}
+          onToggleTheme={() => setIsThemeModalOpen(true)}
+          onOpenStageSettings={() => setIsStageSettingsModalOpen(true)}
+          onOpenImportModal={() => setIsImportModalOpen(true)}
+          onOpenBackupRestoreModal={() => setIsBackupRestoreModalOpen(true)}
+          onCheckForUpdates={handleCheckForUpdates}
+          isCheckingUpdates={isCheckingUpdates}
+          onOpenSetlistDrawer={() => setIsSetlistDrawerOpen(true)}
+          setlists={setlists}
+          activeSetlistId={activeSetlistId}
+          activeSetlistName={activeSetlist?.name}
+          activeSetlistSongs={activeSetlistSongs}
+          onSelectSetlistSong={handleSelectSetlistSong}
+          onSelectSetlist={handleSelectSetlist}
+          onPushSetlistToBandSync={handlePushSetlistToMembers}
+          onShareSetlist={handleShareSetlist}
+          onDirectImportOnlineSong={handleImportOnlineChordSheet}
+        />
+      )}
 
       {/* Main Workspace: Songbook Library vs Split Desktop Editor vs Trash vs 1:1 Stage View */}
       <main className="flex-1 flex overflow-hidden">
@@ -1315,6 +1319,7 @@ function App() {
             isTwoColumn={isTwoColumn}
             onToggleTwoColumn={setIsTwoColumn}
             onOpenBandSync={() => setIsStageToolsModalOpen(true)}
+            onPerformanceModeChange={setIsStagePerformanceMode}
           />
         )}
       </main>

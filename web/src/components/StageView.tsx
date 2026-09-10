@@ -61,6 +61,8 @@ interface StageViewProps {
   onToggleTwoColumn?: (enabled: boolean) => void
   onOpenBandSync?: () => void
   onBack?: () => void
+  /** Called whenever the stage enters or exits "performance mode" (fullscreen or focus). */
+  onPerformanceModeChange?: (isActive: boolean) => void
 }
 
 /**
@@ -92,6 +94,7 @@ export const StageView: React.FC<StageViewProps> = ({
   onToggleTwoColumn: externalOnToggleTwoColumn,
   onOpenBandSync,
   onBack,
+  onPerformanceModeChange,
 }) => {
   const isInSetlistMode = propIsInSetlistMode || queueMode === 'setlist'
   // Stage view configuration & controls (matching Jetpack Compose SongViewerScreen.kt)
@@ -130,6 +133,8 @@ export const StageView: React.FC<StageViewProps> = ({
   // Computed once — doesn't change between renders
   const iosPwa = useMemo(() => isIosDevice() && isStandalonePwa(), [])
   const iosOnly = useMemo(() => isIosDevice() && !isStandalonePwa(), [])
+  // True whenever the stage is in any full-attention performance mode
+  const isPerformanceMode = isFullscreen || isDistractionFree
 
   const fontStyle = externalFontStyle !== undefined ? externalFontStyle : localFontStyle
   const setFontStyle = externalOnSelectFontStyle || setLocalFontStyle
@@ -554,6 +559,11 @@ export const StageView: React.FC<StageViewProps> = ({
     }
   }
 
+  // Notify parent whenever performance mode changes (so App can hide global Header)
+  useEffect(() => {
+    onPerformanceModeChange?.(isPerformanceMode)
+  }, [isPerformanceMode, onPerformanceModeChange])
+
   const handleCustomSpeedSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const val = parseInt(speedInputText, 10)
@@ -563,52 +573,120 @@ export const StageView: React.FC<StageViewProps> = ({
     setIsSpeedPromptOpen(false)
   }
 
-  return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] bg-[#002B36] select-none relative overflow-hidden">
-      {/* =================================================================== */}
-      {/* 1. TOP APP BAR (Exact 1:1 Jetpack Compose SongViewerScreen.kt)       */}
-      {/*    On iOS PWA, collapsed when isDistractionFree is true.             */}
-      {/* =================================================================== */}
+  const inPerformanceMode = isPerformanceMode
 
-      {/* --- Distraction-Free escape hatch ---------------------------------- */}
-      {/* Floating restore button: visible only when the top bar is hidden.    */}
-      {/* Positioned top-right with safe-area-inset padding for iOS notch.     */}
-      {isDistractionFree && (
-        <>
-          {/* Invisible full-width tap zone at the very top edge (32px tall).
-              Lets the user "swipe down" on the header area to restore it. */}
-          <div
-            className="absolute top-0 left-0 right-0 h-8 z-40 cursor-pointer"
-            onClick={() => setIsDistractionFree(false)}
-            aria-label="Tap top edge to restore header"
-          />
-          {/* Discreet icon pill — top-right, above safe-area, low opacity */}
+  return (
+    <div className="flex-1 flex flex-col bg-[#002B36] select-none relative overflow-hidden"
+      style={{ height: inPerformanceMode ? '100vh' : 'calc(100vh - 4rem)' }}
+    >
+      {/* =================================================================== */}
+      {/* PERFORMANCE HUD — Unified floating mini-toolbar (fullscreen / focus) */}
+      {/* Shown INSTEAD of the sub-header when isPerformanceMode is true.     */}
+      {/* =================================================================== */}
+      {inPerformanceMode && (
+        <div
+          className="absolute z-50 flex items-center gap-1 px-2 py-1.5 rounded-2xl
+                     bg-black/50 backdrop-blur-xl border border-white/10 shadow-2xl
+                     transition-opacity duration-300"
+          style={{
+            top: 'max(10px, env(safe-area-inset-top, 10px))',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {/* Transpose: b / Key / # / Reset */}
           <button
             type="button"
-            onClick={() => setIsDistractionFree(false)}
-            className="absolute z-50 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full
-                       bg-black/40 backdrop-blur-md border border-white/10
-                       text-white/60 hover:text-white hover:bg-black/70
-                       transition-all duration-200 opacity-60 hover:opacity-100
-                       active:scale-95 cursor-pointer select-none"
-            style={{
-              top: 'max(12px, env(safe-area-inset-top, 12px))',
-              right: 'max(12px, env(safe-area-inset-right, 12px))',
-            }}
-            title="Exit Focus Mode — restore header"
-            aria-label="Exit Focus Mode and restore header"
+            onClick={() => onTransposeChange(transposeOffset - 1)}
+            className="p-1.5 rounded-xl text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer text-xs font-bold"
+            title="Transpose Down (-1)"
+          >♭</button>
+
+          <button
+            type="button"
+            onClick={() => setIsKeyPickerOpen(true)}
+            className="px-2.5 py-1 rounded-xl text-xs font-mono font-extrabold cursor-pointer transition-colors
+                       text-[#B58900] hover:bg-white/10"
+            title="Select Key"
           >
-            <Minimize2 className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">
-              Exit
-            </span>
+            {transposeOffset !== 0 ? `${effectiveKey} (${offsetStr})` : (effectiveKey || 'Key')}
           </button>
-        </>
+
+          <button
+            type="button"
+            onClick={() => onTransposeChange(transposeOffset + 1)}
+            className="p-1.5 rounded-xl text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer text-xs font-bold"
+            title="Transpose Up (+1)"
+          >♯</button>
+
+          {transposeOffset !== 0 && (
+            <button
+              type="button"
+              onClick={() => onTransposeChange(0)}
+              className="p-1 rounded-xl text-white/50 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+              title="Reset Transposition"
+            >
+              <RotateCcw className="w-3 h-3" />
+            </button>
+          )}
+
+          {/* Divider */}
+          <span className="w-px h-4 bg-white/20 mx-0.5" />
+
+          {/* Font Size A- / A+ */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = Math.max(12, fontSizePx - 1)
+              setFontSizePx(next)
+              localStorage.setItem('gtar_stage_font_size', String(next))
+            }}
+            className="px-1.5 py-1 rounded-xl text-[11px] font-extrabold text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+            title="Decrease Font Size"
+          >A-</button>
+          <span className="text-[10px] font-mono text-white/40 w-5 text-center">{fontSizePx}</span>
+          <button
+            type="button"
+            onClick={() => {
+              const next = Math.min(38, fontSizePx + 1)
+              setFontSizePx(next)
+              localStorage.setItem('gtar_stage_font_size', String(next))
+            }}
+            className="px-1.5 py-1 rounded-xl text-[11px] font-extrabold text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+            title="Increase Font Size"
+          >A+</button>
+
+          {/* Divider */}
+          <span className="w-px h-4 bg-white/20 mx-0.5" />
+
+          {/* Exit performance mode button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (isFullscreen && fullscreenCtrl.isSupported) {
+                fullscreenCtrl.toggle()
+              } else {
+                setIsDistractionFree(false)
+              }
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-mono font-bold
+                       text-white/60 hover:text-white hover:bg-white/15 transition-colors cursor-pointer
+                       uppercase tracking-wider"
+            title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Exit Focus Mode'}
+          >
+            <Minimize2 className="w-3 h-3" />
+            <span className="hidden sm:inline">Exit</span>
+          </button>
+        </div>
       )}
 
+      {/* =================================================================== */}
+      {/* 1. TOP APP BAR (Exact 1:1 Jetpack Compose SongViewerScreen.kt)       */}
+      {/*    Hidden entirely in performance mode — replaced by floating HUD.  */}
+      {/* =================================================================== */}
       <div
         className={`border-b border-[#1A4A55] bg-[#073642] px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3 z-20 shadow-md transition-all duration-300 ${
-          isDistractionFree ? 'opacity-0 pointer-events-none h-0 py-0 overflow-hidden' : 'opacity-100'
+          inPerformanceMode ? 'opacity-0 pointer-events-none h-0 py-0 overflow-hidden border-0' : 'opacity-100'
         }`}
       >
         {/* Left Side: Back Navigation Button + Song Title & Artist */}
@@ -954,8 +1032,15 @@ export const StageView: React.FC<StageViewProps> = ({
 
       {/* =================================================================== */}
       {/* 3. BOTTOM BAR (Gig Navigation Strip & Floating Glassmorphic Stage)   */}
+      {/* Safe-area-inset-bottom ensures it clears iOS home indicator.        */}
       {/* =================================================================== */}
-      <div className="absolute bottom-4 sm:bottom-6 right-4 sm:right-6 z-30 flex flex-col items-end gap-2.5 pointer-events-none">
+      <div
+        className="absolute bottom-0 right-0 z-30 flex flex-col items-end gap-2.5 pointer-events-none"
+        style={{
+          paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))',
+          paddingRight: 'max(16px, env(safe-area-inset-right, 16px))',
+        }}
+      >
         {/* Dynamic Gig Performance Navigation Strip (Strictly navigates within current active scope) */}
         {((isInSetlistMode && activeSetlistSongs.length > 1) ||
           (!isInSetlistMode && songs.length > 1)) && (
