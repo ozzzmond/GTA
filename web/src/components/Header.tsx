@@ -116,7 +116,10 @@ export const Header: React.FC<HeaderProps> = ({
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null)
   const [isAppInstalled, setIsAppInstalled] = useState(false)
   const [showDebugLogsModal, setShowDebugLogsModal] = useState(false)
-
+  const isDevApp =
+    import.meta.env.DEV ||
+    import.meta.env.VITE_APP_ENV === 'debug' ||
+    (typeof window !== 'undefined' && window.location.hostname.includes('dev.gtar-web.pages.dev'))
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
@@ -296,9 +299,9 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5 leading-none">
                 <span className="font-black text-base text-[#FDF6E3] group-hover:text-[#2AA198] tracking-wide transition-colors">
-                  {import.meta.env.DEV ? 'GTAR-Dev' : 'GTAR'}
+                  {isDevApp ? 'GTAR-Dev' : 'GTAR'}
                 </span>
-                {import.meta.env.DEV && (
+                {isDevApp && (
                   <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-black text-[10px] tracking-wider uppercase border border-red-400 shadow-sm animate-pulse">
                     DEV
                   </span>
@@ -309,13 +312,13 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation()
                     onCheckForUpdates?.()
                   }}
-                  title={import.meta.env.DEV ? `Click to check for updates (v${GTAR_DEV_VERSION})` : `Click to check for updates (v${GTAR_APP_VERSION})`}
+                  title={isDevApp ? `Click to check for updates (v${GTAR_DEV_VERSION})` : `Click to check for updates (v${GTAR_APP_VERSION})`}
                   className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
                 >
                   {isCheckingUpdates && (
                     <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                   )}
-                  <span>{import.meta.env.DEV ? `v${GTAR_DEV_VERSION}` : `v${GTAR_APP_VERSION}`}</span>
+                  <span>{isDevApp ? `v${GTAR_DEV_VERSION}` : `v${GTAR_APP_VERSION}`}</span>
                 </button>
               </div>
               <span className="hidden md:inline text-[10px] text-[#93A1A1] group-hover:text-[#EEE8D5] mt-0.5 font-medium leading-none transition-colors">
@@ -932,7 +935,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
 
                 {/* 5. Debug Logs (Debug environment only) */}
-                {import.meta.env.DEV && (
+                {isDevApp && (
                   <>
                     <div className="h-[1px] bg-[#1A4A55]/60 my-1" />
                     <button
