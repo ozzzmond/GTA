@@ -10,7 +10,11 @@ import { appLogger } from './utils/logger'
 appLogger.init()
 
 // Apply debug environment branding if active
-if (import.meta.env.DEV) {
+const isDevApp = import.meta.env.DEV ||
+  import.meta.env.VITE_APP_ENV === 'debug' ||
+  (typeof window !== 'undefined' && window.location.hostname.includes('dev.gtar-web.pages.dev'))
+
+if (isDevApp) {
   if (typeof document !== 'undefined') {
     document.title = 'GTAR-Dev Live Stage Companion'
 
