@@ -1,117 +1,177 @@
+#!/usr/bin/env python3
+"""GTAR 091126 release tool. Standard library only; never pushes or deploys."""
+import argparse
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent
+PLATFORM = 'app'
 
-# Auto-detect Android Gradle location
-ANDROID_GRADLE = ROOT_DIR / "android" / "app" / "build.gradle"
-if not ANDROID_GRADLE.exists():
-    ANDROID_GRADLE = ROOT_DIR / "app" / "build.gradle"
-if not ANDROID_GRADLE.exists():
-    ANDROID_GRADLE = ROOT_DIR / "app" / "build.gradle.kts"
 
-def run_cmd(cmd, cwd=ROOT_DIR):
-    print(f"\n[RUNNING] {' '.join(cmd)}")
-    res = subprocess.run(cmd, cwd=cwd, shell=True)
-    if res.returncode != 0:
-        print(f"[ERROR] Command failed: {' '.join(cmd)}")
-        sys.exit(res.returncode)
+def git(*args):
+    result = subprocess.run(["git", *args], cwd=ROOT, text=True, capture_output=True, check=False)
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or result.stdout.strip() or "Git command failed")
+    return result.stdout.strip()
 
-def calculate_next_android_versions():
-    if not ANDROID_GRADLE.exists():
-        print(f"[ERROR] Cannot find Android build.gradle at {ANDROID_GRADLE}")
-        sys.exit(1)
 
-    content = ANDROID_GRADLE.read_text(encoding="utf-8")
-    
-    # Check current versionName (e.g. "1.0.62-dev.2" or "1.1.62")
-    match = re.search(r'versionName\s+(=?\s*)["\'](1\.[01]\.(\d+)(?:-dev\.(\d+))?)["\']', content)
-    if not match:
-        print("[ERROR] Could not parse current versionName from build.gradle")
-        sys.exit(1)
+def read(path):
+    return (ROOT / path).read_text(encoding="utf-8")
 
-    current_full = match.group(2)
-    base_num = int(match.group(3))
-    dev_iterations = int(match.group(4)) if match.group(4) else 1
 
-    new_patch = base_num + dev_iterations
-    new_prod_ver = f"1.1.{new_patch}"
-    new_dev_ver = f"1.0.{new_patch}-dev.1"
+def replace_one(text, pattern, replacement):
+    result, count = re.subn(pattern, replacement, text, flags=re.MULTILINE)
+    if count != 1:
+        raise ValueError(f"Expected exactly one version field: {pattern} (found {count})")
+    return result
 
-    return new_prod_ver, new_dev_ver, base_num, dev_iterations
 
-def update_android_files(new_prod_ver: str):
-    print(f"\n--> Updating {ANDROID_GRADLE.name}...")
-    content = ANDROID_GRADLE.read_text(encoding="utf-8")
+def parse_dev(value, legacy_iteration):
+    # Prefixes belong to display names/tags; npm stores the numeric semver only.
+    value = re.sub(r"^" + PLATFORM + r"\s+", "", value).removeprefix("v")
+    official = re.fullmatch(r"1\.0\.(0|[1-9][0-9]*)-dev\.([1-9][0-9]*)", value)
+    if official:
+        if legacy_iteration is not None:
+            raise ValueError("--legacy-iteration is only permitted for deprecated legacy versions")
+        return int(official[1]), int(official[2])
+    legacy = re.fullmatch(r"1\.0\.(0|[1-9][0-9]*)-dev\.([1-9][0-9]*)([a-z]*)", value, re.I)
+    if not legacy:
+        raise ValueError(f"Invalid dev version: {value}; expected 1.0.<base>-dev.<positive integer>")
+    if legacy_iteration is None:
+        raise ValueError(f"DEPRECATED / LEGACY: {value}. Use --legacy-iteration N for an explicit whole-integer conversion; letters never count as fixes")
+    if legacy_iteration < 1:
+        raise ValueError("Legacy conversion must specify a positive whole integer")
+    print(f"[DEPRECATED / LEGACY] {value}; explicitly converting to integer iteration {legacy_iteration}. Letter suffixes are not counted.")
+    return int(legacy[1]), legacy_iteration
 
-    # 1. Bump versionCode (+1)
-    def bump_code(m):
-        old_code = int(m.group(3))
-        new_code = old_code + 1
-        print(f"  [OK] Bumped versionCode: {old_code} -> {new_code}")
-        return f"{m.group(1)}{new_code}"
 
-    content = re.sub(r'(versionCode\s+(=?\s*))(\d+)', bump_code, content)
+def write_files(files):
+    # All paths and content have been computed/validated before any writes.
+    originals = {path: (ROOT / path).read_bytes() for path in files}
+    try:
+        for path, content in files.items():
+            (ROOT / path).write_text(content, encoding="utf-8")
+    except OSError:
+        for path, content in originals.items():
+            (ROOT / path).write_bytes(content)
+        raise
 
-    # 2. Update versionName to new prod version
-    content = re.sub(
-        r'(versionName\s+(=?\s*))["\'][^"\']+["\']',
-        rf'\g<1>"{new_prod_ver}"',
-        content
-    )
-    ANDROID_GRADLE.write_text(content, encoding="utf-8")
-    print(f"  [OK] Updated versionName to '{new_prod_ver}'")
 
-def main():
-    new_prod_ver, new_dev_ver, base_num, iterations = calculate_next_android_versions()
-    tag_name = f"android-v{new_prod_ver}"
+def commit_files(files, message):
+    write_files(files)
+    git("add", "--", *files)
+    git("commit", "-m", message, "--", *files)
 
-    print("==================================================")
-    print("    GTAR ANDROID PROD RELEASE AUTOMATION          ")
-    print("==================================================")
-    print(f"Current Dev Base: 1.0.{base_num}")
-    print(f"Accumulated Dev Fixes/Features: {iterations}")
-    print(f"Calculated New PROD: v{new_prod_ver}")
-    print(f"Next Initial DEV:    v{new_dev_ver}")
-    print("==================================================")
 
-    confirm = input(f"\nProceed with Android Prod Release v{new_prod_ver}? (y/N): ").strip().lower()
-    if confirm != 'y':
-        print("\n[CANCELLED] Release aborted.")
-        sys.exit(0)
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--bump-dev", action="store_true", help="Write the next dev version only; no commit or deployment")
+    action.add_argument("--promote-to-prod", action="store_true", help="On clean dev: commit/tag prod locally, then commit next dev reset")
+    parser.add_argument("--dry-run", action="store_true", help="Print the complete plan without changing files or Git")
+    parser.add_argument("--legacy-iteration", type=int, help="Migration only: explicit whole integer for DEPRECATED / LEGACY versions such as DEV.8b")
+    args = parser.parse_args(argv)
+    if args.legacy_iteration is not None and args.legacy_iteration < 1:
+        parser.error("--legacy-iteration must be positive")
+    inspection = not (args.bump_dev or args.promote_to_prod)
+    try:
+        current, metadata = inspect()
+        print(f"[{PLATFORM}] Current dev: {current}")
+        print("[POLICY] Local only. No push, publish, workflow dispatch, or deployment.")
+        try:
+            base, iteration = parse_dev(current, args.legacy_iteration)
+        except ValueError as error:
+            if inspection:
+                print(f"[INSPECT] {error}")
+                return 0
+            raise
+        if PLATFORM == "web":
+            metadata["dev"] = f"1.0.{base}-dev.{iteration}"
+        prod = f"1.1.{base + iteration}"
+        reset = f"1.0.{base + iteration}-dev.1"
+        bump = f"1.0.{base}-dev.{iteration + 1}"
+        print(f"[PLAN] Dev bump: {PLATFORM} v{bump}")
+        print(f"[PLAN] Promotion: {base} + {iteration} = {base + iteration}; {PLATFORM} v{prod}; tag {PLATFORM}-v{prod}")
+        print(f"[PLAN] Next dev: {PLATFORM} v{reset}")
+        if metadata.get("code") is not None:
+            code = metadata["code"]
+            print(f"[PLAN] versionCode: bump/prod {code} -> {code + 1}; next dev reset -> {code + 2}")
+        if inspection:
+            print("[INSPECT] No changes. Select --bump-dev or --promote-to-prod explicitly.")
+            return 0
+        if args.bump_dev:
+            files = versions(metadata, bump, None, 1)
+        else:
+            files = versions(metadata, None, prod, 1)
+            next_files = versions(metadata, reset, prod, 2)
+        print("[FILES] " + ", ".join(files))
+        if args.dry_run:
+            print("[DRY RUN] No files, commits, branches or tags changed.")
+            return 0
+        if git("branch", "--show-current") != "dev":
+            raise ValueError("Version mutations require the dev branch")
+        if args.bump_dev:
+            # Permit unrelated work, but never overwrite staged version changes.
+            if git("diff", "--cached", "--name-only", "--", *files):
+                raise ValueError("Version files are staged; commit or unstage them before bumping")
+            write_files(files)
+            print(f"[DONE] {PLATFORM} v{bump}; files updated, no commit or tag created.")
+            return 0
+        if git("status", "--porcelain"):
+            raise ValueError("Promotion requires a completely clean working tree and index; commit your tested changes first")
+        tag = f"{PLATFORM}-v{prod}"
+        if git("tag", "--list", tag):
+            raise ValueError(f"Tag already exists: {tag}")
+        git("var", "GIT_AUTHOR_IDENT")
+        git("var", "GIT_COMMITTER_IDENT")
+        start = git("rev-parse", "HEAD")
+        print(f"[PROMOTE] Starting from {start}. Release history is retained if a later step fails.")
+        commit_files(files, f"release({PLATFORM}): {PLATFORM} v{prod}")
+        git("tag", "-a", tag, "-m", f"{PLATFORM} v{prod}")
+        print(f"[TAGGED] {tag}; production content is frozen at this tag.")
+        commit_files(next_files, f"chore({PLATFORM}): start {PLATFORM} v{reset}")
+        print(f"[DONE] dev now at {PLATFORM} v{reset}; {tag} is local only. Nothing deployed.")
+        return 0
+    except (ValueError, OSError, KeyError, TypeError) as error:
+        print(f"[ERROR] {error}", file=sys.stderr)
+        return 1
 
-    # 1. Apply Gradle updates
-    update_android_files(new_prod_ver)
 
-    # 2. Check build kung available si gradlew.bat
-    gradlew = ROOT_DIR / "gradlew.bat"
-    if not gradlew.exists() and (ROOT_DIR / "android" / "gradlew.bat").exists():
-        gradlew = ROOT_DIR / "android" / "gradlew.bat"
+GRADLE = "app/build.gradle.kts"
+NAME = r'^(\s*versionName\s*=\s*)"([^"\n]+)"'
+SUFFIX = r'^(\s*versionNameSuffix\s*=\s*)"([^"\n]*)"'
+CODE = r'^(\s*versionCode\s*=\s*)(\d+)'
 
-    if gradlew.exists():
-        check_build = input("\nRun gradlew assembleRelease check? (y/N): ").strip().lower()
-        if check_build == 'y':
-            run_cmd([str(gradlew), "assembleRelease"], cwd=gradlew.parent)
 
-    # 3. Git Commit & Tag
-    print("\n--> Staging Git Changes...")
-    run_cmd(["git", "add", str(ANDROID_GRADLE)])
-    
-    commit_msg = f"chore(android): release prod v{new_prod_ver} (promoted from {iterations} dev fixes)"
-    run_cmd(["git", "commit", "-m", commit_msg])
-    run_cmd(["git", "tag", "-a", tag_name, "-m", f"Android Release v{new_prod_ver}"])
+def field(text, pattern):
+    matches = list(re.finditer(pattern, text, re.MULTILINE))
+    if len(matches) != 1:
+        raise ValueError(f"Expected one Gradle version field: {pattern}")
+    return matches[0][2]
 
-    print(f"\n✅ Android release complete and tagged as {tag_name}!")
-    
-    push = input(f"\nPush commit and tag to origin right now? (y/N): ").strip().lower()
-    if push == 'y':
-        run_cmd(["git", "push", "origin", "main"])
-        run_cmd(["git", "push", "origin", tag_name])
-        print(f"\n🚀 Push completed!")
-    else:
-        print(f"\n[INFO] Skipped remote push. Run manually: git push origin main {tag_name}")
+
+def inspect():
+    text = read(GRADLE)
+    name, suffix, code = field(text, NAME), field(text, SUFFIX), int(field(text, CODE))
+    if "-dev." in name.lower() and suffix:
+        raise ValueError("Dev suffix is present in both versionName and versionNameSuffix")
+    return name + suffix, {"text": text, "code": code}
+
+
+def versions(metadata, dev, prod, code_delta):
+    version = dev or prod
+    base, separator, iteration = version.partition("-dev.")
+    text = replace_one(metadata["text"], NAME, lambda m: m[1] + '"app v' + base + '"')
+    text = replace_one(text, SUFFIX, lambda m: m[1] + '"' + ("-dev." + iteration if separator else "") + '"')
+    code = metadata["code"] + code_delta
+    if code > 2100000000:
+        raise ValueError("versionCode exceeds Android's maximum")
+    text = replace_one(text, CODE, lambda m: m[1] + str(code))
+    return {GRADLE: text}
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

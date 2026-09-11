@@ -1337,7 +1337,7 @@ function App() {
             <div className="space-y-1">
               <h3 className="text-base font-extrabold text-[#FDF6E3]">You're Up to Date!</h3>
               <p className="text-xs text-[#2AA198] font-mono font-bold">
-                GTAR Web App {import.meta.env.DEV ? `v${GTAR_DEV_VERSION}` : `v${GTAR_APP_VERSION}`}
+                GTAR Web App {import.meta.env.DEV ? `web v${GTAR_DEV_VERSION}` : `web v${GTAR_APP_VERSION}`}
               </p>
             </div>
             <div className="p-3 rounded-xl bg-[#002B36] text-left text-[11px] text-[#93A1A1] space-y-1 border border-[#1A4A55]">

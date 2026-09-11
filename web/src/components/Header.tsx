@@ -312,13 +312,13 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation()
                     onCheckForUpdates?.()
                   }}
-                  title={isDevApp ? `Click to check for updates (v${GTAR_DEV_VERSION})` : `Click to check for updates (v${GTAR_APP_VERSION})`}
+                  title={isDevApp ? `Click to check for updates (web v${GTAR_DEV_VERSION})` : `Click to check for updates (web v${GTAR_APP_VERSION})`}
                   className="text-[10px] font-mono font-bold uppercase bg-[#002B36] text-[#2AA198] px-1.5 py-0.5 rounded border border-[#1A4A55] hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
                 >
                   {isCheckingUpdates && (
                     <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                   )}
-                  <span>{isDevApp ? `v${GTAR_DEV_VERSION}` : `v${GTAR_APP_VERSION}`}</span>
+                  <span>{isDevApp ? `web v${GTAR_DEV_VERSION}` : `web v${GTAR_APP_VERSION}`}</span>
                 </button>
               </div>
               <span className="hidden md:inline text-[10px] text-[#93A1A1] group-hover:text-[#EEE8D5] mt-0.5 font-medium leading-none transition-colors">
