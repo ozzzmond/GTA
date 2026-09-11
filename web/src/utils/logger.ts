@@ -25,6 +25,7 @@ class WebLoggerEngine {
   private logs: LogEntry[] = []
   private listeners: Set<LogListener> = new Set()
   private isInitialized = false
+  private storageEnabled = false
   private originalConsole = {
     error: console.error,
     warn: console.warn,
@@ -32,9 +33,13 @@ class WebLoggerEngine {
     log: console.log,
   }
 
-  constructor() {
+  public resume() {
+    this.storageEnabled = true
     this.loadPersistedLogs()
+    this.init()
   }
+
+  public suspend() { this.storageEnabled = false }
 
   private loadPersistedLogs() {
     if (typeof window === 'undefined') return
@@ -52,6 +57,7 @@ class WebLoggerEngine {
   }
 
   private persistLogs() {
+    if (!this.storageEnabled) return
     if (typeof window === 'undefined') return
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.logs))
@@ -162,6 +168,7 @@ class WebLoggerEngine {
     stack?: string
     details?: string
   }) {
+    if (!this.storageEnabled) return
     const newLog: LogEntry = {
       id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       timestamp: new Date().toISOString(),

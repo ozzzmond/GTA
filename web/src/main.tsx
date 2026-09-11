@@ -1,13 +1,9 @@
-import { StrictMode } from 'react'
+import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
-import App from './App.tsx'
-
-import { appLogger } from './utils/logger'
-
-// Initialize the in-browser logging engine
-appLogger.init()
+import { AuthGate } from './components/AuthGate'
+const App = lazy(() => import('./App.tsx'))
 
 // Apply debug environment branding if active
 const isDevApp = import.meta.env.DEV ||
@@ -108,6 +104,6 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <AuthGate><Suspense fallback={<p role="status">Loading GTAR...</p>}><App /></Suspense></AuthGate>
   </StrictMode>,
 )

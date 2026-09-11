@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createBackupPayload } from '../utils/jsonBackup'
 import { clearDriveSession, DriveSyncError, pullCloudBackup, pushCloudBackup } from '../utils/driveSync'
-import { loadGoogleIdentity, readGoogleSession, requestGoogleSession, saveGoogleSession, validSession } from '../utils/googleAuth'
+import { validSession } from '../utils/googleAuth'
+import { useGoogleAuth } from '../components/AuthGate'
 import { initializeSyncLibrary, mergeSyncLibrary, type SyncLibrary } from '../utils/syncMerge'
 
 export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary) => void) {
-  const [session, setSession] = useState(readGoogleSession)
+  const { session, signOut: lockApp, signIn, ready } = useGoogleAuth()
   const [busy, setBusy] = useState(false)
-  const [ready, setReady] = useState(false)
   const [status, setStatus] = useState(import.meta.env.VITE_GOOGLE_CLIENT_ID ? 'Local changes are saved on this device.' : 'Google sync is not configured. Local editing is available.')
   const latest = useRef({ library, apply, session })
   latest.current = { library, apply, session }
@@ -16,41 +16,27 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
   const queued = useRef(false)
   const initialized = useRef(false)
   const baseline = useRef<SyncLibrary | null>(null)
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
-  useEffect(() => {
-    if (clientId) void loadGoogleIdentity().then(() => setReady(true)).catch(error => setStatus(error.message))
-  }, [clientId])
   const signOut = useCallback(() => {
     generation.current++
     if (latest.current.session) clearDriveSession(latest.current.session.token)
     latest.current.session = null
-    saveGoogleSession(null)
-    setSession(null)
+    lockApp()
     initialized.current = false
     baseline.current = null
     setStatus('Signed out. Local editing is available.')
-  }, [])
+  }, [lockApp])
   useEffect(() => {
     if (!session) return
     const timer = setTimeout(() => { signOut(); setStatus('Google session expired. Sign in to resume sync.') }, Math.max(0, session.expiresAt - Date.now() - 30000))
     return () => clearTimeout(timer)
   }, [session, signOut])
-  useEffect(() => () => { generation.current++ }, [])
-  const signIn = async () => {
-    if (!clientId || busy) return
-    const epoch = ++generation.current
-    setBusy(true)
-    try {
-      const next = await requestGoogleSession(clientId)
-      if (epoch !== generation.current) return
-      initialized.current = false
-      baseline.current = null
-      saveGoogleSession(next)
-      setSession(next)
-      setStatus('Signed in. Preparing sync...')
-    } catch (error) { if (epoch === generation.current) setStatus(error instanceof Error ? error.message : 'Sign-in failed.') }
-    finally { setBusy(false) }
-  }
+  useEffect(() => () => {
+    generation.current++
+    const token = latest.current.session?.token
+    if (token) clearDriveSession(token)
+    latest.current.session = null
+    queued.current = false
+  }, [])
   const syncNow = useCallback(async () => {
     const auth = latest.current.session
     if (!auth) return
@@ -109,5 +95,5 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
     window.addEventListener('online', online)
     return () => window.removeEventListener('online', online)
   }, [syncNow])
-  return { session, busy, status, signIn, signOut, syncNow, ready: ready && !!clientId }
+  return { session, busy, status, signIn, signOut, syncNow, ready }
 }

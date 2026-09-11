@@ -16,3 +16,12 @@ References: https://developers.google.com/identity/oauth2/web/guides/use-token-m
 
 
 Duplicate repair: app startup deduplicates the stored library before initializing song and setlist state. Normalized title + artist identifies duplicate songs; normalized name identifies duplicate setlists. First records retain their IDs and contents; all setlist references are repointed and unique memberships retain their order. The existing local persistence effects save the result. Every subsequent sync aligns IDs across local, cloud, and baseline before reconciliation, so cloud duplicates cannot repopulate the library. A restored cloud library queues a new guarded sync even when no additional user edit occurs. This intentionally collapses multiple arrangements with identical title and artist; use distinct titles to retain them separately.
+
+
+Owner login gate: set `VITE_AUTHORIZED_EMAILS` in the Cloudflare Pages build environment to comma-separated allowed addresses, then rebuild. When unset, the owner defaults to `jlopez3rd@gmail.com`; an explicitly empty value allows nobody. Matching trims whitespace and ignores case, with no substring or domain wildcard matching. `VITE_GOOGLE_CLIENT_ID` remains required, and the hosted origin must be registered as an authorized JavaScript origin in Google Cloud.
+
+The application and all routes, including presentation, mount only after Google userinfo verifies the current token and an allowed, verified email. Valid sessionStorage tokens are reverified on refresh without an OAuth popup. If verification is unavailable, the hosted client remains locked. Sign Out or expiration unmounts the application and clears the cached session; local library data is retained for the next authorized sign-in. The old passcode/quick-unlock screen is no longer used. Logging storage is also paused while locked.
+
+Development bypass is an explicit, in-memory button available only with `import.meta.env.DEV` and a loopback hostname (localhost, 127.0.0.1 or IPv6 loopback). It disables Drive sync and is unavailable in Pages preview/production builds or on LAN hosts.
+
+Security boundary: this is a client-side UI lock. Vite environment values and static assets are public, and a browser owner can alter JavaScript or local storage. Enforce access at Cloudflare Access (including preview URLs) if the hosted application/files must be protected against deliberate bypass. No Cloudflare Access policy or deployment is changed by this implementation.

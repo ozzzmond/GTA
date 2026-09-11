@@ -6,7 +6,6 @@ import { SETTINGS_KEYS, SETTINGS_CHANGED, readBackupSettings } from './utils/bac
 import { parseBackupJson, normalizeBackupSong, createSingleSetlistPayload } from './utils/jsonBackup'
 import { setSongMembership, ensureSongIds, resolveSetlistSong, mergeBackupLibrary, partitionSongs } from './utils/setlistSongs'
 import { useState, useEffect, useMemo } from 'react'
-import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
 import { DesktopEditor } from './components/DesktopEditor'
 import { StageView } from './components/StageView'
@@ -209,11 +208,6 @@ function App() {
   if (isPresentationRoute) {
     return <StagePresentationView />
   }
-
-  // Gated Authentication Wall (persisted in sessionStorage)
-  const [isUnlocked, setIsUnlocked] = useState(() => {
-    return sessionStorage.getItem('gtar_authenticated') === 'true'
-  })
 
   // View state: Songbook Library Home vs Desktop Editor vs Stage View vs Trash Bin
   const [activeView, setActiveView] = useState<'songbook' | 'editor' | 'stage' | 'trash'>('songbook')
@@ -1086,10 +1080,6 @@ function App() {
           s.artist?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : songs
-
-  if (!isUnlocked) {
-    return <LoginWall onUnlock={() => setIsUnlocked(true)} />
-  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#002B36] text-[#EEE8D5]">

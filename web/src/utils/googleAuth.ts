@@ -16,6 +16,16 @@ export function readGoogleSession(): GoogleSession | null {
 export function saveGoogleSession(session: GoogleSession | null) {
   try { if (session) sessionStorage.setItem(KEY, JSON.stringify(session)); else sessionStorage.removeItem(KEY) } catch { /* In-memory sign-in still works. */ }
 }
+export async function verifyGoogleSession(session: GoogleSession): Promise<GoogleSession> {
+  if (!validSession(session)) throw new Error('Google session expired. Sign in again.')
+  const profile = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${session.token}` }, signal: AbortSignal.timeout(15000), cache: 'no-store',
+  })
+  if (!profile.ok) throw new Error('Google session could not be verified. Sign in again.')
+  const user = await profile.json()
+  if (typeof user.sub !== 'string' || typeof user.email !== 'string' || user.email_verified !== true) throw new Error('A verified Google email is required.')
+  return { ...session, user }
+}
 let loading: Promise<void> | undefined
 export function loadGoogleIdentity(): Promise<void> {
   if (window.google) return Promise.resolve()
@@ -41,11 +51,7 @@ export function requestGoogleSession(clientId: string): Promise<GoogleSession> {
           if (response.error || !response.access_token || !Number.isFinite(Number(response.expires_in))) throw new Error('Google sign-in failed.')
           if (!response.scope.split(' ').includes('https://www.googleapis.com/auth/drive.appdata')) throw new Error('Allow application data access to enable sync.')
           const expiresAt = Date.now() + Number(response.expires_in) * 1000
-          const profile = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${response.access_token}` }, signal: AbortSignal.timeout(15000) })
-          if (!profile.ok) throw new Error('Could not load Google profile.')
-          const user = await profile.json()
-          if (typeof user.sub !== 'string' || typeof user.email !== 'string') throw new Error('Google profile is missing an email.')
-          resolve({ token: response.access_token, expiresAt, user })
+          resolve(await verifyGoogleSession({ token: response.access_token, expiresAt, user: { sub: '', email: '' } }))
         } catch (error) { reject(error) }
       },
     })
