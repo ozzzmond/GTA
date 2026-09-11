@@ -1,5 +1,7 @@
 """Standard-library integration tests; all mutations occur in disposable Git repositories."""
 import json
+import os
+import runpy
 import shutil
 import subprocess
 import sys
@@ -16,6 +18,7 @@ class ReleaseTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         for script in ['release_web.py', 'release_android.py']:
             shutil.copy2(SOURCE / script, self.root / script)
+        self.write('.github/release_metadata.py', (SOURCE / '.github/release_metadata.py').read_text(encoding='utf-8'))
         self.write('web/package.json', json.dumps({'name': 'web', 'version': '1.0.50-dev.12'}))
         self.write('web/package-lock.json', json.dumps({'version': '1.0.50-dev.12', 'packages': {'': {'version': '1.0.50-dev.12'}, 'node_modules/keep': {'version': '4.5.6'}}}))
         self.write('web/src/types/gtar.ts', "export const GTAR_DEV_VERSION = '1.0.50-dev.12'\nexport const GTAR_APP_VERSION = '1.1.50'\n")
@@ -109,6 +112,60 @@ class ReleaseTests(unittest.TestCase):
             wrong = 'app' if prefix == 'web' else 'web'
             with self.assertRaises(ValueError):
                 parse(f'{wrong} v1.0.62-dev.9', None)
+
+    def test_release_metadata_validates_universal_tags(self):
+        for script, prefix in [('release_web.py', 'web'), ('release_android.py', 'app')]:
+            metadata = runpy.run_path(str(self.root / script))['release_metadata']
+            for version in ['1.0.62-dev.9', '1.1.62']:
+                for value in [version, 'v' + version, f'{prefix} v{version}', f'{prefix}-v{version}']:
+                    with self.subTest(value=value):
+                        info = metadata(value)
+                        self.assertEqual(info['tag'], f'{prefix}-v{version}')
+                        self.assertEqual(info['title'], f'{prefix} v{version}')
+                        self.assertEqual(info['prerelease'], '-dev.' in version)
+                        self.git('check-ref-format', 'refs/tags/' + info['tag'])
+            for value in ['1.0.62-dev.8a', '1.0.62-dev.0', '1.0.62-dev.01',
+                          '1.0.62-dev.9 extra', '1.1.62\nBAD=1', '1.1.62..',
+                          'wrong v1.1.62', '1.1.62/foo', '1.1.62@{x}']:
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    metadata(value)
+
+    def test_ci_metadata_from_display_versions_and_tag_events(self):
+        gradle = self.root / 'app/build.gradle.kts'
+        gradle.write_text(gradle.read_text(encoding='utf-8').replace('v1.0.50', 'app v1.0.50'), encoding='utf-8')
+        for platform in ['app', 'web']:
+            for ref_type, ref_name, success in [('branch', 'dev', True),
+                    ('tag', f'{platform}-v1.0.50-dev.12', True),
+                    ('tag', f'{platform}-v1.0.50-dev.13', False),
+                    ('tag', f'{platform} v1.0.50-dev.12', False)]:
+                envfile = self.root / 'ci-env.txt'
+                envfile.write_text('', encoding='utf-8')
+                result = subprocess.run([sys.executable, str(self.root / '.github/release_metadata.py'),
+                    '--platform', platform, '--dev-only'], cwd=self.root, capture_output=True, text=True,
+                    env={**os.environ, 'GITHUB_REF_TYPE': ref_type, 'GITHUB_REF_NAME': ref_name,
+                         'GITHUB_ENV': str(envfile)})
+                self.assertEqual(result.returncode, 0 if success else 1, result.stderr)
+                output = envfile.read_text(encoding='utf-8')
+                if success:
+                    self.assertIn(f'RELEASE_TAG={platform}-v1.0.50-dev.12\n', output)
+                    self.assertIn(f'RELEASE_TITLE={platform} v1.0.50-dev.12\n', output)
+                    self.assertIn('IS_PRERELEASE=true', output)
+                else:
+                    self.assertEqual(output, '')
+
+    def test_ci_production_metadata_and_dev_workflow_guard(self):
+        self.run_script('android', '--promote-to-prod')
+        self.git('checkout', 'app-v1.1.62')
+        for dev_only in [False, True]:
+            result = subprocess.run([sys.executable, str(self.root / '.github/release_metadata.py'),
+                '--platform', 'app'] + (['--dev-only'] if dev_only else []),
+                cwd=self.root, capture_output=True, text=True,
+                env={**os.environ, 'GITHUB_REF_TYPE': 'tag', 'GITHUB_REF_NAME': 'app-v1.1.62', 'GITHUB_ENV': ''})
+            self.assertEqual(result.returncode, 1 if dev_only else 0, result.stderr)
+            if not dev_only:
+                self.assertIn('RELEASE_TAG=app-v1.1.62', result.stdout)
+                self.assertIn('IS_PRERELEASE=false', result.stdout)
+        self.git('check-ref-format', 'refs/tags/app-v1.1.62')
 
     def test_disagreeing_versions_fail_without_writes(self):
         path = self.root / 'web/package.json'

@@ -3,8 +3,7 @@ name: Build & Release GTAR
 on:
   push:
     tags:
-      - 'v*'
-      - '!v*-dev*'
+      - 'app-v1.1.*'
   workflow_dispatch:
 
 permissions:
@@ -34,29 +33,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Determine Release Type & Version
-        id: release_info
-        run: |
-          REF="${{ github.ref_name }}"
-          BASE_VER=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed 's/.*"\(.*\)".*/\1/')
-          DEV_SUFFIX=$(grep 'versionNameSuffix = ' app/build.gradle.kts | head -n 1 | sed 's/.*"\(.*\)".*/\1/')
-          
-          if [[ "$REF" == *-dev* ]]; then
-            IS_PRE="true"
-            VERSION="$REF"
-          elif [[ -n "$REF" && "$REF" == v* ]]; then
-            IS_PRE="false"
-            VERSION="$REF"
-          elif [[ -n "$DEV_SUFFIX" ]]; then
-            IS_PRE="true"
-            VERSION="${BASE_VER}${DEV_SUFFIX}"
-          else
-            IS_PRE="false"
-            VERSION="${BASE_VER}"
-          fi
-          
-          echo "IS_PRERELEASE=${IS_PRE}" >> $GITHUB_ENV
-          echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "Release Version: ${VERSION}, Prerelease: ${IS_PRE}"
+        run: python .github/release_metadata.py --platform app
 
       - name: Validate and decode production signing credentials
         if: env.IS_PRERELEASE != 'true'
@@ -104,37 +81,16 @@ jobs:
 
       - name: Prepare Release Artifacts
         run: |
-          VERSION="${{ env.RELEASE_VERSION }}"
-          mkdir -p release_artifacts
-          
-          if [ "${{ env.IS_PRERELEASE }}" = "true" ]; then
-            if [ -f "app/build/outputs/apk/debug/GTA_${VERSION}.apk" ]; then
-              cp "app/build/outputs/apk/debug/GTA_${VERSION}.apk" "release_artifacts/GTA_${VERSION}.apk"
-            elif [ -f "app/build/outputs/apk/debug/GTA_v1.0.50-dev.6.apk" ]; then
-              cp "app/build/outputs/apk/debug/GTA_v1.0.50-dev.6.apk" "release_artifacts/GTA_${VERSION}.apk"
-            else
-              FOUND_APK=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
-              if [ -n "$FOUND_APK" ]; then
-                cp "$FOUND_APK" "release_artifacts/GTA_${VERSION}.apk"
-              else
-                echo "Error: No debug APK found!" && exit 1
-              fi
-            fi
-          else
-            if [ -f "app/build/outputs/apk/release/GTA_${VERSION}.apk" ]; then
-              cp "app/build/outputs/apk/release/GTA_${VERSION}.apk" "release_artifacts/GTA_${VERSION}.apk"
-            elif [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-              cp "app/build/outputs/apk/release/app-release.apk" "release_artifacts/GTA_${VERSION}.apk"
-            else
-              FOUND_APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
-              if [ -n "$FOUND_APK" ]; then
-                cp "$FOUND_APK" "release_artifacts/GTA_${VERSION}.apk"
-              else
-                echo "Error: No release APK found!" && exit 1
-              fi
-            fi
+          set -euo pipefail
+          APK_DIR=app/build/outputs/apk/debug
+          if [ "$IS_PRERELEASE" != "true" ]; then APK_DIR=app/build/outputs/apk/release; fi
+          mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name "*.apk")
+          if [ "${#APKS[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one APK in $APK_DIR"
+            exit 1
           fi
-          echo "Ready artifact: $(ls -l release_artifacts/)"
+          mkdir -p release_artifacts
+          cp "${APKS[0]}" "release_artifacts/GTA_${RELEASE_TAG}.apk"
 
       - name: Upload APK Build Artifact
         uses: actions/upload-artifact@v4
@@ -147,15 +103,16 @@ jobs:
         if: env.IS_PRERELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: GTAR Dev Preview ${{ env.RELEASE_VERSION }}
-          tag_name: ${{ env.RELEASE_VERSION }}
-          files: release_artifacts/GTA_${{ env.RELEASE_VERSION }}.apk
+          name: GTAR Dev Preview ${{ env.RELEASE_TITLE }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          files: release_artifacts/GTA_${{ env.RELEASE_TAG }}.apk
           generate_release_notes: true
           draft: false
           prerelease: true
           make_latest: false
           body: |
-            ### 🧪 GTAR Developer Preview (${{ env.RELEASE_VERSION }})
+            ### 🧪 GTAR Developer Preview (${{ env.RELEASE_TITLE }})
             - **Application ID:** `com.gtar.app.debug`
             - **Icon:** Distinctive Red DEV adaptive launcher icon
             - **Installation:** Installs side-by-side with production GTAR without overwriting existing data.
@@ -166,9 +123,10 @@ jobs:
         if: env.IS_PRERELEASE != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: GTAR Release ${{ env.RELEASE_VERSION }}
-          tag_name: ${{ env.RELEASE_VERSION }}
-          files: release_artifacts/GTA_${{ env.RELEASE_VERSION }}.apk
+          name: GTAR Release ${{ env.RELEASE_TITLE }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          files: release_artifacts/GTA_${{ env.RELEASE_TAG }}.apk
           generate_release_notes: true
           draft: false
           prerelease: false

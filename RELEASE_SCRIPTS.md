@@ -9,7 +9,7 @@ The **OFFICIAL STANDARD** uses strictly positive whole-integer dev iterations, i
 
 Examples: `web v1.0.62-dev.9`, `app v1.0.62-dev.5`. Promotion uses only the whole integer iteration: `new_base = current_base + iteration`. Letter suffixes have no numeric weight and are never automatically converted into extra fixes. The next cycle resets to `-dev.1`. Historical tags are retained unchanged as legacy records.
 
-Both scripts are standalone Python 3.9+ programs using only the standard library. Git must be installed for version mutations. Run them from any directory; paths resolve relative to the scripts.
+Both scripts are standalone Python 3.9+ programs using only the standard library. Git must be installed for tag validation and version mutations. Run them from any directory; paths resolve relative to the scripts.
 
 Default invocation is read-only dev inspection:
 
@@ -26,7 +26,7 @@ python release_android.py --bump-dev --dry-run
 python release_android.py --bump-dev
 ```
 
-Web currently uses the **DEPRECATED / LEGACY** version `1.0.62-DEV.8b`. The specification does not define alphabetic iterations. Supply `--legacy-iteration N` with the intended total numeric iteration when converting it. For example, **only if the intended iteration is 10**:
+For a checkout still using the **DEPRECATED / LEGACY** version `1.0.62-DEV.8b`. The specification does not define alphabetic iterations. Supply `--legacy-iteration N` with the intended total numeric iteration when converting it. For example, **only if the intended iteration is 10**:
 
 ```text
 python release_web.py --bump-dev --legacy-iteration 10 --dry-run
@@ -48,7 +48,7 @@ Web package and lockfile versions remain valid numeric semver without a display 
 
 If Git fails partway through promotion, the tool stops and retains completed commits/tags for inspection. It never force-resets history or removes release tags automatically. Review `git status` and `git log` before recovering; rerunning against an existing production tag is rejected.
 
-Existing GitHub workflows using old `v*` tag filters are not changed by these scripts. Pushing a new prefixed tag will not automatically match those old filters. Production publication remains a separate, explicitly controlled operation.
+Git tags always use `web-v<version>` or `app-v<version>` with zero whitespace; human-readable titles use `web v<version>` or `app v<version>`. Both scripts validate generated tags with `git check-ref-format`. Android workflows listen for `app-v1.0.*-dev.*` (dev) and `app-v1.1.*` (production); Web tags do not trigger Android releases. The CI metadata helper validates the checked-out version and rejects mismatched triggering tags before building. Dev branch pushes and manual dispatch remain supported. Production publication remains a separate, explicitly controlled operation.
 
 Regression tests (disposable local repositories only):
 
