@@ -10,15 +10,10 @@ import {
   AlertTriangle,
   Layers,
   ArrowRight,
-  Radio,
-  Share2,
   Search,
   X,
-  Download,
   Upload,
 } from 'lucide-react'
-import { GtaLogoIcon } from './GtaLogoIcon'
-import { bandSync } from '../utils/bandSync'
 import { exportSingleSetlistJson, parseBackupJson } from '../utils/jsonBackup'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 
@@ -30,14 +25,10 @@ interface SongbookHomeViewProps {
   onSelectSong: (index: number) => void
   onNewSong: () => void
   onNewSetlist?: () => void
-  onOpenImportModal: () => void
-  onOpenWebsiteUrlSource: () => void
   onOpenSetlists: () => void
   onDeleteSong: (index: number) => void
   setlists?: WebSetlist[]
   onSelectSetlistSong?: (setlistId: string | number, songIdx: number) => void
-  onPushSetlistToBandSync?: (setlistId: string | number) => void
-  onShareSetlist?: (setlist: WebSetlist) => void
   onImportSingleSetlist?: (setlist: any, songs: ActiveSongState[]) => void
 }
 
@@ -49,14 +40,10 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
   onSelectSong,
   onNewSong,
   onNewSetlist,
-  onOpenImportModal: _onOpenImportModal,
-  onOpenWebsiteUrlSource: _onOpenWebsiteUrlSource,
   onOpenSetlists,
   onDeleteSong,
   setlists = [],
   onSelectSetlistSong,
-  onPushSetlistToBandSync,
-  onShareSetlist,
   onImportSingleSetlist,
 }) => {
   const [membershipSongId, setMembershipSongId] = useState<string | number | null>(null)

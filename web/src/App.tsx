@@ -761,45 +761,6 @@ function App() {
     return { success: true, message: successMsg }
   }
 
-  // Export / Share Setlist (.json download & clipboard copy)
-  const handleShareSetlist = (setlist: WebSetlist) => {
-    try {
-      const exportData = createSingleSetlistPayload(setlist, [...songs, ...deletedSongs])
-
-      const jsonStr = JSON.stringify(exportData, null, 2)
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard
-          .writeText(jsonStr)
-          .then(() => {
-            setToastMessage(`Setlist "${setlist.name}" copied to clipboard as JSON!`)
-            setTimeout(() => setToastMessage(null), 3500)
-          })
-          .catch(() => {
-            triggerSetlistDownload(setlist.name, jsonStr)
-          })
-      } else {
-        triggerSetlistDownload(setlist.name, jsonStr)
-      }
-    } catch (e) {
-      console.error('Failed to share setlist', e)
-    }
-  }
-
-  const triggerSetlistDownload = (name: string, content: string) => {
-    const blob = new Blob([content], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${name.replace(/\s+/g, '_')}_setlist.json`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    setToastMessage(`Downloaded "${name}" setlist .json file!`)
-    setTimeout(() => setToastMessage(null), 3500)
-  }
-
   // Import online chord sheet directly into songbook library
   const handleImportOnlineChordSheet = (
     sheet: FetchedChordSheet,
@@ -1122,7 +1083,6 @@ function App() {
           onSelectSetlistSong={handleSelectSetlistSong}
           onSelectSetlist={handleSelectSetlist}
           onPushSetlistToBandSync={handlePushSetlistToMembers}
-          onShareSetlist={handleShareSetlist}
           onDirectImportOnlineSong={handleImportOnlineChordSheet}
           syncSession={driveSync.session}
           syncStatus={driveSync.status}
@@ -1148,8 +1108,6 @@ function App() {
             onCreateSetlistForSong={handleCreateSetlistForSong}
             onNewSong={handleNewSong}
             onNewSetlist={handleNewSetlist}
-            onOpenImportModal={() => setIsImportModalOpen(true)}
-            onOpenWebsiteUrlSource={() => setIsWebsiteUrlModalOpen(true)}
             onOpenSetlists={() => setIsSetlistDrawerOpen(true)}
             onDeleteSong={handleDeleteSong}
             setlists={setlists}
@@ -1157,8 +1115,6 @@ function App() {
               handleSelectSetlistSong(setlistId, songIdx)
               setActiveView('stage')
             }}
-            onPushSetlistToBandSync={handlePushSetlistToMembers}
-            onShareSetlist={handleShareSetlist}
             onImportSingleSetlist={handleImportSingleSetlist}
           />
         ) : activeView === 'editor' ? (

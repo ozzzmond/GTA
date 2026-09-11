@@ -80,7 +80,6 @@ interface HeaderProps {
   onSelectSetlistSong?: (setlistId: string | number, songIdx: number) => void
   onSelectSetlist?: (setlistId: string | number) => void
   onPushSetlistToBandSync?: (setlistId?: string | number) => void
-  onShareSetlist?: (setlist: WebSetlist) => void
   onDirectImportOnlineSong?: (sheet: FetchedChordSheet, openStage?: boolean) => void
   // Sync/Auth props (wired from useDriveSync in App.tsx)
   syncSession?: SyncSessionInfo | null
@@ -150,7 +149,6 @@ export const Header: React.FC<HeaderProps> = ({
   activeSetlistSongs = [],
   onSelectSetlistSong,
   onSelectSetlist,
-  onShareSetlist,
   onDirectImportOnlineSong,
   // Sync props
   syncSession,
