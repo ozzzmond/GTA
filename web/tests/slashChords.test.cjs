@@ -104,3 +104,20 @@ test('tab charts stay literal during transposition and resume parsing after a bo
 test('a fret marker line does not swallow the following lyric or chord row', () => {
   assert.deepEqual(parseGtarSong('e|--3--X--|\nG/D C/E\nSing along').lines.map(line => line.type), ['TAB', 'CHORD_ROW', 'LYRIC'])
 })
+
+
+test('both parser paths retain complex extensions and complete slash tokens', () => {
+  const tokens = ['Cadd9', 'A7sus4', 'Dsus4', 'Em7', 'D/F#', 'Bb/D', 'G/D', 'C/E', 'C7b9', 'F#7#11', 'CM']
+  const { CHORD_TOKEN_REGEX } = require('../src/utils/chordTransposer.ts')
+  for (const chord of tokens) assert.ok(CHORD_TOKEN_REGEX.test(chord), chord)
+  for (const invalid of ['Cadd9A7sus4Em7', 'D/F#foo', 'G//D']) assert.equal(CHORD_TOKEN_REGEX.test(invalid), false)
+  for (let offset = -11; offset <= 11; offset++) {
+    const raw = tokens.join('    ')
+    const expected = tokens.map(chord => transposeChordToken(chord, offset))
+    assert.deepEqual(parseGtarSong(raw, offset).lines[0].chords, expected)
+    for (const input of [raw, tokens.map(chord => `[${chord}]`).join('    ')]) {
+      const html = parseAndFormatSong(input, offset).html
+      for (const chord of expected) assert.ok(html.includes(chord), `${input}, ${offset}: missing ${chord}`)
+    }
+  }
+})

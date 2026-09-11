@@ -1,5 +1,6 @@
 import ChordSheetJS from 'chordsheetjs'
-import { normalizeAngleBrackets, normalizeSectionMarkers, parseGtarSong } from './songParser'
+import { isChordLine, normalizeAngleBrackets, normalizeSectionMarkers, parseGtarSong } from './songParser'
+import { CHORD_TOKEN_REGEX, transposeChordProText } from './chordTransposer'
 import type { SongFormat } from '../types/gtar'
 
 export interface ParsedSongResult {
@@ -151,6 +152,9 @@ function prepareTextForChordSheet(rawText: string): string {
     if (sectionRegex.test(trimmed)) {
       const title = trimmed.slice(1, -1)
       processed.push(`{c: ${title}}`)
+    } else if (isChordLine(line) && !line.includes('[')) {
+      // Validate whole whitespace-delimited tokens; never split extensions or slash basses.
+      processed.push(line.replace(/\S+/g, token => CHORD_TOKEN_REGEX.test(token) ? `[${token}]` : token))
     } else {
       processed.push(line)
     }
@@ -171,25 +175,11 @@ export function parseAndFormatSong(rawText: string, transposeOffset = 0): Parsed
 
   try {
     const chordProParser = new ChordSheetJS.ChordProParser()
-    let song: ReturnType<typeof chordProParser.parse>
+    // Both input formats now use the shared token grammar and transposer.
+    // Avoid the independent ChordsOverWords tokenizer and library slash handling.
+    const song = chordProParser.parse(transposeChordProText(preparedText, transposeOffset))
 
-    if (format === 'CHORD_PRO') {
-      song = chordProParser.parse(preparedText)
-    } else {
-      const parser = new ChordSheetJS.ChordsOverWordsParser()
-      song = parser.parse(preparedText)
-    }
-
-
-    if (transposeOffset !== 0) {
-      try {
-        song = song.transpose(transposeOffset)
-      } catch {
-        // Fallback if chord symbol not recognized by transposer
-      }
-    }
-
-    const formatter = new ChordSheetJS.HtmlTableFormatter()
+    const formatter = new ChordSheetJS.HtmlTableFormatter({ normalizeChords: false })
     html = formatter.format(song)
   } catch {
     // If parsing fails, provide safe escaped preformatted fallback

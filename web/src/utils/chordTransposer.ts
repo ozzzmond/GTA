@@ -3,7 +3,7 @@
  */
 
 // Shared by detection, highlighting and transposition; numeric slashes belong to the quality.
-export const CHORD_TOKEN_REGEX = /^[A-G][b#]?(?:maj|min|dim|aug|sus[24]?|add(?:2|4|9|11|13)|m7b5|M7|m|[0-9]{1,2}|alt)*(?:\/[0-9]{1,2})?(?:\/[A-G][b#]?(?:min|m)?)?$/i
+export const CHORD_TOKEN_REGEX = /^[A-G][b#]?(?:maj|min|dim|aug|sus[24]?|add(?:2|4|9|11|13)|M|m|[0-9]+|b[0-9]+|#[0-9]+|alt)*(?:\/[0-9]{1,2})?(?:\/[A-G][b#]?(?:min|m)?)?$/i
 
 const CHROMATIC_SHARPS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const CHROMATIC_FLATS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']

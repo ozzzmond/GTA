@@ -146,9 +146,6 @@ export function normalizeAngleBrackets(text: string): string {
     if (CHORD_TOKEN_REGEX.test(trimmed)) {
       return `[${trimmed}]`
     }
-    if (/^[A-G][b#]?[^>]*\/[A-G][b#]?$/i.test(trimmed)) {
-      return `[${trimmed}]`
-    }
     return match
   })
 
