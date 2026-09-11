@@ -1,12 +1,33 @@
 package com.joel.gta
 
 import com.joel.gta.data.update.UpdateManager
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 class UpdateManagerTest {
+
+    @Test
+    fun cleansOfficialTagsDisplayNamesAndLegacyPrefixes() {
+        for (prefix in listOf("app-v", "app-", "app v", "APP-V", "v", "V", "")) {
+            assertEquals("1.1.71", UpdateManager.cleanVersionString("  ${prefix}1.1.71  "))
+            assertEquals("1.0.62-dev.10", UpdateManager.cleanVersionString("${prefix}1.0.62-dev.10"))
+        }
+        assertEquals("", UpdateManager.cleanVersionString("   "))
+    }
+
+    @Test
+    fun comparesOfficialTagsAgainstInstalledDisplayVersions() {
+        assertTrue(UpdateManager.isVersionNewer("app-v1.1.71", "app v1.1.70"))
+        assertTrue(UpdateManager.isVersionNewer("app-v1.0.62-dev.10", "app v1.0.62-dev.9"))
+        assertFalse(UpdateManager.isVersionNewer("app-v1.1.71", "app v1.1.71"))
+        assertFalse(UpdateManager.isVersionNewer("app-v1.1.70", "app v1.1.71"))
+        assertTrue(UpdateManager.isVersionNewer("app-v1.1.71", "app v1.1.71-dev.1"))
+        assertFalse(UpdateManager.isVersionNewer("app-v1.1.71-dev.1", "app v1.1.71"))
+    }
+
 
     @Test
     fun testVersionComparison_newerVersions() {

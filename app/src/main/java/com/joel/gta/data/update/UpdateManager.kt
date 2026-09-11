@@ -44,11 +44,11 @@ sealed class UpdateCheckResult {
 object UpdateManager {
 
     private const val GITHUB_LATEST_RELEASE_URL =
-        "https://api.github.com/repos/ozzzmond/GTA/releases/latest"
+        "https://api.github.com/repos/ozzzmond/GTAR/releases/latest"
     private const val GITHUB_RELEASES_LIST_URL =
-        "https://api.github.com/repos/ozzzmond/GTA/releases?per_page=10"
+        "https://api.github.com/repos/ozzzmond/GTAR/releases?per_page=10"
     private const val GITHUB_TAGS_URL =
-        "https://api.github.com/repos/ozzzmond/GTA/tags"
+        "https://api.github.com/repos/ozzzmond/GTAR/tags"
 
     /**
      * Checks the GitHub Releases API for updates.
@@ -102,10 +102,10 @@ object UpdateManager {
 
                 if (latestDevRelease != null) {
                     val tagName = latestDevRelease.optString("tag_name", "")
-                    val cleanLatestVersion = tagName.removePrefix("v").removePrefix("V").trim()
+                    val cleanLatestVersion = cleanVersionString(tagName)
                     val releaseTitle = latestDevRelease.optString("name", "GTAR Dev Preview $tagName")
                     val releaseNotes = latestDevRelease.optString("body", "Developer preview update.")
-                    val htmlUrl = latestDevRelease.optString("html_url", "https://github.com/ozzzmond/GTA/releases")
+                    val htmlUrl = latestDevRelease.optString("html_url", "https://github.com/ozzzmond/GTAR/releases")
 
                     AppLogManager.i("UpdateManager", "Detected local version: $currentVersion vs latest remote dev release tag: $tagName")
 
@@ -186,10 +186,10 @@ object UpdateManager {
                 val jsonObject = JSONObject(jsonString)
 
                 val tagName = jsonObject.optString("tag_name", "")
-                val cleanLatestVersion = tagName.removePrefix("v").removePrefix("V").trim()
+                val cleanLatestVersion = cleanVersionString(tagName)
                 val releaseTitle = jsonObject.optString("name", "GTAR $tagName")
                 val releaseNotes = jsonObject.optString("body", "Bug fixes and stage enhancements.")
-                val htmlUrl = jsonObject.optString("html_url", "https://github.com/ozzzmond/GTA/releases")
+                val htmlUrl = jsonObject.optString("html_url", "https://github.com/ozzzmond/GTAR/releases")
 
                 AppLogManager.i("UpdateManager", "Detected local version: $currentVersion vs latest remote release tag: $tagName")
 
@@ -261,7 +261,7 @@ object UpdateManager {
                 val tagsArray = JSONArray(tagsJson)
                 if (tagsArray.length() > 0) {
                     val latestTag = tagsArray.getJSONObject(0).optString("name", "")
-                    val cleanTag = latestTag.removePrefix("v").removePrefix("V").trim()
+                    val cleanTag = cleanVersionString(latestTag)
                     val isNewer = isVersionNewer(cleanTag, currentVersion)
                     if (isNewer) {
                         val info = ReleaseInfo(
@@ -270,7 +270,7 @@ object UpdateManager {
                             releaseTitle = "GTAR $latestTag",
                             releaseNotes = "New release tag $latestTag available on GitHub. Tap to view release details or download build artifacts.",
                             apkDownloadUrl = null,
-                            htmlUrl = "https://github.com/ozzzmond/GTA/releases",
+                            htmlUrl = "https://github.com/ozzzmond/GTAR/releases",
                             isNewer = true
                         )
                         return UpdateCheckResult.UpdateAvailable(info)
@@ -298,14 +298,21 @@ object UpdateManager {
                 !assetName.contains("-dev", ignoreCase = true)
     }
 
+    /** Removes Android tag/display prefixes while preserving version and dev iteration. */
+    fun cleanVersionString(raw: String): String {
+        val compact = raw.filterNot { it.isWhitespace() }
+        return compact.replaceFirst(Regex("^app-?", RegexOption.IGNORE_CASE), "")
+            .replaceFirst(Regex("^v", RegexOption.IGNORE_CASE), "")
+    }
+
     /**
      * Compares semantic version parts and developer preview iterations.
      * Supports standard versions ("1.0.30" vs "1.0.29") and dev pre-releases
      * ("v1.0.50-dev.2" vs "v1.0.50-dev.1").
      */
     fun isVersionNewer(latest: String, current: String): Boolean {
-        val cleanLatest = latest.removePrefix("v").removePrefix("V").trim()
-        val cleanCurrent = current.removePrefix("v").removePrefix("V").trim()
+        val cleanLatest = cleanVersionString(latest)
+        val cleanCurrent = cleanVersionString(current)
 
         if (cleanLatest.isEmpty() || cleanCurrent.isEmpty()) return false
         if (cleanLatest.equals(cleanCurrent, ignoreCase = true)) return false
