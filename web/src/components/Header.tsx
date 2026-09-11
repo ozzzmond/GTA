@@ -385,7 +385,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {isCheckingUpdates && (
                   <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
                 )}
-                <span>{isDevApp ? `v${GTAR_DEV_VERSION}` : `v${GTAR_APP_VERSION}`}</span>
+                <span>{isDevApp ? `web v${GTAR_DEV_VERSION}` : `web v${GTAR_APP_VERSION}`}</span>
               </button>
             </div>
           </div>
