@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GTAR 091126 release tool. Standard library only; never pushes or deploys."""
+"""GTAR 091126 release tool. Standard library only; publishing requires explicit --push."""
 import argparse
 import json
 import re
@@ -81,6 +81,7 @@ def main(argv=None):
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--bump-dev", action="store_true", help="Write the next dev version only; no commit or deployment")
     action.add_argument("--promote-to-prod", action="store_true", help="On clean dev: commit/tag prod locally, then commit next dev reset")
+    parser.add_argument("--push", action="store_true", help="With --bump-dev: commit, annotate tag, and atomically push dev and that tag to origin")
     parser.add_argument("--dry-run", action="store_true", help="Print the complete plan without changing files or Git")
     parser.add_argument("--legacy-iteration", type=int, help="Migration only: explicit whole integer for DEPRECATED / LEGACY versions such as DEV.8b")
     args = parser.parse_args(argv)
@@ -88,9 +89,11 @@ def main(argv=None):
         parser.error("--legacy-iteration must be positive")
     inspection = not (args.bump_dev or args.promote_to_prod)
     try:
+        if args.push and not args.bump_dev:
+            raise ValueError("--push requires --bump-dev; production promotion remains local only")
         current, metadata = inspect()
         print(f"[{PLATFORM}] Current dev: {current}")
-        print("[POLICY] Local only. No push, publish, workflow dispatch, or deployment.")
+        print("[POLICY] " + ("Commit, tag and push dev release to origin; tag workflows will run." if args.push else "Local only. No push, publish, workflow dispatch, or deployment."))
         try:
             base, iteration = parse_dev(current, args.legacy_iteration)
         except ValueError as error:
@@ -120,11 +123,30 @@ def main(argv=None):
             files = versions(metadata, None, prod, 1)
             next_files = versions(metadata, reset, prod, 2)
         print("[FILES] " + ", ".join(files))
+        if args.push:
+            print(f"[PLAN] Commit chore({PLATFORM}): bump dev version ({bump_info['title']}); annotate {bump_info['tag']}; atomic push dev and this tag to origin")
         if args.dry_run:
             print("[DRY RUN] No files, commits, branches or tags changed.")
             return 0
         if git("branch", "--show-current") != "dev":
             raise ValueError("Version mutations require the dev branch")
+        if args.bump_dev and args.push:
+            tag = bump_info["tag"]
+            if git("status", "--porcelain"):
+                raise ValueError("Push release requires a completely clean working tree and index")
+            if git("tag", "--list", tag):
+                raise ValueError(f"Tag already exists: {tag}")
+            git("var", "GIT_AUTHOR_IDENT")
+            git("var", "GIT_COMMITTER_IDENT")
+            git("remote", "get-url", "--push", "origin")
+            if git("ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
+                raise ValueError(f"Remote tag already exists: {tag}")
+            commit_files(files, f"chore({PLATFORM}): bump dev version ({bump_info['title']})")
+            git("tag", "-a", tag, "-m", bump_info["title"])
+            print(f"[TAGGED] {tag}. If push fails, retain this commit/tag and retry: git push --atomic origin refs/heads/dev:refs/heads/dev refs/tags/{tag}:refs/tags/{tag}")
+            git("push", "--atomic", "origin", "refs/heads/dev:refs/heads/dev", f"refs/tags/{tag}:refs/tags/{tag}")
+            print(f"[DONE] Pushed dev and {tag} to origin.")
+            return 0
         if args.bump_dev:
             # Permit unrelated work, but never overwrite staged version changes.
             if git("diff", "--cached", "--name-only", "--", *files):

@@ -2,7 +2,6 @@ name: Build & Release GTAR Dev Preview
 
 on:
   push:
-    branches: [ dev ]
     tags:
       - 'app-v1.0.*-dev.*'
   workflow_dispatch:

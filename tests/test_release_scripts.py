@@ -167,6 +167,36 @@ class ReleaseTests(unittest.TestCase):
                 self.assertIn('IS_PRERELEASE=false', result.stdout)
         self.git('check-ref-format', 'refs/tags/app-v1.1.62')
 
+    def test_push_dev_release_to_local_origin(self):
+        remote = self.root / 'origin.git'
+        self.git('init', '--bare', str(remote))
+        self.git('remote', 'add', 'origin', str(remote))
+        # Keep the disposable bare origin out of working-tree cleanliness checks.
+        (self.root / '.git/info/exclude').write_text('origin.git/\n', encoding='utf-8')
+        self.git('tag', 'unrelated-local-tag')
+        for platform, prefix in [('android', 'app'), ('web', 'web')]:
+            self.run_script(platform, '--bump-dev', '--push')
+            tag = f'{prefix}-v1.0.50-dev.13'
+            self.assertEqual(self.git('cat-file', '-t', tag), 'tag')
+            self.assertEqual(self.git('log', '-1', '--format=%s'),
+                             f'chore({prefix}): bump dev version ({prefix} v1.0.50-dev.13)')
+            refs = self.git('ls-remote', 'origin')
+            self.assertIn('refs/tags/' + tag, refs)
+            self.assertNotIn('unrelated-local-tag', refs)
+            self.assertIn(self.git('rev-parse', 'HEAD') + '\trefs/heads/dev', refs)
+            self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_push_dry_run_and_preflight_do_not_mutate(self):
+        for platform in ['android', 'web']:
+            before = self.git('rev-parse', 'HEAD')
+            self.assertIn('[DRY RUN]', self.run_script(platform, '--bump-dev', '--push', '--dry-run'))
+            self.run_script(platform, '--push', success=False)
+            self.run_script(platform, '--promote-to-prod', '--push', success=False)
+            self.run_script(platform, '--bump-dev', '--push', success=False)  # no origin
+            self.assertEqual(self.git('status', '--porcelain'), '')
+            self.assertEqual(self.git('rev-parse', 'HEAD'), before)
+            self.assertEqual(self.git('tag'), '')
+
     def test_disagreeing_versions_fail_without_writes(self):
         path = self.root / 'web/package.json'
         path.write_text(path.read_text().replace('1.0.50-dev.12', '1.0.51-dev.12'))

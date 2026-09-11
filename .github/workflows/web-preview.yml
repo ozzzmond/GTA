@@ -1,0 +1,33 @@
+name: Build GTAR Web Preview
+
+on:
+  push:
+    tags: ['web-v1.0.*-dev.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate preview version
+        run: python .github/release_metadata.py --platform web --dev-only
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.RELEASE_TAG }}
+          path: web/dist/
+          retention-days: 7
