@@ -38,7 +38,6 @@ object SyncPayload {
                 setlist.put("songs", JSONArray((0 until ids.length()).map { JSONObject().put("id", ids.get(it)) }))
             }
             val refs = setlist.getJSONArray("songs")
-            val members = mutableSetOf<String>()
             for (ref in objects(refs)) {
                 val song = if (ref.has("id")) byId[id(ref)] else songs.singleOrNull {
                     it.getString("title").trim().equals(ref.optString("title").trim(), true) &&
@@ -46,8 +45,8 @@ object SyncPayload {
                 }
                 requireNotNull(song) { "Missing or ambiguous setlist song" }
                 ref.put("id", song.get("id")).put("title", song.getString("title")).put("artist", song.optString("artist"))
-                require(members.add(id(ref))) { "Repeated setlist members cannot be represented by Android Room" }
             }
+            setlist.put("songs", JSONArray(objects(refs).distinctBy(::id)))
         }
         BackupManager.validateBackup(root.toString())
         // Canonicalize optional web defaults and numeric IDs to Room's wire representation.
@@ -78,23 +77,27 @@ object SyncPayload {
             objects(a.getJSONArray(field)).associate { id(it) to canonical(it) } == objects(b.getJSONArray(field)).associate { id(it) to canonical(it) }
         }
     fun merge(local: JSONObject, remote: JSONObject, base: JSONObject?): JSONObject {
-        val result = JSONObject(remote.toString()) // Preserve web-only settings.
+        val aligned = SyncDedup.align(listOf(local, remote) + listOfNotNull(base))
+        val cleanLocal = aligned[0]; val cleanRemote = aligned[1]; val cleanBase = aligned.getOrNull(2)
+        val result = JSONObject(cleanRemote.toString()) // Preserve web-only settings.
         for (field in listOf("songs", "setlists")) {
-            val l = objects(local.getJSONArray(field)).associateBy(::id)
-            val r = objects(remote.getJSONArray(field)).associateBy(::id)
-            val b = base?.let { objects(it.getJSONArray(field)).associateBy(::id) }.orEmpty()
+            val l = objects(cleanLocal.getJSONArray(field)).associateBy(::id)
+            val r = objects(cleanRemote.getJSONArray(field)).associateBy(::id)
+            val b = cleanBase?.let { objects(it.getJSONArray(field)).associateBy(::id) }.orEmpty()
             val values = (l.keys + r.keys + b.keys).mapNotNull { key ->
                 val left = l[key]; val right = r[key]; val before = b[key]
                 when {
-                    base == null -> right ?: left // Pull-first restore; incoming stable IDs are authoritative.
                     same(left, right) -> left
                     same(left, before) -> right
                     same(right, before) -> left
+                    left != null && right != null && field == "setlists" -> JSONObject(right.toString())
+                        .put("songs", SyncDedup.union(left.getJSONArray("songs"), right.getJSONArray("songs")))
+                    before == null -> right ?: left
                     else -> error("Conflicting edits to $field. Resolve backups before syncing.")
                 }
             }
             result.put(field, JSONArray(values))
         }
-        return parse(result.toString())
+        return parse(SyncDedup.deduplicate(result).toString())
     }
 }

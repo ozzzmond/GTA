@@ -10,9 +10,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class RoomSyncStore(private val db: GtaDatabase) {
+    /** Repeatable migration: transactionally retain primary rows and repoint all memberships. */
+    suspend fun cleanup(): JSONObject = db.withTransaction {
+        val before = read()
+        val repaired = SyncDedup.deduplicate(before)
+        if (SyncPayload.sameLibrary(before, repaired)) before else apply(before, repaired)
+    }
     suspend fun snapshot(): JSONObject = db.withTransaction { read() }
     private suspend fun read(): JSONObject {
-        val songs = db.songDao().getAllSongsDirect().sortedBy { it.syncId }
+        val songs = db.songDao().getAllSongsDirect().sortedWith(compareBy<SongEntity> { it.isDeleted }.thenBy { it.id })
         val byId = songs.associateBy { it.id }
         val songJson = songs.map { s -> JSONObject().apply {
             put("id", s.syncId); put("title", s.title); put("artist", s.artist ?: "")
@@ -21,7 +27,7 @@ class RoomSyncStore(private val db: GtaDatabase) {
             put("tags", s.tags); put("isFavorite", s.isFavorite); put("isDeleted", s.isDeleted)
             put("createdAt", s.createdAt); put("lastOpenedAt", s.lastOpenedAt)
         } }
-        val setlists = db.setlistDao().getAllSetlistsDirect().sortedBy { it.syncId }.map { s ->
+        val setlists = db.setlistDao().getAllSetlistsDirect().sortedBy { it.id }.map { s ->
             val refs = db.setlistDao().getCrossRefsForSetlist(s.id).mapNotNull { ref -> byId[ref.songId]?.let { song ->
                 JSONObject().put("id", song.syncId).put("title", song.title).put("artist", song.artist ?: "")
             } }
@@ -33,7 +39,7 @@ class RoomSyncStore(private val db: GtaDatabase) {
     /** A single transaction checks for in-flight local edits before changing any records. */
     suspend fun apply(expected: JSONObject, incoming: JSONObject): JSONObject = db.withTransaction {
         check(SyncPayload.sameLibrary(read(), expected)) { "Library changed during download. Sync again." }
-        val payload = SyncPayload.parse(incoming.toString())
+        val payload = SyncPayload.parse(SyncDedup.align(listOf(expected, SyncPayload.parse(incoming.toString())))[1].toString())
         val existingSongs = db.songDao().getAllSongsDirect().associateBy { it.syncId }
         val songIds = mutableMapOf<String, Long>()
         for (s in SyncPayload.objects(payload.getJSONArray("songs"))) {

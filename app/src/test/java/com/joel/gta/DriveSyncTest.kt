@@ -85,4 +85,57 @@ class DriveSyncTest {
         } finally { upgraded.close(); context.deleteDatabase(name) }
     }
 
+    @Test fun independentIdsMergeByIdentityWithoutGrowingOnRepeatedSync() {
+        val remote = web()
+        val local = web().also {
+            it.getJSONArray("songs").getJSONObject(0).put("id", "android-id").put("title", " SHARED SONG ").put("artist", " artist ")
+            it.getJSONArray("setlists").getJSONObject(0).put("id", "android-gig").put("name", " GIG ")
+                .getJSONArray("songs").getJSONObject(0).put("id", "android-id")
+        }
+        val merged = SyncPayload.merge(local, remote, null)
+        assertEquals(1, merged.getJSONArray("songs").length())
+        assertEquals(1, merged.getJSONArray("setlists").length())
+        assertEquals("android-id", merged.getJSONArray("songs").getJSONObject(0).getString("id"))
+        assertEquals("android-gig", merged.getJSONArray("setlists").getJSONObject(0).getString("id"))
+        assertEquals("android-id", merged.getJSONArray("setlists").getJSONObject(0).getJSONArray("songs").getJSONObject(0).getString("id"))
+        assertTrue(SyncPayload.sameLibrary(merged, SyncPayload.merge(merged, remote, remote)))
+    }
+    @Test fun roomCleanupRetainsPrimaryRowsAndRepointsOrderedMemberships() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), GtaDatabase::class.java).build()
+        try {
+            val a = db.songDao().insertSong(SongEntity(syncId = "a", title = "Song", artist = "Artist", rawContent = "Primary"))
+            val duplicate = db.songDao().insertSong(SongEntity(syncId = "duplicate", title = " SONG ", artist = " artist ", rawContent = "Duplicate"))
+            val b = db.songDao().insertSong(SongEntity(syncId = "b", title = "Other", rawContent = "Other"))
+            val first = db.setlistDao().insertSetlist(com.joel.gta.data.local.entity.SetlistEntity(syncId = "first", name = "Gig"))
+            val second = db.setlistDao().insertSetlist(com.joel.gta.data.local.entity.SetlistEntity(syncId = "second", name = " GIG "))
+            db.setlistDao().addSongToSetlist(com.joel.gta.data.local.entity.SetlistSongCrossRef(first, duplicate, 0))
+            db.setlistDao().addSongToSetlist(com.joel.gta.data.local.entity.SetlistSongCrossRef(first, b, 1))
+            db.setlistDao().addSongToSetlist(com.joel.gta.data.local.entity.SetlistSongCrossRef(second, a, 0))
+            val store = RoomSyncStore(db)
+            val repaired = store.cleanup()
+            assertEquals(listOf(a, b), db.songDao().getAllSongsDirect().map { it.id }.sorted())
+            assertEquals("Primary", db.songDao().getSongById(a)!!.rawContent)
+            assertEquals(first, db.setlistDao().getAllSetlistsDirect().single().id)
+            assertEquals(listOf(a, b), db.setlistDao().getCrossRefsForSetlist(first).map { it.songId })
+            assertTrue(SyncPayload.sameLibrary(repaired, store.cleanup()))
+            val remote = SyncPayload.parse(repaired.toString()).also {
+                it.getJSONArray("songs").getJSONObject(0).put("id", "foreign")
+                it.getJSONArray("setlists").getJSONObject(0).getJSONArray("songs").getJSONObject(0).put("id", "foreign")
+            }
+            store.apply(repaired, SyncPayload.merge(repaired, remote, null))
+            assertEquals(2, db.songDao().getAllSongsDirect().size)
+            assertEquals(a, db.songDao().getAllSongsDirect().first { it.syncId == "a" }.id)
+        } finally { db.close() }
+    }
+    @Test fun dedupeKeepsDistinctArtistsAndDropsRepeatedReferences() {
+        val payload = web()
+        val original = payload.getJSONArray("songs").getJSONObject(0)
+        payload.getJSONArray("songs").put(JSONObject(original.toString()).put("id", "other").put("artist", "Different Artist"))
+        val setlist = payload.getJSONArray("setlists").getJSONObject(0)
+        setlist.getJSONArray("songs").put(JSONObject(setlist.getJSONArray("songs").getJSONObject(0).toString()))
+        val repaired = com.joel.gta.data.sync.SyncDedup.deduplicate(SyncPayload.parse(payload.toString()))
+        assertEquals(2, repaired.getJSONArray("songs").length())
+        assertEquals(1, repaired.getJSONArray("setlists").getJSONObject(0).getJSONArray("songs").length())
+    }
+
 }

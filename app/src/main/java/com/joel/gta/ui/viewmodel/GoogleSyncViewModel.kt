@@ -32,6 +32,7 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
     val state = mutableState.asStateFlow()
     private var client: DriveAppDataClient? = null
     private var baseline: JSONObject? = null
+    private var needsUpload = false
     private var generation = 0
     private val mutex = Mutex()
     private val changes = Channel<Unit>(Channel.CONFLATED)
@@ -45,6 +46,7 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
     init {
         connectivity.registerDefaultNetworkCallback(networkCallback)
         database.invalidationTracker.addObserver(observer)
+        syncNow() // Also repairs offline libraries without a signed-in account.
         viewModelScope.launch {
             for (change in changes) {
                 delay(1500)
@@ -81,9 +83,9 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
         mutex.lock()
         val epoch = generation
         try {
+            val local = withContext(Dispatchers.IO) { store.cleanup() }
             val service = client ?: return
-            val local = withContext(Dispatchers.IO) { store.snapshot() }
-            if (!manual && baseline?.let { SyncPayload.sameLibrary(local, it) } == true) return
+            if (!manual && !needsUpload && baseline?.let { SyncPayload.sameLibrary(local, it) } == true) return
             mutableState.value = mutableState.value.copy(status = "Syncing", busy = true)
             val cloud = withContext(Dispatchers.IO) { service.pull() }
             if (epoch != generation) return
@@ -93,6 +95,7 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
             if (epoch != generation) return
             if (baseline == null && cloud != null) {
                 baseline = cloud
+                needsUpload = true
                 mutableState.value = mutableState.value.copy(status = "Synced: Cloud library restored", busy = false)
                 changes.trySend(Unit)
                 return
@@ -105,6 +108,7 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
             withContext(Dispatchers.IO) { service.push(merged) }
             if (epoch != generation) return
             baseline = normalized
+            needsUpload = false
             mutableState.value = mutableState.value.copy(status = "Synced", busy = false)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {

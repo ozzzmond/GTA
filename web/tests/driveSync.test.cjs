@@ -113,6 +113,32 @@ test('initial restore populates an empty client and merges cloud IDs/setlists ov
   assert.equal(restored.songs.length, 1)
   assert.equal(restored.songs[0].rawContent, 'cloud')
   assert.equal(restored.setlists[0].songs[0].id, 'a')
-  const edited = { songs: [...library.songs, { ...song, id: 'during-download' }], setlists: [] }
+  const edited = { songs: [...library.songs, { ...song, id: 'during-download', title: 'New song during download' }], setlists: [] }
   assert.equal(mergeSyncLibrary(edited, restored, library).songs.length, 2)
+})
+
+test('deduplicated cloud repair refuses a stale guard, then uploads only after a fresh pull', async () => {
+  const original = global.fetch
+  let version = '1', uploaded
+  const duplicate = { ...song, id: 'duplicate' }
+  const polluted = { ...payload, songs: [song, duplicate], setlists: [] }
+  global.fetch = async (url, init) => {
+    const params = new URL(url).searchParams
+    const file = { id: 'repair', version }
+    if (params.has('uploadType')) { uploaded = init.body; return json(file) }
+    if (params.has('alt')) return json(polluted)
+    return json(params.has('spaces') ? { files: [file] } : file)
+  }
+  try {
+    const cloud = await pullCloudBackup('repair')
+    const repaired = initializeSyncLibrary(library, cloud)
+    assert.equal(repaired.songs.length, 1)
+    version = '2'
+    await assert.rejects(pushCloudBackup('repair', { ...payload, ...repaired }), /Cloud changed/)
+    assert.equal(uploaded, undefined)
+    const fresh = await pullCloudBackup('repair')
+    await pushCloudBackup('repair', { ...payload, ...initializeSyncLibrary(repaired, fresh) })
+    assert.ok(uploaded)
+    assert.equal(uploaded.includes('"id":"duplicate"'), false)
+  } finally { global.fetch = original; clearDriveSession('repair') }
 })

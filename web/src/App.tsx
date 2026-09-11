@@ -1,9 +1,10 @@
+import { deduplicateLibrary } from './utils/syncMerge'
 import { useDriveSync } from './hooks/useDriveSync'
 import { DriveSyncControls } from './components/DriveSyncControls'
 import { generateUUID } from './utils/uuid'
 import { SETTINGS_KEYS, SETTINGS_CHANGED, readBackupSettings } from './utils/backupSettings'
 import { parseBackupJson, normalizeBackupSong, createSingleSetlistPayload } from './utils/jsonBackup'
-import { setSongMembership, bindLegacySetlists, ensureSongIds, resolveSetlistSong, mergeBackupLibrary, partitionSongs } from './utils/setlistSongs'
+import { setSongMembership, ensureSongIds, resolveSetlistSong, mergeBackupLibrary, partitionSongs } from './utils/setlistSongs'
 import { useState, useEffect, useMemo } from 'react'
 import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
@@ -229,26 +230,19 @@ function App() {
     const storedSongs = readSongs('gtar_songs_store', DEFAULT_SETLIST)
     const storedTrash = readSongs('gtar_trash_songs_store', []).map(song => ({ ...song, isDeleted: true }))
     const combined = ensureSongIds([...storedSongs, ...storedTrash])
-    return partitionSongs([...new Map(combined.map(song => [String(song.id), song])).values()])
+    let storedSetlists = DEFAULT_SAMPLE_SETLISTS
+    try {
+      const saved = localStorage.getItem('gtar_setlists_store')
+      if (saved && Array.isArray(JSON.parse(saved))) storedSetlists = JSON.parse(saved)
+    } catch { /* Keep the existing fallback. */ }
+    const repaired = deduplicateLibrary({ songs: combined, setlists: storedSetlists })
+    return { ...partitionSongs(repaired.songs), setlists: repaired.setlists }
   })
   const [songs, setSongs] = useState<ActiveSongState[]>(initialLibrary.active)
   const [deletedSongs, setDeletedSongs] = useState<ActiveSongState[]>(initialLibrary.deleted)
 
   // Custom Setlists (persisted in localStorage)
-  const [setlists, setSetlists] = useState<WebSetlist[]>(() => {
-    try {
-      const saved = localStorage.getItem('gtar_setlists_store')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed)) {
-          return bindLegacySetlists(parsed, [...songs, ...deletedSongs])
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load setlists from localStorage', e)
-    }
-    return bindLegacySetlists(DEFAULT_SAMPLE_SETLISTS, [...songs, ...deletedSongs])
-  })
+  const [setlists, setSetlists] = useState<WebSetlist[]>(initialLibrary.setlists)
 
   const syncSongs = useMemo(() => [...songs, ...deletedSongs], [songs, deletedSongs])
   const driveSync = useDriveSync({ songs: syncSongs, setlists }, library => {

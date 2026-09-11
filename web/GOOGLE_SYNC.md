@@ -13,3 +13,6 @@ Drive access uses only hidden appData files named `gtar_songbook_sync.json`. Que
 Validation: `npm test` and `npm run build` from `web`. Automated tests mock GIS session storage and Drive responses. A live consent/popup and real Drive ETag smoke test must be performed with a configured Google client; these are not covered by mocked tests.
 
 References: https://developers.google.com/identity/oauth2/web/guides/use-token-model and https://developers.google.com/workspace/drive/api/guides/appdata
+
+
+Duplicate repair: app startup deduplicates the stored library before initializing song and setlist state. Normalized title + artist identifies duplicate songs; normalized name identifies duplicate setlists. First records retain their IDs and contents; all setlist references are repointed and unique memberships retain their order. The existing local persistence effects save the result. Every subsequent sync aligns IDs across local, cloud, and baseline before reconciliation, so cloud duplicates cannot repopulate the library. A restored cloud library queues a new guarded sync even when no additional user edit occurs. This intentionally collapses multiple arrangements with identical title and artist; use distinct titles to retain them separately.

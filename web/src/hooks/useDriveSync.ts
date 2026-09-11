@@ -73,6 +73,7 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
         initialized.current = true
         latest.current.library = current
         latest.current.apply(current)
+        queued.current = true
         setStatus('Cloud library restored. Local changes are saved on this device.')
         return
       }
