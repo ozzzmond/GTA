@@ -123,6 +123,7 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    packaging { resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/INDEX.LIST") }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -130,6 +131,13 @@ android {
 }
 
 dependencies {
+    implementation("com.google.android.gms:play-services-auth:21.6.0")
+    implementation("com.google.api-client:google-api-client-android:2.7.2") {
+        exclude(group = "org.apache.httpcomponents")
+    }
+    implementation("com.google.apis:google-api-services-drive:v3-rev20240509-2.0.0")
+    implementation("com.google.http-client:google-http-client-gson:1.46.3")
+
     implementation(libs.androidx.core.ktx)
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation(libs.androidx.lifecycle.runtime.ktx)

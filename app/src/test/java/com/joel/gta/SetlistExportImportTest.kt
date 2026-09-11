@@ -60,6 +60,7 @@ class SetlistExportImportTest {
     }
 
     private class FakeSetlistDao : SetlistDao {
+        override suspend fun updateSetlist(setlist: SetlistEntity) { insertSetlist(setlist) }
         val setlists = mutableListOf<SetlistEntity>()
         val crossRefs = mutableListOf<SetlistSongCrossRef>()
         private var nextId = 1L

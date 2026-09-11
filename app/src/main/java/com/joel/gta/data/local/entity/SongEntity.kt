@@ -17,6 +17,10 @@ import androidx.room.PrimaryKey
 data class SongEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    @androidx.room.ColumnInfo(defaultValue = "''")
+    val syncId: String = java.util.UUID.randomUUID().toString(),
+    @androidx.room.ColumnInfo(defaultValue = "'120'")
+    val bpm: String = "120",
     val title: String,
     val artist: String? = null,
     val key: String? = null,

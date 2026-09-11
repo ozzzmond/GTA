@@ -37,6 +37,10 @@ import com.joel.gta.ui.viewmodel.SongViewerViewModel
 
 class MainActivity : ComponentActivity() {
 
+    private val googleSync: com.joel.gta.ui.viewmodel.GoogleSyncViewModel by viewModels()
+    private val googleSignIn = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+        googleSync.signInResult(result.data)
+    }
     private val viewModel: SongViewerViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +48,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
+            val googleSyncState by googleSync.state.collectAsState()
             val themeMode by viewModel.themeMode.collectAsState()
             val customStageColors by viewModel.customStageColors.collectAsState()
             val keepScreenOn by viewModel.keepScreenOn.collectAsState()
@@ -387,6 +392,10 @@ class MainActivity : ComponentActivity() {
 
                 if (showSettingsDialog) {
                     SettingsDialog(
+                        googleSyncState = googleSyncState,
+                        onGoogleSignIn = { googleSignIn.launch(googleSync.signInIntent()) },
+                        onGoogleSignOut = googleSync::signOut,
+                        onSyncNow = googleSync::syncNow,
                         keepScreenOn = keepScreenOn,
                         onToggleKeepScreenOn = { enabled -> viewModel.setKeepScreenOn(enabled) },
                         songFontStyle = songFontStyle,

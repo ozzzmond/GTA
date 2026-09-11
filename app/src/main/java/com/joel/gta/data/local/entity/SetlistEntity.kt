@@ -7,6 +7,8 @@ import androidx.room.PrimaryKey
 data class SetlistEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    @androidx.room.ColumnInfo(defaultValue = "''")
+    val syncId: String = java.util.UUID.randomUUID().toString(),
     val name: String,
     val createdAt: Long = System.currentTimeMillis()
 )

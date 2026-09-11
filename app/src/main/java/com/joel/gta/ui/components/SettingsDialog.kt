@@ -27,6 +27,10 @@ import com.joel.gta.ui.theme.SongFontStyle
 
 @Composable
 fun SettingsDialog(
+    googleSyncState: com.joel.gta.ui.viewmodel.GoogleSyncState = com.joel.gta.ui.viewmodel.GoogleSyncState(),
+    onGoogleSignIn: () -> Unit = {},
+    onGoogleSignOut: () -> Unit = {},
+    onSyncNow: () -> Unit = {},
     keepScreenOn: Boolean,
     onToggleKeepScreenOn: (Boolean) -> Unit,
     songFontStyle: SongFontStyle = SongFontStyle.MONOSPACE,
@@ -116,6 +120,18 @@ fun SettingsDialog(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                Text("Google Drive Backup", fontWeight = FontWeight.Bold)
+                Text(googleSyncState.email ?: "Not signed in", fontSize = 12.sp)
+                Text(googleSyncState.status, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (googleSyncState.email == null) {
+                        TextButton(onClick = onGoogleSignIn, enabled = !googleSyncState.busy) { Text("Sign In with Google") }
+                    } else {
+                        TextButton(onClick = onGoogleSignOut) { Text("Sign Out") }
+                        TextButton(onClick = onSyncNow, enabled = !googleSyncState.busy) { Text("Sync Now") }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
                 // Section 1: Stage Display
                 Text(
                     text = "STAGE DISPLAY",

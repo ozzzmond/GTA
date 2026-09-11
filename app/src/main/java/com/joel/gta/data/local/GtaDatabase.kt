@@ -22,7 +22,7 @@ import com.joel.gta.data.local.entity.SongEntity
         ChordVoicingEntity::class,
         SearchHistoryEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class GtaDatabase : RoomDatabase() {
@@ -35,6 +35,16 @@ abstract class GtaDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: GtaDatabase? = null
+
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                for (table in listOf("songs", "setlists")) {
+                    db.execSQL("ALTER TABLE $table ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+                    db.execSQL("UPDATE $table SET syncId = lower(hex(randomblob(16)))")
+                }
+                db.execSQL("ALTER TABLE songs ADD COLUMN bpm TEXT NOT NULL DEFAULT '120'")
+            }
+        }
 
         val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -90,7 +100,7 @@ abstract class GtaDatabase : RoomDatabase() {
                     GtaDatabase::class.java,
                     "gta_database.db"
                 )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

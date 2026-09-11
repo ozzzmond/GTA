@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SetlistDao {
+    @Update
+    suspend fun updateSetlist(setlist: SetlistEntity)
+
 
     @Transaction
     @Query("SELECT * FROM setlists ORDER BY createdAt DESC")
