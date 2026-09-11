@@ -1,3 +1,4 @@
+import { generateUUID } from './uuid'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 
 export type SongReference = WebSetlist['songs'][number]
@@ -28,28 +29,75 @@ export function validateSetlistReferences(setlists: WebSetlist[], songs: ActiveS
 }
 
 export function ensureSongIds(songs: ActiveSongState[]): ActiveSongState[] {
-  return songs.map(song => song.id === undefined ? { ...song, id: crypto.randomUUID() } : song)
+  return songs.map(song => song.id === undefined ? { ...song, id: generateUUID() } : song)
 }
 
 export function partitionSongs(songs: ActiveSongState[]) {
   return { active: songs.filter(song => !song.isDeleted), deleted: songs.filter(song => song.isDeleted) }
 }
 
-/** Merge by ID, then legacy identity, rebinding imported references when deduplicating. */
+/** Reserve exact IDs first; legacy identity matches may only use unclaimed slots. */
 export function mergeBackupLibrary(existing: ActiveSongState[], incoming: ActiveSongState[], setlists: WebSetlist[]) {
-  const songs = [...existing]
-  const remapped = new Map<string, string | number>()
-  for (const song of incoming) {
-    const match = songs.findIndex(item => String(item.id) === String(song.id))
-    const identityMatches = songs.map((item, index) => ({ item, index })).filter(({ item }) => songIdentity(item) === songIdentity(song))
-    const uniqueIncomingIdentity = incoming.filter(item => songIdentity(item) === songIdentity(song)).length === 1
-    const index = match >= 0 ? match : uniqueIncomingIdentity && identityMatches.length === 1 ? identityMatches[0].index : -1
-    if (index >= 0) {
-      const id = songs[index].id!
-      remapped.set(String(song.id), id)
-      songs[index] = { ...songs[index], ...song, id }
-    } else songs.push(song)
+  const original = ensureSongIds(existing)
+  const imported = ensureSongIds(incoming)
+  const existingById = new Map<string, number>()
+  original.forEach((song, index) => {
+    const id = String(song.id)
+    if (existingById.has(id)) throw new Error(`Existing library contains duplicate song ID: ${id}`)
+    existingById.set(id, index)
+  })
+  const incomingIds = new Set<string>()
+  for (const song of imported) {
+    const id = String(song.id)
+    if (incomingIds.has(id)) throw new Error(`Backup contains duplicate song ID: ${id}`)
+    incomingIds.add(id)
   }
+
+  // Phase 1: reserve every exact-ID target before looking at titles or artists.
+  const targets = new Map<number, number>()
+  const reserved = new Set<number>()
+  imported.forEach((song, index) => {
+    const target = existingById.get(String(song.id))
+    if (target !== undefined) {
+      targets.set(index, target)
+      reserved.add(target)
+    }
+  })
+
+  // Phase 2: compare immutable snapshots. Only unique, unbound identities dedupe.
+  const unboundByIdentity = new Map<string, number[]>()
+  imported.forEach((song, index) => {
+    if (targets.has(index)) return
+    const key = songIdentity(song)
+    unboundByIdentity.set(key, [...(unboundByIdentity.get(key) ?? []), index])
+  })
+  const availableByIdentity = new Map<string, number[]>()
+  original.forEach((song, index) => {
+    if (reserved.has(index)) return
+    const key = songIdentity(song)
+    availableByIdentity.set(key, [...(availableByIdentity.get(key) ?? []), index])
+  })
+  for (const [identity, indices] of unboundByIdentity) {
+    const available = availableByIdentity.get(identity) ?? []
+    if (indices.length === 1 && available.length === 1) {
+      targets.set(indices[0], available[0])
+      reserved.add(available[0])
+    }
+  }
+  let nextSlot = original.length
+  imported.forEach((_, index) => {
+    if (!targets.has(index)) targets.set(index, nextSlot++)
+  })
+
+  // The complete one-to-one mapping is fixed before any updates or ref rewrites.
+  const songs = [...original]
+  const remapped = new Map<string, string | number>()
+  imported.forEach((song, index) => {
+    const target = targets.get(index)!
+    const id = original[target]?.id ?? song.id!
+    remapped.set(String(song.id), id)
+    songs[target] = { ...original[target], ...song, id }
+  })
   const rebound = setlists.map(setlist => ({ ...setlist, songs: setlist.songs.map(ref =>
     ref.id !== undefined && remapped.has(String(ref.id)) ? { ...ref, id: remapped.get(String(ref.id)) } : ref) }))
   const errors = validateSetlistReferences(rebound, songs)

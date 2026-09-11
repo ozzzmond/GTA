@@ -1,3 +1,4 @@
+import { generateUUID } from './utils/uuid'
 import { SETTINGS_KEYS, SETTINGS_CHANGED, readBackupSettings } from './utils/backupSettings'
 import { parseBackupJson, normalizeBackupSong, createSingleSetlistPayload } from './utils/jsonBackup'
 import { bindLegacySetlists, ensureSongIds, resolveSetlistSong, mergeBackupLibrary, partitionSongs } from './utils/setlistSongs'
@@ -995,7 +996,7 @@ function App() {
   }
 
   const handleImportSong = (imported: Partial<ActiveSongState>) => {
-    const song = normalizeBackupSong({ ...imported, id: crypto.randomUUID(), title: imported.title || 'Imported Song' })
+    const song = normalizeBackupSong({ ...imported, id: generateUUID(), title: imported.title || 'Imported Song' })
     if (song.isDeleted) setDeletedSongs(prev => [song, ...prev])
     else setSongs(prev => [song, ...prev])
     setActiveSongIndex(0)
@@ -1003,7 +1004,7 @@ function App() {
   }
 
   const handleImportAllSongs = (importedSongs: Array<Partial<ActiveSongState>>) => {
-    const normalized = importedSongs.map(song => normalizeBackupSong({ ...song, id: crypto.randomUUID(), title: song.title || 'Imported Song' }))
+    const normalized = importedSongs.map(song => normalizeBackupSong({ ...song, id: generateUUID(), title: song.title || 'Imported Song' }))
     const partition = partitionSongs(normalized)
     setSongs(prev => [...prev, ...partition.active])
     setDeletedSongs(prev => [...prev, ...partition.deleted])

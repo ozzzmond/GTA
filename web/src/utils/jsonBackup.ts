@@ -1,3 +1,4 @@
+import { generateUUID } from './uuid'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 import { GTAR_APP_VERSION } from '../types/gtar'
 import { readBackupSettings, validateBackupSettings, type BackupSettings } from './backupSettings'
@@ -22,7 +23,7 @@ export interface ParsedBackupResult extends BackupSettings {
 
 export function normalizeBackupSong(s: Partial<ActiveSongState> & { content?: string }): ActiveSongState {
   return {
-    id: s.id ?? crypto.randomUUID(), title: s.title!, artist: s.artist ?? '',
+    id: s.id ?? generateUUID(), title: s.title!, artist: s.artist ?? '',
     key: s.key ?? 'G', capo: s.capo ?? '', bpm: s.bpm ?? '120',
     format: s.format ?? 'CHORD_PRO', transposeOffset: s.transposeOffset ?? 0,
     rawContent: s.rawContent ?? s.content ?? '',
@@ -37,8 +38,14 @@ export function normalizeBackupSong(s: Partial<ActiveSongState> & { content?: st
 /** Download and clipboard share the same metadata and settings payload. */
 export function createBackupPayload(songs: ActiveSongState[], setlists: WebSetlist[], version = GTAR_APP_VERSION): FullBackupPayload {
   const normalized = ensureSongIds(songs).map(normalizeBackupSong)
+  // A permanently removed member remains visible as missing in the live UI,
+  // but cannot be resolved when restoring into an empty library. Clean only
+  // the exported copy, retaining each setlist and the order of surviving refs.
+  const exportedSetlists = bindLegacySetlists(setlists, normalized).map(setlist => ({
+    ...setlist, songs: setlist.songs.filter(ref => resolveSetlistSong(ref, normalized) !== undefined),
+  }))
   return { app: 'GTAR', version, exportedAt: new Date().toISOString(), exportType: 'FULL_BACKUP',
-    ...readBackupSettings(), songs: normalized, setlists: bindLegacySetlists(setlists, normalized) }
+    ...readBackupSettings(), songs: normalized, setlists: exportedSetlists }
 }
 
 export function exportAllDataJson(songs: ActiveSongState[], setlists: WebSetlist[]): string {
@@ -138,9 +145,9 @@ export function parseBackupJson(rawText: string, options: BackupParseOptions = {
       if (ids.has(String(song.id))) errors.push(`songs[${i}].id: duplicate song ID`)
       ids.add(String(song.id))
     })
-    const setlists: WebSetlist[] = single ? [{ ...data.setlist, id: data.setlist.id ?? crypto.randomUUID(),
+    const setlists: WebSetlist[] = single ? [{ ...data.setlist, id: data.setlist.id ?? generateUUID(),
       songs: songs.map(song => ({ id: song.id, title: song.title, artist: song.artist })) }] : sourceSetlists.map(setlist => ({
-        ...setlist, id: setlist.id ?? crypto.randomUUID(), songs: setlist.songs.map(ref => ({ ...ref })) }))
+        ...setlist, id: setlist.id ?? generateUUID(), songs: setlist.songs.map(ref => ({ ...ref })) }))
     const combined = options.mode === 'merge'
       ? [...songs, ...(options.existingSongs ?? []).filter(song => !ids.has(String(song.id)))] : songs
     // Resolve title-only legacy references within the incoming backup first, so
