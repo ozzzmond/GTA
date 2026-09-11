@@ -211,59 +211,31 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
         onCreate={onCreateSetlistForSong}
         onClose={() => setMembershipSongId(null)}
       />}
-      {/* 1. Hero / Welcome Banner — adaptive glassmorphism card */}
-      <div className="rounded-3xl relative overflow-hidden mb-8 shadow-2xl"
-        style={{
-          background: 'linear-gradient(135deg, rgba(7,54,66,0.72) 0%, rgba(0,43,54,0.60) 50%, rgba(7,54,66,0.72) 100%)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(42,161,152,0.18)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06)',
-        }}
-      >
-        <div className="relative z-10 max-w-2xl p-6 sm:p-8">
-          <div className="inline-flex items-center px-3 py-1 rounded-full border text-xs font-mono font-bold mb-3"
-            style={{
-              background: 'rgba(42,161,152,0.12)',
-              borderColor: 'rgba(42,161,152,0.35)',
-              color: '#2AA198',
-            }}
-          >
-            <span>GTAR Live Stage Companion</span>
+
+      {/* 1. Compact Panel Header — title + New Setlist button, no hero */}
+      <div className="flex items-center justify-between mb-5 px-1">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-[#073642] border border-[#1A4A55] flex items-center justify-center text-[#2AA198]">
+            <Music className="w-4 h-4" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight"
-            style={{ color: '#FDF6E3', textShadow: '0 1px 8px rgba(0,0,0,0.45)' }}
-          >
+          <h1 className="text-lg font-bold text-[#FDF6E3] tracking-tight">
             Songbook &amp; Gig Library
           </h1>
-          <p className="text-sm mt-2 leading-relaxed"
-            style={{ color: 'rgba(253,246,227,0.65)' }}
-          >
-            Select any song below to launch into the live Stage View teleprompter, or create and manage gig setlists.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-3 mt-5">
-            <button
-              type="button"
-              onClick={onNewSetlist || onOpenSetlists}
-              className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95"
-              title="Create new empty gig setlist"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>New Setlist</span>
-            </button>
-          </div>
         </div>
-
-        {/* Decorative Guitar Icon background */}
-        <div className="absolute right-4 -bottom-6 opacity-[0.04] pointer-events-none hidden md:block">
-          <GtaLogoIcon className="w-64 h-64 text-[#2AA198] fill-current" />
-        </div>
+        <button
+          type="button"
+          onClick={onNewSetlist || onOpenSetlists}
+          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md active:scale-95"
+          title="Create new empty gig setlist"
+        >
+          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+          <span>New Setlist</span>
+        </button>
       </div>
 
-      {/* 2. Active Setlists Quick Row (if available) */}
+      {/* 2. Gig Setlists Grid */}
       {setlists.length > 0 && (
-        <div className="mb-8">
+        <div className="mb-6">
           {/* Hidden file input for Setlist .json import */}
           <input
             ref={setlistFileInputRef}
@@ -276,7 +248,7 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
           <div className="flex items-center justify-between mb-3 px-1">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-[#B58900]" />
-              <h2 className="text-sm font-bold text-[#FDF6E3] uppercase tracking-wider font-mono">
+              <h2 className="text-xs font-bold text-[#FDF6E3] uppercase tracking-wider font-mono">
                 Gig Setlists ({setlists.length})
               </h2>
             </div>
@@ -284,16 +256,16 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
               <button
                 type="button"
                 onClick={() => setlistFileInputRef.current?.click()}
-                className="text-xs font-bold text-[#2AA198] hover:bg-[#2AA198]/15 px-2.5 py-1 rounded-lg border border-[#2AA198]/40 flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="text-[10px] font-bold text-[#2AA198] hover:bg-[#2AA198]/15 px-2 py-1 rounded-lg border border-[#2AA198]/40 flex items-center gap-1 transition-colors cursor-pointer"
                 title="Import single setlist (.json) into your library"
               >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Import Setlist</span>
+                <Upload className="w-3 h-3" />
+                <span>Import</span>
               </button>
               <button
                 type="button"
                 onClick={onOpenSetlists}
-                className="text-xs font-bold text-[#93A1A1] hover:text-[#FDF6E3] flex items-center gap-1 cursor-pointer"
+                className="text-[10px] font-bold text-[#93A1A1] hover:text-[#FDF6E3] flex items-center gap-1 cursor-pointer"
               >
                 <span>Manage</span>
                 <ArrowRight className="w-3 h-3" />
@@ -312,66 +284,35 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
                     onOpenSetlists()
                   }
                 }}
-                className="p-4 rounded-2xl bg-[#073642] border border-[#1A4A55] hover:border-[#B58900] transition-all cursor-pointer shadow-md group flex flex-col justify-between"
+                className="px-4 py-3 rounded-2xl bg-[#073642] border border-[#1A4A55] hover:border-[#2AA198]/50 transition-all cursor-pointer group flex items-center justify-between gap-3"
               >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-bold text-[#FDF6E3] group-hover:text-[#B58900] truncate transition-colors">
-                      {sl.name}
-                    </div>
-                    <div className="text-[11px] font-mono text-[#93A1A1] mt-0.5">
-                      {sl.songs.length} {sl.songs.length === 1 ? 'song' : 'songs'} in queue
-                    </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-[#FDF6E3] group-hover:text-[#2AA198] truncate transition-colors">
+                    {sl.name}
                   </div>
-                  <div className="w-8 h-8 rounded-xl bg-[#002B36] text-[#B58900] flex items-center justify-center group-hover:bg-[#B58900] group-hover:text-[#002B36] transition-colors shrink-0 shadow-inner">
-                    <Play className="w-3.5 h-3.5 fill-current" />
+                  <div className="text-[11px] font-mono text-[#93A1A1] mt-0.5">
+                    {sl.songs.length} {sl.songs.length === 1 ? 'song' : 'songs'}
                   </div>
                 </div>
 
-                {/* Setlist Action Controls: Push to BandSync (Leader only), Export (.json) & Share */}
-                <div className="flex items-center justify-between gap-1.5 mt-3 pt-2.5 border-t border-[#1A4A55]/60">
-                  {bandSync.getState().role === 'HOST' && onPushSetlistToBandSync && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onPushSetlistToBandSync?.(sl.id)
-                      }}
-                      className="px-2 py-1 rounded-lg bg-[#2AA198]/15 hover:bg-[#2AA198] text-[#2AA198] hover:text-[#002B36] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#2AA198]/30"
-                      title="Broadcast setlist to connected band members via BandSync"
-                    >
-                      <Radio className="w-3 h-3" />
-                      <span>Push BandSync</span>
-                    </button>
-                  )}
-
-                  <div className="flex items-center gap-1.5 ml-auto">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        exportSingleSetlistJson(sl, songs)
-                      }}
-                      className="px-2 py-1 rounded-lg bg-[#002B36] hover:bg-[#1A4A55] text-[#93A1A1] hover:text-[#2AA198] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#1A4A55]"
-                      title="Export single setlist as .json file"
-                    >
-                      <Download className="w-3 h-3" />
-                      <span>Export (.json)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onShareSetlist?.(sl)
-                      }}
-                      className="px-2 py-1 rounded-lg bg-[#002B36] hover:bg-[#1A4A55] text-[#93A1A1] hover:text-[#FDF6E3] text-[10px] font-bold font-mono flex items-center gap-1 transition-colors cursor-pointer border border-[#1A4A55]"
-                      title="Share / Export setlist as JSON"
-                    >
-                      <Share2 className="w-3 h-3" />
-                      <span>Share</span>
-                    </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Circular play button */}
+                  <div className="w-9 h-9 rounded-full bg-[#2AA198]/15 text-[#2AA198] flex items-center justify-center group-hover:bg-[#2AA198] group-hover:text-[#002B36] transition-colors">
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
                   </div>
+                  {/* Three-dot overflow */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      // Export as JSON on overflow click
+                      exportSingleSetlistJson(sl, songs)
+                    }}
+                    className="w-7 h-7 rounded-lg bg-transparent hover:bg-[#002B36] text-[#93A1A1] hover:text-[#FDF6E3] flex items-center justify-center transition-colors cursor-pointer"
+                    title="Export setlist as .json"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                  </button>
                 </div>
               </div>
             ))}

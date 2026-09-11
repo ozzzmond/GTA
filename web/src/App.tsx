@@ -1,6 +1,5 @@
 import { deduplicateLibrary } from './utils/syncMerge'
 import { useDriveSync } from './hooks/useDriveSync'
-import { DriveSyncControls } from './components/DriveSyncControls'
 import { generateUUID } from './utils/uuid'
 import { SETTINGS_KEYS, SETTINGS_CHANGED, readBackupSettings } from './utils/backupSettings'
 import { parseBackupJson, normalizeBackupSong, createSingleSetlistPayload } from './utils/jsonBackup'
@@ -1083,7 +1082,6 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#002B36] text-[#EEE8D5]">
-      {!isStagePerformanceMode && <DriveSyncControls sync={driveSync} />}
       {/* Unified Android v1.0.44 Top Bar — hidden in stage performance mode */}
       {!isStagePerformanceMode && (
         <Header
@@ -1126,6 +1124,13 @@ function App() {
           onPushSetlistToBandSync={handlePushSetlistToMembers}
           onShareSetlist={handleShareSetlist}
           onDirectImportOnlineSong={handleImportOnlineChordSheet}
+          syncSession={driveSync.session}
+          syncStatus={driveSync.status}
+          syncBusy={driveSync.busy}
+          onSyncNow={() => void driveSync.syncNow()}
+          onSignOut={driveSync.signOut}
+          onSignIn={() => void driveSync.signIn()}
+          syncReady={driveSync.ready}
         />
       )}
 

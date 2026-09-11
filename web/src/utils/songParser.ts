@@ -37,8 +37,13 @@ export const TAB_LINE_REGEX = /^[eEaAdDgGbB]\|[0-9-xpbrh~/\\|\s]+$/
 
 // Fixed-pitch diagrams must bypass chord detection and transposition.
 export function isTabChartLine(line: string): boolean {
-  return TAB_LINE_REGEX.test(line.trim()) || /-(?:[0-9]+|x)-/i.test(line) ||
-    /^\s*(?:chords?|chord\s+(?:chart|diagrams?|definitions?))\s*:/i.test(line)
+  const trimmed = line.trim()
+  if (TAB_LINE_REGEX.test(trimmed)) return true
+  if (/-(?:[0-9]+|x)-/i.test(line)) return true
+  if (/^\s*(?:chords?|chord\s+(?:chart|diagrams?|definitions?))\s*:/i.test(line)) return true
+  // Space-separated fret grid values like "3 2 0 0 0 3" or "x 0 2 2 1 0"
+  if (/^[0-9xX](?:\s+[0-9xX]){3,}$/.test(trimmed)) return true
+  return false
 }
 
 // Check if token is a musical separator/delimiter

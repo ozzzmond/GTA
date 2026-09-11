@@ -1,4 +1,4 @@
-﻿const { test } = require('node:test')
+const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const ts = require('typescript')
@@ -107,7 +107,7 @@ test('a fret marker line does not swallow the following lyric or chord row', () 
 
 
 test('both parser paths retain complex extensions and complete slash tokens', () => {
-  const tokens = ['Cadd9', 'A7sus4', 'Dsus4', 'Em7', 'D/F#', 'Bb/D', 'G/D', 'C/E', 'C7b9', 'F#7#11', 'CM']
+  const tokens = ['Cadd9', 'A7sus4', 'Dsus4', 'Em7', 'D/F#', 'Bb/D', 'G/D', 'C/E', 'C7b9', 'F#7#11', 'CM', 'Bbmaj7', 'F#m7']
   const { CHORD_TOKEN_REGEX } = require('../src/utils/chordTransposer.ts')
   for (const chord of tokens) assert.ok(CHORD_TOKEN_REGEX.test(chord), chord)
   for (const invalid of ['Cadd9A7sus4Em7', 'D/F#foo', 'G//D']) assert.equal(CHORD_TOKEN_REGEX.test(invalid), false)
@@ -121,3 +121,34 @@ test('both parser paths retain complex extensions and complete slash tokens', ()
     }
   }
 })
+
+test('space-separated fret grid lines are classified as TAB, not chord lines', () => {
+  const { isChordLine, isTabChartLine } = require('../src/utils/songParser.ts')
+  const fretGrids = ['3 2 0 0 0 3', 'x 0 2 2 1 0', '0 0 0 2 3 2', 'x x 0 2 3 1']
+  for (const grid of fretGrids) {
+    assert.ok(isTabChartLine(grid), `isTabChartLine should detect: "${grid}"`)
+    assert.equal(isChordLine(grid), false, `isChordLine should reject: "${grid}"`)
+    const parsed = parseGtarSong(grid)
+    assert.equal(parsed.lines[0].type, 'TAB', `parseGtarSong should classify "${grid}" as TAB`)
+  }
+})
+
+test('lyric text and English prose are never classified as chord lines', () => {
+  const { isChordLine } = require('../src/utils/songParser.ts')
+  const lyrics = [
+    'And the land is dark',
+    'When the night has come',
+    'Just as long as you stand, stand by me',
+    'Kamukha mo si Paraluman',
+    'I will always love you',
+    'Amazing Grace how sweet the sound',
+    'Hallelujah praise the Lord',
+    'A thousand years',
+  ]
+  for (const lyric of lyrics) {
+    assert.equal(isChordLine(lyric), false, `Lyric should NOT be a chord line: "${lyric}"`)
+    const parsed = parseGtarSong(lyric)
+    assert.equal(parsed.lines[0].type, 'LYRIC', `parseGtarSong should classify "${lyric}" as LYRIC`)
+  }
+})
+
