@@ -1,3 +1,4 @@
+import { persistLibrary, readPersistedLibrary } from './utils/syncJournal'
 import { deduplicateLibrary } from './utils/syncMerge'
 import { useDriveSync } from './hooks/useDriveSync'
 import { generateUUID } from './utils/uuid'
@@ -207,12 +208,17 @@ function App() {
   if (isPresentationRoute) {
     return <StagePresentationView />
   }
+  return <LibraryApp />
+}
 
+function LibraryApp() {
   // View state: Songbook Library Home vs Desktop Editor vs Stage View vs Trash Bin
   const [activeView, setActiveView] = useState<'songbook' | 'editor' | 'stage' | 'trash'>('songbook')
 
   // Load once so legacy songs receive the same IDs used by the setlist migration.
   const [initialLibrary] = useState(() => {
+    const savedLibrary = readPersistedLibrary()
+    if (savedLibrary) return { ...partitionSongs(savedLibrary.songs), setlists: savedLibrary.setlists }
     const readSongs = (key: string, fallback: ActiveSongState[]) => {
       try {
         const raw = localStorage.getItem(key)
@@ -239,6 +245,7 @@ function App() {
 
   const syncSongs = useMemo(() => [...songs, ...deletedSongs], [songs, deletedSongs])
   const driveSync = useDriveSync({ songs: syncSongs, setlists }, library => {
+    persistLibrary(library)
     const partition = partitionSongs(library.songs)
     setSongs(partition.active)
     setDeletedSongs(partition.deleted)
@@ -308,6 +315,10 @@ function App() {
     window.addEventListener(SETTINGS_CHANGED, reloadSettings)
     return () => window.removeEventListener(SETTINGS_CHANGED, reloadSettings)
   }, [])
+
+  useEffect(() => {
+    persistLibrary({ songs: [...songs, ...deletedSongs], setlists })
+  }, [songs, deletedSongs, setlists])
 
   // Save songs to localStorage on any change
   useEffect(() => {
@@ -1088,6 +1099,8 @@ function App() {
           syncStatus={driveSync.status}
           syncBusy={driveSync.busy}
           onSyncNow={() => void driveSync.syncNow()}
+          onExportSyncRecovery={() => void driveSync.exportRecovery()}
+          onPublishResolvedLibrary={() => void driveSync.publishResolvedLibrary()}
           onSignOut={driveSync.signOut}
           onSignIn={() => void driveSync.signIn()}
           syncReady={driveSync.ready}

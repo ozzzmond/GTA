@@ -69,3 +69,6 @@ keystore_base64.txt
 web/node_modules/
 web/dist/
 __pycache__/
+
+.npm-cache/
+lint-results.json

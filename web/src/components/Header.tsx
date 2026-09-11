@@ -85,6 +85,8 @@ interface HeaderProps {
   syncSession?: SyncSessionInfo | null
   syncStatus?: string
   syncBusy?: boolean
+  onPublishResolvedLibrary?: () => void
+  onExportSyncRecovery?: () => void
   onSyncNow?: () => void
   onSignOut?: () => void
   onSignIn?: () => void
@@ -155,6 +157,8 @@ export const Header: React.FC<HeaderProps> = ({
   syncStatus = '',
   syncBusy = false,
   onSyncNow,
+  onExportSyncRecovery,
+  onPublishResolvedLibrary,
   onSignOut,
   onSignIn,
   syncReady = false,
@@ -667,6 +671,10 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>{syncBusy ? 'Syncing...' : 'Sync Now'}</span>
                     </button>
 
+                    <button type="button" onClick={onExportSyncRecovery} className="w-full text-xs underline py-2">Download sync recovery data</button>
+                    {syncStatus.includes('Conflicting') && <button type="button" disabled={syncBusy} onClick={() => {
+                      if (window.confirm('First download sync recovery data and reconcile all charts and setlists on this device. Publish this device library as the resolved version? Previous cloud revisions will be retained.')) onPublishResolvedLibrary?.()
+                    }} className="w-full text-xs underline py-2">Publish resolved device library</button>}
                     {/* Sync Status */}
                     <div className="flex items-center gap-1.5 px-1 mb-3">
                       <Clock className="w-3 h-3 text-[#93A1A1] shrink-0" />

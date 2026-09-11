@@ -38,12 +38,9 @@ export function normalizeBackupSong(s: Partial<ActiveSongState> & { content?: st
 /** Download and clipboard share the same metadata and settings payload. */
 export function createBackupPayload(songs: ActiveSongState[], setlists: WebSetlist[], version = GTAR_APP_VERSION): FullBackupPayload {
   const normalized = ensureSongIds(songs).map(normalizeBackupSong)
-  // A permanently removed member remains visible as missing in the live UI,
-  // but cannot be resolved when restoring into an empty library. Clean only
-  // the exported copy, retaining each setlist and the order of surviving refs.
-  const exportedSetlists = bindLegacySetlists(setlists, normalized).map(setlist => ({
-    ...setlist, songs: setlist.songs.filter(ref => resolveSetlistSong(ref, normalized) !== undefined),
-  }))
+  const exportedSetlists = bindLegacySetlists(setlists, normalized)
+  const errors = validateSetlistReferences(exportedSetlists, normalized)
+  if (errors.length) throw new Error(`Backup blocked: ${errors.join('; ')}. Restore the missing songs or repair the setlist entries before exporting. Original data is unchanged.`)
   return { app: 'GTAR', version, exportedAt: new Date().toISOString(), exportType: 'FULL_BACKUP',
     ...readBackupSettings(), songs: normalized, setlists: exportedSetlists }
 }
@@ -74,7 +71,7 @@ export function exportSingleSetlistJson(setlist: WebSetlist, songs: ActiveSongSt
 /** Validate every entry before normalization or any caller can mutate library state. */
 export function validateBackupEntries(songs: unknown[], setlists: unknown[], embedded = false): string[] {
   const errors: string[] = []
-  const object = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value)
+  const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
   const check = (value: unknown, path: string, song: boolean) => {
     if (!object(value)) { errors.push(`${path}: must be an object`); return }
     const required = song ? 'title' : 'name'
@@ -87,11 +84,11 @@ export function validateBackupEntries(songs: unknown[], setlists: unknown[], emb
     for (const field of ['createdAt', 'lastOpenedAt']) {
       if (field in value && (typeof value[field] !== 'number' || !Number.isFinite(value[field]))) errors.push(`${path}.${field}: must be a finite number`)
     }
-    if ('transposeOffset' in value && (!Number.isSafeInteger(value.transposeOffset) || value.transposeOffset < -11 || value.transposeOffset > 11)) errors.push(`${path}.transposeOffset: must be a safe integer from -11 to 11`)
+    if ('transposeOffset' in value && (typeof value.transposeOffset !== 'number' || !Number.isSafeInteger(value.transposeOffset) || value.transposeOffset < -11 || value.transposeOffset > 11)) errors.push(`${path}.transposeOffset: must be a safe integer from -11 to 11`)
     for (const field of ['isFavorite', 'isDeleted']) {
       if (field in value && typeof value[field] !== 'boolean') errors.push(`${path}.${field}: must be a boolean`)
     }
-    if ('format' in value && !['CHORD_PRO', 'TWO_LINE', 'PLAIN'].includes(value.format)) errors.push(`${path}.format: unsupported song format`)
+    if ('format' in value && (typeof value.format !== 'string' || !['CHORD_PRO', 'TWO_LINE', 'PLAIN'].includes(value.format))) errors.push(`${path}.format: unsupported song format`)
   }
   songs.forEach((song, i) => check(song, `songs[${i}]`, true))
   setlists.forEach((sl, i) => {
@@ -170,4 +167,9 @@ function triggerDownload(content: string, fileName: string) {
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+}
+
+/** Raw recovery archives deliberately preserve missing references; they are not restore-ready backups. */
+export function exportRecoveryData(data: unknown) {
+  triggerDownload(JSON.stringify({ exportType: 'RECOVERY_ARCHIVE', data }, null, 2), `gtar-recovery-${Date.now()}.json`)
 }

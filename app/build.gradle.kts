@@ -170,3 +170,5 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("org.json:json:20240303")
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }

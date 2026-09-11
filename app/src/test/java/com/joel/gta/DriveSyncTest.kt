@@ -85,47 +85,59 @@ class DriveSyncTest {
         } finally { upgraded.close(); context.deleteDatabase(name) }
     }
 
-    @Test fun independentIdsMergeByIdentityWithoutGrowingOnRepeatedSync() {
-        val remote = web()
-        val local = web().also {
-            it.getJSONArray("songs").getJSONObject(0).put("id", "android-id").put("title", " SHARED SONG ").put("artist", " artist ")
-            it.getJSONArray("setlists").getJSONObject(0).put("id", "android-gig").put("name", " GIG ")
-                .getJSONArray("songs").getJSONObject(0).put("id", "android-id")
+    @Test fun sharedWebAndroidContracts() {
+        val fixtures = org.json.JSONArray(java.io.File("../tests/fixtures/sync-contract.json").readText())
+        for (index in 0 until fixtures.length()) {
+            val fixture = fixtures.getJSONObject(index)
+            for (reverse in listOf(false, true)) {
+                val local = SyncPayload.parse(fixture.getJSONObject("local").toString())
+                val cloud = SyncPayload.parse(fixture.getJSONObject("cloud").toString())
+                if (reverse) cloud.put("songs", org.json.JSONArray(SyncPayload.objects(cloud.getJSONArray("songs")).reversed()))
+                if (reverse) cloud.put("setlists", org.json.JSONArray(SyncPayload.objects(cloud.getJSONArray("setlists")).reversed()))
+                val base = fixture.optJSONObject("base")?.let { SyncPayload.parse(it.toString()) }
+                if (fixture.optBoolean("conflict")) {
+                    try { SyncPayload.merge(local, cloud, base); fail(fixture.getString("name")) }
+                    catch (error: IllegalStateException) { assertTrue(error.message!!.contains("Conflicting")) }
+                } else {
+                    val merged = SyncPayload.merge(local, cloud, base)
+                    val ids = SyncPayload.objects(merged.getJSONArray("songs")).map(SyncPayload::id).sorted()
+                    val expected = fixture.getJSONArray("songIds")
+                    assertEquals((0 until expected.length()).map { expected.getString(it) }, ids)
+                    if (fixture.has("setlistIds")) {
+                        val expectedLists = fixture.getJSONArray("setlistIds")
+                        assertEquals((0 until expectedLists.length()).map { expectedLists.getString(it) }, SyncPayload.objects(merged.getJSONArray("setlists")).map(SyncPayload::id).sorted())
+                    }
+                    if (fixture.has("chart")) assertEquals(fixture.getString("chart"), SyncPayload.objects(merged.getJSONArray("songs")).first { SyncPayload.id(it) == "A" }.getString("rawContent"))
+                }
+            }
         }
-        val merged = SyncPayload.merge(local, remote, null)
-        assertEquals(1, merged.getJSONArray("songs").length())
-        assertEquals(1, merged.getJSONArray("setlists").length())
-        assertEquals("android-id", merged.getJSONArray("songs").getJSONObject(0).getString("id"))
-        assertEquals("android-gig", merged.getJSONArray("setlists").getJSONObject(0).getString("id"))
-        assertEquals("android-id", merged.getJSONArray("setlists").getJSONObject(0).getJSONArray("songs").getJSONObject(0).getString("id"))
-        assertTrue(SyncPayload.sameLibrary(merged, SyncPayload.merge(merged, remote, remote)))
     }
-    @Test fun roomCleanupRetainsPrimaryRowsAndRepointsOrderedMemberships() = runBlocking {
+    @Test fun roomCleanupPreservesDistinctStableIdsWithSameNames() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), GtaDatabase::class.java).build()
         try {
-            val a = db.songDao().insertSong(SongEntity(syncId = "a", title = "Song", artist = "Artist", rawContent = "Primary"))
-            val duplicate = db.songDao().insertSong(SongEntity(syncId = "duplicate", title = " SONG ", artist = " artist ", rawContent = "Duplicate"))
-            val b = db.songDao().insertSong(SongEntity(syncId = "b", title = "Other", rawContent = "Other"))
-            val first = db.setlistDao().insertSetlist(com.joel.gta.data.local.entity.SetlistEntity(syncId = "first", name = "Gig"))
-            val second = db.setlistDao().insertSetlist(com.joel.gta.data.local.entity.SetlistEntity(syncId = "second", name = " GIG "))
-            db.setlistDao().addSongToSetlist(com.joel.gta.data.local.entity.SetlistSongCrossRef(first, duplicate, 0))
-            db.setlistDao().addSongToSetlist(com.joel.gta.data.local.entity.SetlistSongCrossRef(first, b, 1))
-            db.setlistDao().addSongToSetlist(com.joel.gta.data.local.entity.SetlistSongCrossRef(second, a, 0))
-            val store = RoomSyncStore(db)
-            val repaired = store.cleanup()
-            assertEquals(listOf(a, b), db.songDao().getAllSongsDirect().map { it.id }.sorted())
-            assertEquals("Primary", db.songDao().getSongById(a)!!.rawContent)
-            assertEquals(first, db.setlistDao().getAllSetlistsDirect().single().id)
-            assertEquals(listOf(a, b), db.setlistDao().getCrossRefsForSetlist(first).map { it.songId })
-            assertTrue(SyncPayload.sameLibrary(repaired, store.cleanup()))
-            val remote = SyncPayload.parse(repaired.toString()).also {
-                it.getJSONArray("songs").getJSONObject(0).put("id", "foreign")
-                it.getJSONArray("setlists").getJSONObject(0).getJSONArray("songs").getJSONObject(0).put("id", "foreign")
-            }
-            store.apply(repaired, SyncPayload.merge(repaired, remote, null))
-            assertEquals(2, db.songDao().getAllSongsDirect().size)
-            assertEquals(a, db.songDao().getAllSongsDirect().first { it.syncId == "a" }.id)
+            db.songDao().insertSong(SongEntity(syncId = "a", title = "Same", rawContent = "First"))
+            db.songDao().insertSong(SongEntity(syncId = "b", title = "Same", rawContent = "Second"))
+            val result = RoomSyncStore(db).cleanup()
+            assertEquals(2, result.getJSONArray("songs").length())
+            assertEquals(setOf("First", "Second"), db.songDao().getAllSongsDirect().map { it.rawContent }.toSet())
         } finally { db.close() }
+    }
+    @Test fun durableJournalPreservesFailedUploadsDeletionsAndInterruptedApply() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("gtar_sync_v1", 0).edit().clear().commit()
+        val base = web()
+        val journal = com.joel.gta.data.sync.SyncJournal(context, "owner")
+        journal.prepare(base, base); journal.acknowledge(); journal.complete()
+        for (local in listOf(web("Unsent"), SyncPayload.parse("{\"songs\":[],\"setlists\":[]}"))) {
+            val attempt = com.joel.gta.data.sync.SyncJournal(context, "owner")
+            attempt.archive(local, base); attempt.prepare(local, local)
+            val restart = com.joel.gta.data.sync.SyncJournal(context, "owner")
+            assertTrue(SyncPayload.sameLibrary(local, SyncPayload.merge(restart.resume(local), base, restart.baseline())))
+        }
+        journal.prepare(base, web("Downloaded")); journal.acknowledge()
+        val recovered = com.joel.gta.data.sync.SyncJournal(context, "owner")
+        assertTrue(SyncPayload.sameLibrary(web("Downloaded"), recovered.resume(base)))
+        try { com.joel.gta.data.sync.SyncJournal(context, "other"); fail("Account switch must stop") } catch (_: IllegalStateException) { }
     }
     @Test fun dedupeKeepsDistinctArtistsAndDropsRepeatedReferences() {
         val payload = web()

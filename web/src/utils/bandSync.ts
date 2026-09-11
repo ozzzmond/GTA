@@ -1,3 +1,5 @@
+import { formatLeaderAddress, formatLeaderDisplay } from './bandSyncAddress'
+export { formatLeaderAddress, formatLeaderDisplay } from './bandSyncAddress'
 /**
  * GTAR Band Sync Real-time Synchronization Engine (1:1 with Android BandSyncManager)
  * Enables real-time stage sync (active song, transpose key, scroll position, and autoscroll)
@@ -85,34 +87,6 @@ export const MAX_RECENT_LEADERS = 5
 /**
  * Automatically prepends "ws://" and appends ":8765" if the user types raw numbers/IPs.
  */
-export function formatLeaderAddress(raw: string): string {
-  let val = raw.trim()
-  if (!val) return ''
-  // Strip trailing slashes
-  val = val.replace(/\/+$/, '')
-  // If protocol missing, default to ws://
-  if (!/^wss?:\/\//i.test(val)) {
-    val = `ws://${val}`
-  }
-  // If no port specified after host, append default :8765
-  const hostPart = val.replace(/^wss?:\/\//i, '')
-  if (!hostPart.includes(':')) {
-    val = `${val}:8765`
-  }
-  return val
-}
-
-/**
- * Returns clean display string (e.g. "192.168.100.173:8765")
- */
-export function formatLeaderDisplay(raw: string): string {
-  let val = raw.trim().replace(/^wss?:\/\//i, '').replace(/\/+$/, '')
-  if (val && !val.includes(':')) {
-    val = `${val}:8765`
-  }
-  return val
-}
-
 /**
  * Retrieve recent leaders from localStorage (max 5 items, clean display format)
  */
@@ -176,7 +150,7 @@ class BandSyncEngine {
   // Live WebSocket Connection to Android Stage Leader (port 8765)
   private ws: WebSocket | null = null
   private wsLeaderIp: string = ''
-  private wsPort: string = '8765'
+  private wsEndpoint = ''
   private wsConnected: boolean = false
   private wsConnecting: boolean = false
   private wsReconnectTimer: number | null = null
@@ -283,7 +257,7 @@ class BandSyncEngine {
     }
 
     const leaderEndpoint = hasLanIp
-      ? `ws://${effectiveHost}:8765`
+      ? formatLeaderAddress(effectiveHost)
       : 'ws://<SET-LAN-IP>:8765'
 
     return {
@@ -303,24 +277,11 @@ class BandSyncEngine {
   }
 
   public connectWebSocket(leaderIp: string) {
-    let clean = leaderIp.trim()
-    if (!clean) return
-
-    // Strip protocol
-    clean = clean.replace(/^(ws:\/\/|wss:\/\/|http:\/\/|https:\/\/)/i, '')
-    // Strip trailing slashes or subpaths
-    clean = clean.split('/')[0].trim()
-
-    let ipOnly = clean
-    let port = '8765'
-    if (clean.includes(':')) {
-      const parts = clean.split(':')
-      ipOnly = parts[0].trim()
-      port = parts[1]?.trim() || '8765'
-    }
-    this.wsLeaderIp = ipOnly
-    this.wsPort = port
-    const formatted = `ws://${ipOnly}:${port}`
+    const formatted = formatLeaderAddress(leaderIp)
+    if (!formatted) return
+    const endpoint = new URL(formatted)
+    this.wsLeaderIp = endpoint.hostname
+    this.wsEndpoint = formatted
     if (typeof window !== 'undefined') {
       localStorage.setItem('gtar_band_sync_leader_ip', formatted)
     }
@@ -359,7 +320,7 @@ class BandSyncEngine {
       this.ws = null
     }
 
-    const wsUrl = `ws://${this.wsLeaderIp}:${this.wsPort || '8765'}`
+    const wsUrl = this.wsEndpoint
     this.wsConnecting = true
     this.notify()
 
@@ -369,10 +330,10 @@ class BandSyncEngine {
       this.ws.onopen = () => {
         this.wsConnected = true
         this.wsConnecting = false
-        const fullHost = `${this.wsLeaderIp}:${this.wsPort || '8765'}`
+        const fullHost = this.wsEndpoint
         saveRecentLeader(fullHost)
         if (typeof window !== 'undefined') {
-          localStorage.setItem('gtar_band_sync_leader_ip', `ws://${fullHost}`)
+          localStorage.setItem('gtar_band_sync_leader_ip', fullHost)
         }
         // Send join identifier
         const joinMsg = JSON.stringify({ type: 'JOIN', name: 'Web Member' })

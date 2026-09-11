@@ -23,7 +23,7 @@ import com.joel.gta.data.local.entity.SongEntity
         SearchHistoryEntity::class
     ],
     version = 7,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class GtaDatabase : RoomDatabase() {
 
@@ -101,7 +101,7 @@ abstract class GtaDatabase : RoomDatabase() {
                     "gta_database.db"
                 )
                 .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
-                .fallbackToDestructiveMigration()
+
                 .build()
                 INSTANCE = instance
                 instance

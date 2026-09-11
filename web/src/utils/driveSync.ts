@@ -20,51 +20,87 @@ function sameFile(a: SyncFile | null, b: SyncFile | null): boolean {
 async function getMetadata(token: string, id: string): Promise<SyncFile> {
   return (await request(token, `${API}/${encodeURIComponent(id)}?${new URLSearchParams({ fields: FIELDS })}`)).json()
 }
-interface Snapshot { file: SyncFile | null; etag?: string }
+interface Snapshot { parents: string[] }
 const snapshots = new Map<string, Snapshot>()
+const REVISION_NAME = 'gtar_songbook_revision_v1.json'
 export function clearDriveSession(token: string) { snapshots.delete(token) }
 async function request(token: string, url: string, init: RequestInit = {}) {
   const response = await fetch(url, { ...init, headers: { Authorization: `Bearer ${token}`, ...init.headers }, signal: AbortSignal.timeout(30000) })
   if (!response.ok) throw new DriveSyncError(response.status === 401 ? 'Google session expired. Sign in again.' : response.status === 412 ? 'Cloud changed during sync. Try Sync Now again.' : `Drive request failed (${response.status}). Local changes are saved.`, response.status)
   return response
 }
-export async function findSyncFile(token: string): Promise<SyncFile | null> {
-  const query = new URLSearchParams({ spaces: 'appDataFolder', q: `name = '${NAME}' and trashed = false`, fields: `files(${FIELDS}),nextPageToken`, pageSize: '100' })
-  const data = await (await request(token, `${API}?${query}`)).json()
-  if (!Array.isArray(data.files) || data.nextPageToken || data.files.length > 1) throw new DriveSyncError('Ambiguous cloud backup. Sync stopped to protect your data.')
-  return data.files[0] ?? null
+async function findSyncFiles(token: string): Promise<SyncFile[]> {
+  const files: SyncFile[] = []
+  let pageToken = ''
+  do {
+    const query = new URLSearchParams({ spaces: 'appDataFolder', q: `(name = '${NAME}' or name = '${REVISION_NAME}') and trashed = false`, fields: `files(${FIELDS}),nextPageToken`, pageSize: '100', ...(pageToken ? { pageToken } : {}) })
+    const data = await (await request(token, `${API}?${query}`)).json()
+    if (!Array.isArray(data.files)) throw new DriveSyncError('Invalid Drive file listing.')
+    files.push(...data.files)
+    pageToken = data.nextPageToken ?? ''
+  } while (pageToken)
+  return files
 }
-export async function pullCloudBackup(token: string): Promise<ParsedBackupResult | null> {
+const fileKey = (file: SyncFile) => `${file.id}@${revision(file)}`
+async function readCloudState(token: string, allowConflicts: boolean): Promise<ParsedBackupResult | null> {
   snapshots.delete(token)
-  const file = await findSyncFile(token)
-  if (!file) { snapshots.set(token, { file: null }); return null }
-  const response = await request(token, `${API}/${encodeURIComponent(file.id)}?alt=media`)
-  const parsed = parseBackupJson(await response.text())
-  if (!parsed.isValid || parsed.isSingleSetlist) throw new DriveSyncError(parsed.error ?? 'Expected a full library backup.')
-  const after = await getMetadata(token, file.id)
-  if (!sameFile(after, file)) throw new DriveSyncError('Cloud changed while downloading. Try Sync Now again.')
-  snapshots.set(token, { file: after, etag: response.headers.get('etag') ?? undefined })
-  return parsed
+  const files = await findSyncFiles(token)
+  const records = []
+  for (const file of files) {
+    const response = await request(token, `${API}/${encodeURIComponent(file.id)}?alt=media`)
+    const raw = await response.text()
+    const parsed = parseBackupJson(raw)
+    if (!parsed.isValid || parsed.isSingleSetlist) throw new DriveSyncError(parsed.error ?? 'Expected a full library backup.')
+    const envelope = JSON.parse(raw)
+    const parents: unknown = envelope.syncParents ?? []
+    if (file.name === REVISION_NAME && (envelope.syncProtocol !== 1 || !Array.isArray(parents) || parents.some(p => typeof p !== 'string'))) throw new DriveSyncError('Unsupported cloud revision; no data changed.')
+    const after = await getMetadata(token, file.id)
+    if (!sameFile(after, file)) throw new DriveSyncError('Cloud changed while downloading. Try Sync Now again.')
+    records.push({ key: fileKey(file), parsed, parents: file.name === REVISION_NAME ? parents as string[] : [] })
+  }
+  const superseded = new Set(records.flatMap(record => record.parents))
+  const heads = records.filter(record => !superseded.has(record.key))
+  if (records.length && !heads.length) throw new DriveSyncError('Invalid cloud revision history. Sync stopped.')
+  if (heads.length > 1) {
+    // Identical retry/initial-create siblings can be acknowledged together. Divergent
+    // siblings remain independent recovery files; never choose by arrival time.
+    const first = JSON.stringify({ songs: heads[0].parsed.songs, setlists: heads[0].parsed.setlists })
+    if (!allowConflicts && heads.some(head => JSON.stringify({ songs: head.parsed.songs, setlists: head.parsed.setlists }) !== first)) {
+      throw new DriveSyncError(`Conflicting cloud revisions retained: ${heads.map(h => h.key).join(', ')}. Export and reconcile these backups before syncing.`)
+    }
+  }
+  snapshots.set(token, { parents: heads.map(head => head.key) })
+  return heads[0]?.parsed ?? null
 }
+export async function pullCloudBackup(token: string) { return readCloudState(token, false) }
+/** Only call after the user has explicitly selected a reconciled device library. */
+export async function prepareCloudResolution(token: string) { await readCloudState(token, true) }
 export async function pushCloudBackup(token: string, payload: FullBackupPayload): Promise<void> {
   const parsed = parseBackupJson(JSON.stringify(payload))
   if (!parsed.isValid || parsed.isSingleSetlist) throw new DriveSyncError(parsed.error ?? 'Invalid backup')
   const snapshot = snapshots.get(token)
   if (!snapshot) throw new DriveSyncError('Download and validate the cloud backup before uploading.')
-  const current = await findSyncFile(token)
-  if (!sameFile(current, snapshot.file) || (current && !sameFile(await getMetadata(token, current.id), snapshot.file))) throw new DriveSyncError('Cloud changed since download. Try Sync Now again.')
   const boundary = `gtar_${crypto.randomUUID()}`
-  const metadata = current ? { name: NAME } : { name: NAME, parents: ['appDataFolder'] }
-  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(payload)}\r\n--${boundary}--`
-  // Consume the guard even on failure: an uncertain upload must be pulled again.
+  const metadata = { name: REVISION_NAME, parents: ['appDataFolder'] }
+  const revisionPayload = { ...payload, syncProtocol: 1, syncParents: snapshot.parents }
+  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(revisionPayload)}\r\n--${boundary}--`
   snapshots.delete(token)
-  const response = await request(token, `https://www.googleapis.com/upload/drive/v3/files${current ? '/' + encodeURIComponent(current.id) : ''}?${new URLSearchParams({ uploadType: 'multipart', fields: FIELDS })}`, {
-    method: current ? 'PATCH' : 'POST', body,
-    headers: { 'Content-Type': `multipart/related; boundary=${boundary}`, ...(snapshot.etag ? { 'If-Match': snapshot.etag } : {}) },
+  // Create-only protocol: neither ETag availability nor a preflight read guards a
+  // shared write. Every writer retains its own immutable file, including retries.
+  const response = await request(token, `https://www.googleapis.com/upload/drive/v3/files?${new URLSearchParams({ uploadType: 'multipart', fields: FIELDS })}`, {
+    method: 'POST', body, headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
   })
   const uploaded: SyncFile = await response.json()
-  if (!uploaded.id || (current && uploaded.id !== current.id)) throw new DriveSyncError('Unexpected upload metadata. Pull again before uploading.')
+  if (!uploaded.id) throw new DriveSyncError('Unexpected upload metadata. Pull again before uploading.')
   revision(uploaded)
-  snapshots.set(token, { file: uploaded, etag: response.headers.get('etag') ?? undefined })
 }
 
+/** Download every retained revision for manual recovery, including conflicting heads. */
+export async function readCloudRecovery(token: string) {
+  const revisions = []
+  for (const file of await findSyncFiles(token)) {
+    const raw = await (await request(token, `${API}/${encodeURIComponent(file.id)}?alt=media`)).text()
+    revisions.push({ file, raw })
+  }
+  return revisions
+}

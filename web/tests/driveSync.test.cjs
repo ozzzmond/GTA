@@ -5,8 +5,8 @@ const fs = require('node:fs')
 require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
 }).outputText, filename)
-const { pullCloudBackup, pushCloudBackup, clearDriveSession } = require('../src/utils/driveSync.ts')
-const { initializeSyncLibrary, mergeSyncLibrary } = require('../src/utils/syncMerge.ts')
+const { pullCloudBackup, pushCloudBackup, prepareCloudResolution, clearDriveSession } = require('../src/utils/driveSync.ts')
+const { mergeSyncLibrary } = require('../src/utils/syncMerge.ts')
 const { normalizeBackupSong } = require('../src/utils/jsonBackup.ts')
 const { readGoogleSession, validSession, saveGoogleSession } = require('../src/utils/googleAuth.ts')
 const song = normalizeBackupSong({ id: 'a', title: 'A', rawContent: 'original' })
@@ -30,115 +30,94 @@ test('three-way merge preserves independent edits, deletions and rejects diverge
   assert.throws(() => mergeSyncLibrary(local, { ...library, songs: [{ ...song, rawContent: 'remote' }] }, library), /Conflicting/)
   assert.throws(() => mergeSyncLibrary(library, { songs: [], setlists: [{ id: 's', name: 'S', songs: [{ id: 'missing', title: 'Missing' }] }] }, null), /missing/)
 })
-test('Drive uses appData only, validates pulls, and conditionally updates', async () => {
-  const original = global.fetch
-  const file = { id: 'file', version: '1' }
-  let calls = []
-  global.fetch = async (url, init) => {
-    calls.push({ url, init })
-    if (url.includes('uploadType')) return json(file)
-    if (url.includes('alt=media')) return json(payload, { etag: 'revision-1' })
-    const params = new URL(url).searchParams
-    if (!params.has('spaces')) { assert.equal(params.get('fields'), 'id,name,version,modifiedTime,md5Checksum'); return json(file) }
-    assert.equal(params.get('fields'), 'files(id,name,version,modifiedTime,md5Checksum),nextPageToken')
-    assert.equal(params.get('spaces'), 'appDataFolder')
-    return json({ files: [file] })
-  }
-  try {
-    await assert.rejects(pushCloudBackup('test', payload), /Download/)
-    assert.equal((await pullCloudBackup('test')).isValid, true)
-    await pushCloudBackup('test', payload)
-    const upload = calls.at(-1)
-    assert.equal(upload.init.method, 'PATCH')
-    assert.equal(upload.init.headers['If-Match'], 'revision-1')
-    assert.match(upload.init.body, /gtar_songbook_sync.json/)
-    await pullCloudBackup('test')
-    file.version = '2'
-    await assert.rejects(pushCloudBackup('test', payload), /Cloud changed/)
-    global.fetch = async url => url.includes('alt=media') ? json({ songs: [{ title: 'Bad' }] }) : json({ files: [file] })
-    await assert.rejects(pullCloudBackup('test'), /rejected/)
-    await assert.rejects(pushCloudBackup('test', payload), /Download/)
-  } finally { global.fetch = original; clearDriveSession('test') }
-})
-test('first upload creates hidden appData file; duplicates and 401 fail safely', async () => {
-  const original = global.fetch
-  let upload
-  global.fetch = async (url, init) => { if (url.includes('uploadType')) { upload = init; return json({ id: 'created', version: '1' }) } return json({ files: [] }) }
-  try {
-    assert.equal(await pullCloudBackup('new'), null)
-    await pushCloudBackup('new', payload)
-    assert.equal(upload.method, 'POST')
-    assert.match(upload.body, /"parents":\["appDataFolder"\]/)
-    global.fetch = async () => json({ files: [{ id: 'a' }, { id: 'b' }] })
-    await assert.rejects(pullCloudBackup('new'), /Ambiguous/)
-    global.fetch = async () => new Response('', { status: 401 })
-    await assert.rejects(pullCloudBackup('new'), error => error.status === 401)
-  } finally { global.fetch = original; clearDriveSession('new') }
-})
 
-test('revision metadata permits missing ETag, falls back, and caches upload response', async () => {
-  const original = global.fetch
-  try {
-    for (const field of ['version', 'modifiedTime', 'md5Checksum']) {
-      let file = { id: 'cloud', [field]: 'first' }
-      let uploads = 0
-      global.fetch = async (url, init) => {
-        const params = new URL(url).searchParams
-        if (params.has('uploadType')) {
-          assert.equal(params.get('fields'), 'id,name,version,modifiedTime,md5Checksum')
-          assert.equal(init.method, 'PATCH')
-          assert.match(url, /files\/cloud\?/)
-          assert.equal(init.headers['If-Match'], undefined)
-          file = { ...file, [field]: `uploaded-${++uploads}` }
-          return json(file)
-        }
-        if (params.has('alt')) return json(payload)
-        return params.has('spaces') ? json({ files: [file] }) : json(file)
-      }
-      await pullCloudBackup(field)
-      await pushCloudBackup(field, payload)
-      await pushCloudBackup(field, payload) // Must use the new revision, without another pull.
-      assert.equal(uploads, 2)
-      file = { ...file, [field]: 'external-edit' }
-      await assert.rejects(pushCloudBackup(field, payload), /Cloud changed/)
-      assert.equal(uploads, 2)
-      clearDriveSession(field)
+const REVISION_NAME = 'gtar_songbook_revision_v1.json'
+function driveServer() {
+  const files = new Map()
+  let sequence = 0, loseResponse = false
+  global.fetch = async (url, init) => {
+    const params = new URL(url).searchParams
+    if (params.has('uploadType')) {
+      assert.equal(init.method, 'POST')
+      assert.equal(init.headers['If-Match'], undefined)
+      const parts = init.body.split('Content-Type: application/json\r\n\r\n')
+      const body = JSON.parse(parts[1].split('\r\n--')[0])
+      const file = { id: `file-${++sequence}`, name: REVISION_NAME, version: '1' }
+      files.set(file.id, { file, body })
+      if (loseResponse) { loseResponse = false; throw Error('response lost') }
+      return json(file)
     }
-  } finally { global.fetch = original }
+    if (params.has('spaces')) return json({ files: [...files.values()].map(v => v.file) })
+    const record = files.get(new URL(url).pathname.split('/').at(-1))
+    return json(params.has('alt') ? record.body : record.file)
+  }
+  return { files, loseNextResponse() { loseResponse = true } }
+}
+test('interleaved initial writers retain both branches and stop on conflicting content', async () => {
+  const original = global.fetch
+  const server = driveServer()
+  try {
+    assert.equal(await pullCloudBackup('one'), null)
+    assert.equal(await pullCloudBackup('two'), null)
+    await pushCloudBackup('one', payload)
+    await pushCloudBackup('two', {...payload, songs:[{...song, rawContent:'second writer'}]})
+    assert.equal(server.files.size, 2)
+    await assert.rejects(pullCloudBackup('one'), /Conflicting cloud revisions retained/)
+    assert.deepEqual([...server.files.values()].map(v => v.body.songs[0].rawContent), ['original','second writer'])
+  } finally { global.fetch = original; clearDriveSession('one'); clearDriveSession('two') }
 })
-test('initial restore populates an empty client and merges cloud IDs/setlists over seed data', () => {
-  const cloud = { songs: [{ ...song, rawContent: 'cloud' }], setlists: [{ id: 'gig', name: 'Cloud Gig', songs: [{ id: 'a', title: 'A' }] }] }
-  assert.equal(initializeSyncLibrary({ songs: [], setlists: [] }, cloud).songs[0].rawContent, 'cloud')
-  const restored = initializeSyncLibrary(library, cloud)
-  assert.equal(restored.songs.length, 1)
-  assert.equal(restored.songs[0].rawContent, 'cloud')
-  assert.equal(restored.setlists[0].songs[0].id, 'a')
-  const edited = { songs: [...library.songs, { ...song, id: 'during-download', title: 'New song during download' }], setlists: [] }
-  assert.equal(mergeSyncLibrary(edited, restored, library).songs.length, 2)
+test('sequential writes append and supersede only observed parents; uncertain uploads are recovered by pulling', async () => {
+  const original = global.fetch
+  const server = driveServer()
+  try {
+    await assert.rejects(pushCloudBackup('retry', payload), /Download/)
+    await pullCloudBackup('retry')
+    server.loseNextResponse()
+    await assert.rejects(pushCloudBackup('retry', payload), /response lost/)
+    await assert.rejects(pushCloudBackup('retry', payload), /Download/)
+    assert.equal((await pullCloudBackup('retry')).songs[0].rawContent, 'original')
+    await pushCloudBackup('retry', {...payload, songs:[{...song, rawContent:'next'}]})
+    assert.equal(server.files.size, 2)
+    assert.equal((await pullCloudBackup('retry')).songs[0].rawContent, 'next')
+    assert.deepEqual(server.files.get('file-2').body.syncParents, ['file-1@version:1'])
+  } finally { global.fetch = original; clearDriveSession('retry') }
+})
+test('identical concurrent creations can be reconciled without choosing a writer', async () => {
+  const original = global.fetch
+  const server = driveServer()
+  try {
+    await pullCloudBackup('a'); await pullCloudBackup('b')
+    await pushCloudBackup('a', payload); await pushCloudBackup('b', payload)
+    await pullCloudBackup('a'); await pushCloudBackup('a', payload)
+    assert.equal(server.files.size, 3)
+    assert.equal(server.files.get('file-3').body.syncParents.length, 2)
+  } finally { global.fetch = original; clearDriveSession('a'); clearDriveSession('b') }
 })
 
-test('deduplicated cloud repair refuses a stale guard, then uploads only after a fresh pull', async () => {
-  const original = global.fetch
-  let version = '1', uploaded
-  const duplicate = { ...song, id: 'duplicate' }
-  const polluted = { ...payload, songs: [song, duplicate], setlists: [] }
-  global.fetch = async (url, init) => {
-    const params = new URL(url).searchParams
-    const file = { id: 'repair', version }
-    if (params.has('uploadType')) { uploaded = init.body; return json(file) }
-    if (params.has('alt')) return json(polluted)
-    return json(params.has('spaces') ? { files: [file] } : file)
-  }
+test('interleaved existing writers and manual resolution retain history and acknowledge both heads', async () => {
+  const original=global.fetch, server=driveServer()
   try {
-    const cloud = await pullCloudBackup('repair')
-    const repaired = initializeSyncLibrary(library, cloud)
-    assert.equal(repaired.songs.length, 1)
-    version = '2'
-    await assert.rejects(pushCloudBackup('repair', { ...payload, ...repaired }), /Cloud changed/)
-    assert.equal(uploaded, undefined)
-    const fresh = await pullCloudBackup('repair')
-    await pushCloudBackup('repair', { ...payload, ...initializeSyncLibrary(repaired, fresh) })
-    assert.ok(uploaded)
-    assert.equal(uploaded.includes('"id":"duplicate"'), false)
-  } finally { global.fetch = original; clearDriveSession('repair') }
+    await pullCloudBackup('seed');await pushCloudBackup('seed',payload)
+    await pullCloudBackup('left');await pullCloudBackup('right')
+    await pushCloudBackup('left',{...payload,songs:[{...song,rawContent:'left'}]})
+    await pushCloudBackup('right',{...payload,songs:[{...song,rawContent:'right'}]})
+    await assert.rejects(pullCloudBackup('resolve'),/Conflicting/)
+    await prepareCloudResolution('resolve')
+    await pushCloudBackup('resolve',{...payload,songs:[{...song,rawContent:'resolved both'}]})
+    assert.equal(server.files.size,4)
+    assert.deepEqual(server.files.get('file-4').body.syncParents,['file-2@version:1','file-3@version:1'])
+    assert.equal((await pullCloudBackup('resolve')).songs[0].rawContent,'resolved both')
+  } finally {global.fetch=original;for(const token of ['seed','left','right','resolve'])clearDriveSession(token)}
+})
+test('invalid historical payloads, missing revisions, and expired credentials fail before writes',async()=>{
+  const original=global.fetch
+  try {
+    global.fetch=async()=>new Response('',{status:401})
+    await assert.rejects(pullCloudBackup('invalid'),error=>error.status===401)
+    global.fetch=async url=>url.includes('alt=media')?json({songs:[{}]}):json({files:[{id:'bad',version:'1'}]})
+    await assert.rejects(pullCloudBackup('invalid'),/rejected/)
+    await assert.rejects(pushCloudBackup('invalid',payload),/Download/)
+    global.fetch=async url=>url.includes('alt=media')?json(payload):new URL(url).searchParams.has('spaces')?json({files:[{id:'missing-revision'}]}):json({id:'missing-revision'})
+    await assert.rejects(pullCloudBackup('invalid'),/no revision/)
+  } finally {global.fetch=original;clearDriveSession('invalid')}
 })

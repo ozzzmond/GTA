@@ -28,9 +28,10 @@ class RoomSyncStore(private val db: GtaDatabase) {
             put("createdAt", s.createdAt); put("lastOpenedAt", s.lastOpenedAt)
         } }
         val setlists = db.setlistDao().getAllSetlistsDirect().sortedBy { it.id }.map { s ->
-            val refs = db.setlistDao().getCrossRefsForSetlist(s.id).mapNotNull { ref -> byId[ref.songId]?.let { song ->
+            val refs = db.setlistDao().getCrossRefsForSetlist(s.id).map { ref ->
+                val song = checkNotNull(byId[ref.songId]) { "Missing song ${ref.songId} in setlist ${s.name}; restore the song before syncing." }
                 JSONObject().put("id", song.syncId).put("title", song.title).put("artist", song.artist ?: "")
-            } }
+            }
             JSONObject().put("id", s.syncId).put("name", s.name).put("createdAt", s.createdAt).put("songs", JSONArray(refs))
         }
         return JSONObject().put("app", "GTAR").put("version", BuildConfig.VERSION_NAME)

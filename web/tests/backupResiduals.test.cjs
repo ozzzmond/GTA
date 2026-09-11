@@ -45,7 +45,7 @@ test('legacy deduplication claims only unreserved slots and never applies update
   assert.throws(() => mergeBackupLibrary([a], [a, a], []), /duplicate song ID/)
 })
 
-test('full backup removes unresolved refs only from its copy and restores into an empty library', () => {
+test('full backup rejects unresolved references and preserves originals until songs are restored', () => {
   const previousStorage = global.localStorage
   global.localStorage = { getItem: () => null }
   try {
@@ -57,15 +57,12 @@ test('full backup removes unresolved refs only from its copy and restores into a
       { id: 'empty-gig', name: 'Empty Gig', songs: [gone] },
     ]
     const before = JSON.stringify(setlists)
-    const exported = createBackupPayload([a, trashed], setlists)
+    assert.throws(() => createBackupPayload([a, trashed], setlists), /Backup blocked.*permanently-deleted/)
     assert.equal(JSON.stringify(setlists), before)
-    assert.deepEqual(exported.setlists[0].songs.map(item => item.id), ['A', 'T'])
-    assert.deepEqual(exported.setlists[1].songs, [])
-    const restored = parseBackupJson(JSON.stringify(exported))
-    assert.equal(restored.isValid, true, restored.error)
-    assert.equal(restored.setlists[0].createdAt, 123)
-    assert.equal(restored.songs.find(song => song.id === 'T').isDeleted, true)
-    assert.equal(parseBackupJson(JSON.stringify(createBackupPayload([], [setlists[1]]))).isValid, true)
+    const recovered = { ...gone, rawContent: 'Recovered chart' }
+    const exported = createBackupPayload([a, trashed, recovered], setlists)
+    assert.deepEqual(exported.setlists[0].songs.map(item => item.id), ['A', 'permanently-deleted', 'T'])
+    assert.equal(parseBackupJson(JSON.stringify(exported)).isValid, true)
   } finally { global.localStorage = previousStorage }
 })
 
