@@ -1,5 +1,5 @@
 import ChordSheetJS from 'chordsheetjs'
-import { normalizeAngleBrackets, parseGtarSong } from './songParser'
+import { normalizeAngleBrackets, normalizeSectionMarkers, parseGtarSong } from './songParser'
 import type { SongFormat } from '../types/gtar'
 
 export interface ParsedSongResult {
@@ -139,7 +139,7 @@ export function detectFormat(rawText: string): SongFormat {
  * so ChordSheetJS formats them as section titles rather than chord tokens.
  */
 function prepareTextForChordSheet(rawText: string): string {
-  const lines = normalizeAngleBrackets(rawText).split('\n')
+  const lines = normalizeSectionMarkers(normalizeAngleBrackets(rawText)).split('\n')
   const processed: string[] = []
 
   // Matches standalone section headers on their own line only — never slash chords or inline brackets.

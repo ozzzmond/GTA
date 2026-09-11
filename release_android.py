@@ -18,6 +18,16 @@ def git(*args):
     return result.stdout.strip()
 
 
+def release_metadata(value):
+    """Separate display titles from validated refs; shared with CI, no mutation."""
+    numeric = re.sub(r"^" + PLATFORM + r"[ -]", "", value.strip()).removeprefix("v")
+    if not re.fullmatch(r"(?:1\.0\.(?:0|[1-9][0-9]*)-dev\.[1-9][0-9]*|1\.1\.(?:0|[1-9][0-9]*))", numeric):
+        raise ValueError(f"Invalid {PLATFORM} release version: {value!r}")
+    tag = f"{PLATFORM}-v{numeric}"
+    git("check-ref-format", f"refs/tags/{tag}")
+    return {"tag": tag, "title": f"{PLATFORM} v{numeric}", "prerelease": "-dev." in numeric}
+
+
 def read(path):
     return (ROOT / path).read_text(encoding="utf-8")
 
@@ -93,8 +103,10 @@ def main(argv=None):
         prod = f"1.1.{base + iteration}"
         reset = f"1.0.{base + iteration}-dev.1"
         bump = f"1.0.{base}-dev.{iteration + 1}"
-        print(f"[PLAN] Dev bump: {PLATFORM} v{bump}")
-        print(f"[PLAN] Promotion: {base} + {iteration} = {base + iteration}; {PLATFORM} v{prod}; tag {PLATFORM}-v{prod}")
+        prod_info = release_metadata(prod)
+        bump_info = release_metadata(bump)
+        print(f"[PLAN] Dev bump: {bump_info['title']}; tag {bump_info['tag']}")
+        print(f"[PLAN] Promotion: {base} + {iteration} = {base + iteration}; {PLATFORM} v{prod}; tag {prod_info['tag']}")
         print(f"[PLAN] Next dev: {PLATFORM} v{reset}")
         if metadata.get("code") is not None:
             code = metadata["code"]
@@ -122,7 +134,7 @@ def main(argv=None):
             return 0
         if git("status", "--porcelain"):
             raise ValueError("Promotion requires a completely clean working tree and index; commit your tested changes first")
-        tag = f"{PLATFORM}-v{prod}"
+        tag = prod_info["tag"]
         if git("tag", "--list", tag):
             raise ValueError(f"Tag already exists: {tag}")
         git("var", "GIT_AUTHOR_IDENT")

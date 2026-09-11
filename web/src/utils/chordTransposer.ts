@@ -2,6 +2,9 @@
  * Musical chord and key transposition utilities
  */
 
+// Shared by detection, highlighting and transposition; numeric slashes belong to the quality.
+export const CHORD_TOKEN_REGEX = /^[A-G][b#]?(?:maj|min|dim|aug|sus[24]?|add(?:2|4|9|11|13)|m7b5|M7|m|[0-9]{1,2}|alt)*(?:\/[0-9]{1,2})?(?:\/[A-G][b#]?(?:min|m)?)?$/i
+
 const CHROMATIC_SHARPS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const CHROMATIC_FLATS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
 
@@ -60,26 +63,18 @@ export function formatTransposeOffset(offset: number): string {
 /**
  * Transposes a single chord token, handling slash chords (e.g. "D/F#", "Am7", "C#m7b5")
  */
-export function transposeChordToken(chord: string, semitones: number): string {
-  if (semitones === 0) return chord
-
-  // Handle slash chords like D/F#
-  if (chord.includes('/')) {
-    const parts = chord.split('/')
-    if (parts.length === 2) {
-      return `${transposeChordToken(parts[0], semitones)}/${transposeChordToken(parts[1], semitones)}`
-    }
-  }
-
-  const match = chord.match(/^([A-Ga-g][#b]?)(.*)$/)
-  if (!match) return chord
-
-  const root = match[1].charAt(0).toUpperCase() + match[1].slice(1)
-  const suffix = match[2]
-  const preferFlats = root.includes('b') || root === 'F'
-  const newRoot = transposeNote(root, semitones, preferFlats)
-
-  return `${newRoot}${suffix}`
+export function transposeChordToken(chord: string, semitones: number, preferFlats?: boolean): string {
+  if (!Number.isSafeInteger(semitones) || semitones === 0 || !CHORD_TOKEN_REGEX.test(chord)) return chord
+  const rootMatch = /^([A-Ga-g][#b]?)(.*)$/.exec(chord)!
+  const root = rootMatch[1][0].toUpperCase() + rootMatch[1].slice(1)
+  // Only a final note slash is a bass: the slash in C6/9 is part of its quality.
+  const bassMatch = /\/([A-Ga-g][#b]?)(min|m)?$/.exec(rootMatch[2])
+  const quality = bassMatch ? rootMatch[2].slice(0, bassMatch.index) : rootMatch[2]
+  const flats = preferFlats ?? (root.includes('b') || root === 'F')
+  const transposedRoot = transposeNote(root, semitones, flats)
+  if (!bassMatch) return transposedRoot + quality
+  const bass = bassMatch[1][0].toUpperCase() + bassMatch[1].slice(1)
+  return `${transposedRoot}${quality}/${transposeNote(bass, semitones, flats)}${bassMatch[2] ?? ''}`
 }
 
 /**
@@ -110,69 +105,26 @@ export function transposeChordProText(text: string, semitones: number): string {
  * Uses spacing compensation matching Android TransposeEngine.transposeChordLine.
  */
 export function transposeChordLine(chordLine: string, semitones: number): string {
-  if (semitones === 0 || !chordLine.trim()) return chordLine
-
+  if (!Number.isSafeInteger(semitones) || semitones === 0 || !chordLine.trim()) return chordLine
   let result = ''
   let i = 0
-
   while (i < chordLine.length) {
-    if (chordLine[i] === ' ' || chordLine[i] === '\t') {
-      result += chordLine[i]
-      i++
-    } else {
-      const start = i
-      while (i < chordLine.length && chordLine[i] !== ' ' && chordLine[i] !== '\t') {
-        i++
-      }
-      const rawToken = chordLine.substring(start, i)
-      const prefix = rawToken.match(/^[[<({|,–—:;~]+/)?.[0] || ''
-      const suffix = rawToken.match(/[\]>)}|,–—:;~]+$/)?.[0] || ''
-      const cleanToken = rawToken.substring(prefix.length, rawToken.length - suffix.length)
-
-      if (cleanToken && cleanToken.includes('-')) {
-        const parts = cleanToken.split('-')
-        if (parts.length > 1 && parts.every((p) => /^[A-G][b#]?(?:m|maj|min|dim|aug|sus[24]?|add[249]|m7b5|M7|[0-9]{1,2}|alt)*(?:\/[A-G][b#]?)?$/i.test(p.trim()))) {
-          const transposed = parts.map((p) => transposeChordToken(p.trim(), semitones)).join('-')
-          const replacement = `${prefix}${transposed}${suffix}`
-          result += replacement
-          continue
-        }
-      }
-
-      if (cleanToken && /^[A-G][b#]?(?:m|maj|min|dim|aug|sus[24]?|add[249]|m7b5|M7|[0-9]{1,2}|alt)*(?:\/[A-G][b#]?)?$/i.test(cleanToken)) {
-        const transposed = transposeChordToken(cleanToken, semitones)
-        const replacement = `${prefix}${transposed}${suffix}`
-        result += replacement
-
-        const diff = replacement.length - rawToken.length
-        if (diff > 0) {
-          // Consume extra spaces
-          let spaceCount = 0
-          let checkIdx = i
-          while (checkIdx < chordLine.length && chordLine[checkIdx] === ' ') {
-            spaceCount++
-            checkIdx++
-          }
-          const maxConsumable = Math.max(0, spaceCount - 1)
-          const spacesToConsume = Math.min(diff, maxConsumable)
-          i += spacesToConsume
-        } else if (diff < 0) {
-          // Pad spaces to maintain column
-          let spaceCount = 0
-          let checkIdx = i
-          while (checkIdx < chordLine.length && chordLine[checkIdx] === ' ') {
-            spaceCount++
-            checkIdx++
-          }
-          if (spaceCount > 1) {
-            result += ' '.repeat(-diff)
-          }
-        }
-      } else {
-        result += rawToken
-      }
-    }
+    if (/\s/.test(chordLine[i])) { result += chordLine[i++]; continue }
+    const start = i
+    while (i < chordLine.length && !/\s/.test(chordLine[i])) i++
+    const raw = chordLine.slice(start, i)
+    const prefix = raw.match(/^[[<({|,:;~]+/)?.[0] ?? ''
+    const suffix = raw.match(/[\]>)}|,:;~]+$/)?.[0] ?? ''
+    const clean = raw.slice(prefix.length, raw.length - suffix.length)
+    const parts = clean.split(/([-??])/)
+    if (!parts.every((part, index) => index % 2 === 1 || CHORD_TOKEN_REGEX.test(part))) { result += raw; continue }
+    const replacement = prefix + parts.map((part, index) => index % 2 === 1 ? part : transposeChordToken(part, semitones)).join('') + suffix
+    result += replacement
+    const difference = replacement.length - raw.length
+    let spaces = 0
+    while (chordLine[i + spaces] === ' ') spaces++
+    if (difference > 0) i += Math.min(difference, Math.max(0, spaces - 1))
+    else if (difference < 0 && spaces > 1) result += ' '.repeat(-difference)
   }
-
   return result
 }

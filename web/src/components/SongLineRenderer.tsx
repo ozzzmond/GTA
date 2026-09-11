@@ -86,7 +86,7 @@ function renderInteractiveChordLine(
 /**
  * 1:1 Jetpack Compose RenderSongLine translation from Android SongViewerScreen.kt:
  * - EmptyLine: 20px spacer
- * - SectionHeader: 14px top spacing, [Title] in #8B5CF6 ExtraBold, letterSpacing 0.8px, paddingTop 6px, paddingBottom 4px
+ * - SectionHeader: muted-accent block with explicit line height and non-collapsing 14px/8px padding
  * - ChordLine: Bold in #B58900, letterSpacing 0.8px, paddingTop 4px, paddingBottom 1px
  * - LyricLine: Normal in #EEE8D5, letterSpacing 0.8px, paddingTop 1px, paddingBottom 5px
  * - TabLine: Monospace in #35B8AD, letterSpacing 0.8px, paddingVertical 1.5px
@@ -117,28 +117,17 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
             return <div key={idx} style={{ height: '20px' }} />
 
           case 'SECTION_HEADER':
-            // Jetpack Compose SectionHeader:
-            // Spacer(14.dp), [${line.title}] in sectionHeader (#8B5CF6), ExtraBold, letterSpacing = 0.8.sp, padding(top = 6.dp, bottom = 4.dp)
             return (
-              <div
-                key={idx}
+              <div key={idx} role="heading" aria-level={3}
+                className={`${fontClass} stage-section-header select-none`}
                 style={{
-                  marginTop: '14px',
-                  paddingTop: '6px',
-                  paddingBottom: '4px',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: `${fontSizePx + 1}px`,
-                    lineHeight: `${(fontSizePx + 1) * 1.35}px`,
-                    letterSpacing: '0.8px',
-                    color: '#8B5CF6',
-                  }}
-                  className={`${fontClass} stage-section-header font-extrabold tracking-wide select-none`}
-                >
-                  [{line.title}]
-                </span>
+                  fontSize: `${fontSizePx}px`, lineHeight: `${fontSizePx * 1.35}px`,
+                  paddingTop: '14px', paddingBottom: '8px', margin: 0,
+                  color: '#A78BFA', fontWeight: 600, letterSpacing: '0.04em',
+                  whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', breakAfter: 'avoid',
+                  overflowAnchor: 'none',
+                }}>
+                [{line.title}]
               </div>
             )
 

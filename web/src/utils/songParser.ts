@@ -4,7 +4,7 @@ import type {
   SongLine,
   ParsedGtarSong
 } from '../types/gtar'
-import { transposeChordToken, transposeChordLine } from './chordTransposer'
+import { CHORD_TOKEN_REGEX, transposeChordToken, transposeChordLine } from './chordTransposer'
 
 // Common section header keywords matching Android SongParser.kt
 const SECTION_KEYWORDS = [
@@ -30,9 +30,7 @@ const SECTION_KEYWORDS = [
   'tag'
 ]
 
-// Comprehensive chord token regex matching Android ChordRegex.kt
-export const CHORD_TOKEN_REGEX =
-  /^[A-G][b#]?(?:m|maj|min|dim|aug|sus[24]?|add[249]|m7b5|M7|[0-9]{1,2}|alt)*(?:\/[A-G][b#]?)?$/
+export { CHORD_TOKEN_REGEX } from './chordTransposer'
 
 // Tab lines regex (e.g. e|---0-2-3---|)
 export const TAB_LINE_REGEX = /^[eEaAdDgGbB]\|[0-9-xpbrh~/\\|\s]+$/
@@ -86,6 +84,18 @@ export function isSectionHeader(line: string): boolean {
   }
 
   return false
+}
+
+/** Split leading section markers from adjacent chords without adding empty rows. */
+export function normalizeSectionMarkers(text: string): string {
+  return text.split('\n').flatMap(line => {
+    const match = /^\s*\[([^\]]+)\][ \t]*:?[ \t]*(.*)$/.exec(line)
+    if (!match || !isSectionHeader(`[${match[1]}]`)) return [line]
+    let title = match[1].trim()
+    const keyword = SECTION_KEYWORDS.find(word => title.toLowerCase() === word || title.toLowerCase().startsWith(word + ' '))
+    if (keyword) title = keyword.replace(/(^|-)[a-z]/g, value => value.toUpperCase()) + title.slice(keyword.length)
+    return match[2] ? [`[${title}]`, match[2]] : [`[${title}]`]
+  }).join('\n')
 }
 
 // Common English lyric words that should NEVER trigger chord line detection
@@ -414,7 +424,7 @@ export function convertChordProToTwoLine(line: string): [string, string] {
  */
 export function parseGtarSong(rawText: string, transposeOffset: number = 0): ParsedGtarSong {
   // Normalize angle bracket chords e.g. <C>, <F>, <G>, <C#m>-<B> before line-by-line parsing
-  const normalizedText = normalizeAngleBrackets(rawText)
+  const normalizedText = normalizeSectionMarkers(normalizeAngleBrackets(rawText))
   const lines = normalizedText.split('\n')
 
   let title = 'Untitled Song'
