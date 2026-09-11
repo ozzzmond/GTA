@@ -104,3 +104,16 @@ export function mergeBackupLibrary(existing: ActiveSongState[], incoming: Active
   if (errors.length) throw new Error(errors.join('\n'))
   return { songs, setlists: bindLegacySetlists(rebound, songs) }
 }
+
+/** Membership is ID-based; display names never identify a song. */
+export function isSongInSetlist(setlist: WebSetlist, songId: string | number): boolean {
+  return setlist.songs.some(ref => ref.id !== undefined && String(ref.id) === String(songId))
+}
+
+export function setSongMembership(setlist: WebSetlist, song: ActiveSongState, included: boolean): WebSetlist {
+  if (song.id === undefined) throw new Error('Setlist membership requires a stable song ID.')
+  const matches = (ref: SongReference) => ref.id !== undefined && String(ref.id) === String(song.id)
+  if (!included) return { ...setlist, songs: setlist.songs.filter(ref => !matches(ref)) }
+  if (isSongInSetlist(setlist, song.id)) return setlist
+  return { ...setlist, songs: [...setlist.songs, { id: song.id, title: song.title, artist: song.artist }] }
+}

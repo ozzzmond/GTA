@@ -1,6 +1,8 @@
+import { SongSetlistDialog } from './SongSetlistDialog'
 import { resolveSetlistSong } from '../utils/setlistSongs'
 import React, { useState, useMemo } from 'react'
 import {
+  ListPlus,
   Music,
   Plus,
   Play,
@@ -21,6 +23,8 @@ import { exportSingleSetlistJson, parseBackupJson } from '../utils/jsonBackup'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 
 interface SongbookHomeViewProps {
+  onSongMembershipChange: (songId: string | number, setlistId: string | number, included: boolean) => void
+  onCreateSetlistForSong: (songId: string | number, name: string) => void
   songs: ActiveSongState[]
   activeSongIndex: number
   onSelectSong: (index: number) => void
@@ -39,6 +43,8 @@ interface SongbookHomeViewProps {
 
 export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
   songs,
+  onSongMembershipChange,
+  onCreateSetlistForSong,
   activeSongIndex,
   onSelectSong,
   onNewSong,
@@ -53,6 +59,8 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
   onShareSetlist,
   onImportSingleSetlist,
 }) => {
+  const [membershipSongId, setMembershipSongId] = useState<string | number | null>(null)
+  const membershipSong = songs.find(song => membershipSongId !== null && String(song.id) === String(membershipSongId))
   const [confirmDeleteIdx, setConfirmDeleteIdx] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const setlistFileInputRef = React.useRef<HTMLInputElement>(null)
@@ -196,6 +204,13 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
 
   return (
     <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full select-none">
+      {membershipSong && <SongSetlistDialog
+        song={membershipSong}
+        setlists={setlists}
+        onMembershipChange={onSongMembershipChange}
+        onCreate={onCreateSetlistForSong}
+        onClose={() => setMembershipSongId(null)}
+      />}
       {/* 1. Hero / Welcome Banner — adaptive glassmorphism card */}
       <div className="rounded-3xl relative overflow-hidden mb-8 shadow-2xl"
         style={{
@@ -527,6 +542,16 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
                       </div>
                     </div>
 
+                    <button
+                      type="button"
+                      onClick={event => { event.stopPropagation(); setMembershipSongId(song.id ?? null) }}
+                      disabled={song.id === undefined}
+                      className="p-2 rounded-lg text-[#2AA198] hover:bg-[#2AA198]/15 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Add to Setlist"
+                      aria-label={`Add ${song.title} to setlist`}
+                    >
+                      <ListPlus className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={(e) => {

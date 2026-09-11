@@ -1,0 +1,15 @@
+# Google Drive sync (web)
+
+Set `VITE_GOOGLE_CLIENT_ID` in `web/.env.local` using `web/.env.example`, then restart Vite. In the Google Cloud project, enable Drive API, configure the OAuth consent screen (including test users if in testing), and create a Web application OAuth client with the exact deployed and development origins as authorized JavaScript origins. No client secret belongs in the web app.
+
+The header provides Google sign-in/out and Sync Now. The GIS token client requests only `openid email profile https://www.googleapis.com/auth/drive.appdata`. Valid tokens are cached in sessionStorage for tab reloads. Expiration or a 401 clears the session; reauthorization requires a user click. No background OAuth popups or refresh tokens are used. Sign Out clears this application's session, without signing the user out of Google globally.
+
+Sign-in and cached-session rehydration immediately pull and apply an existing cloud backup before uploads. Initial restore uses the hardened incoming-ID merge rules; subsequent divergent edits stop sync. Library mutations debounce for 1.5 seconds. Reconnection retries sync. Local song, trash and setlist persistence remains independent of Google requests. This web codebase currently uses localStorage, not IndexedDB; this change does not migrate that storage layer.
+
+Sync downloads and validates the backup with `parseBackupJson`, then reconciles changes against the last successful in-memory sync and applies `mergeBackupLibrary` reference validation. Divergent changes to the same song or setlist stop sync; neither library is replaced. After a reload, the initial cloud restore establishes a new baseline. Settings are included in uploads, but device display preferences are not automatically restored from cloud.
+
+Drive access uses only hidden appData files named `gtar_songbook_sync.json`. Queries explicitly request id, name, version, modifiedTime and md5Checksum. Updates compare metadata immediately before writing, preferring version and falling back to modifiedTime or md5Checksum. Upload responses refresh the cached file ID and revision. ETag conditional writes are used when available; without an ETag the metadata check is optimistic and cannot atomically prevent a concurrent write between the check and upload. Missing all revision fields, duplicate filenames, invalid backups, and precondition failures stop uploads. Drive does not provide a unique-name constraint: simultaneous first-time creation from different devices can create duplicates; subsequent sync detects them and stops rather than choosing an arbitrary backup.
+
+Validation: `npm test` and `npm run build` from `web`. Automated tests mock GIS session storage and Drive responses. A live consent/popup and real Drive ETag smoke test must be performed with a configured Google client; these are not covered by mocked tests.
+
+References: https://developers.google.com/identity/oauth2/web/guides/use-token-model and https://developers.google.com/workspace/drive/api/guides/appdata

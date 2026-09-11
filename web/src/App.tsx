@@ -1,7 +1,9 @@
+import { useDriveSync } from './hooks/useDriveSync'
+import { DriveSyncControls } from './components/DriveSyncControls'
 import { generateUUID } from './utils/uuid'
 import { SETTINGS_KEYS, SETTINGS_CHANGED, readBackupSettings } from './utils/backupSettings'
 import { parseBackupJson, normalizeBackupSong, createSingleSetlistPayload } from './utils/jsonBackup'
-import { bindLegacySetlists, ensureSongIds, resolveSetlistSong, mergeBackupLibrary, partitionSongs } from './utils/setlistSongs'
+import { setSongMembership, bindLegacySetlists, ensureSongIds, resolveSetlistSong, mergeBackupLibrary, partitionSongs } from './utils/setlistSongs'
 import { useState, useEffect, useMemo } from 'react'
 import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
@@ -246,6 +248,14 @@ function App() {
       console.error('Failed to load setlists from localStorage', e)
     }
     return bindLegacySetlists(DEFAULT_SAMPLE_SETLISTS, [...songs, ...deletedSongs])
+  })
+
+  const syncSongs = useMemo(() => [...songs, ...deletedSongs], [songs, deletedSongs])
+  const driveSync = useDriveSync({ songs: syncSongs, setlists }, library => {
+    const partition = partitionSongs(library.songs)
+    setSongs(partition.active)
+    setDeletedSongs(partition.deleted)
+    setSetlists(library.setlists)
   })
 
   // Stage Color Theme (persisted in localStorage)
@@ -934,6 +944,25 @@ function App() {
     setIsSetlistDrawerOpen(false)
   }
 
+  const handleSongMembership = (songId: string | number, setlistId: string | number, included: boolean) => {
+    const song = songs.find(item => String(item.id) === String(songId))
+    const setlist = setlists.find(item => String(item.id) === String(setlistId))
+    if (!song || !setlist) return
+    setSetlists(previous => previous.map(item => String(item.id) === String(setlistId)
+      ? setSongMembership(item, song, included) : item))
+    setToastMessage(`${included ? 'Added to' : 'Removed from'} ${setlist.name}`)
+    setTimeout(() => setToastMessage(null), 3000)
+  }
+
+  const handleCreateSetlistForSong = (songId: string | number, name: string) => {
+    const song = songs.find(item => String(item.id) === String(songId))
+    if (!song || !name.trim()) return
+    const created = setSongMembership({ id: generateUUID(), name: name.trim(), createdAt: Date.now(), songs: [] }, song, true)
+    setSetlists(previous => [...previous, created])
+    setToastMessage(`Added to ${created.name}`)
+    setTimeout(() => setToastMessage(null), 3000)
+  }
+
   // Create a new setlist
   const handleNewSetlist = () => {
     const newId = `setlist-${Date.now()}`
@@ -1070,6 +1099,7 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#002B36] text-[#EEE8D5]">
+      {!isStagePerformanceMode && <DriveSyncControls sync={driveSync} />}
       {/* Unified Android v1.0.44 Top Bar — hidden in stage performance mode */}
       {!isStagePerformanceMode && (
         <Header
@@ -1125,6 +1155,8 @@ function App() {
               handleSelectLibrarySong(songIdx)
               setActiveView('stage')
             }}
+            onSongMembershipChange={handleSongMembership}
+            onCreateSetlistForSong={handleCreateSetlistForSong}
             onNewSong={handleNewSong}
             onNewSetlist={handleNewSetlist}
             onOpenImportModal={() => setIsImportModalOpen(true)}
