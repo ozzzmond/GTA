@@ -16,8 +16,8 @@ android {
         applicationId = "com.joel.gta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 71
-        versionName = "app v1.1.71"
+        versionCode = 72
+        versionName = "app v1.0.71"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -104,7 +104,7 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = ""
+            versionNameSuffix = "-dev.1"
             manifestPlaceholders["appName"] = "GTAR-Dev"
             signingConfig = signingConfigs.getByName("debug")
         }
