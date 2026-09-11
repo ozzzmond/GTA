@@ -2,8 +2,8 @@ import React, { useRef, useState } from 'react'
 import { CloudUpload, CloudDownload, Download, Copy, Check, AlertCircle, X, Database } from 'lucide-react'
 import type { ActiveSongState } from '../types/gtar'
 import { GTAR_APP_VERSION, GTAR_DEV_VERSION } from '../types/gtar'
-import { exportAllDataJson, parseBackupJson } from '../utils/jsonBackup'
-import { applyCustomThemeStyles } from './ThemeModal'
+import { createBackupPayload, exportAllDataJson, parseBackupJson } from '../utils/jsonBackup'
+import { restoreBackupSettings } from '../utils/backupSettings'
 
 interface BackupRestoreDialogModalProps {
   isOpen: boolean
@@ -62,13 +62,8 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
   // Copy backup to clipboard
   const handleCopyBackup = async () => {
     try {
-      const jsonContent = JSON.stringify({
-        app: 'GTAR',
-        version: import.meta.env.DEV ? GTAR_DEV_VERSION : GTAR_APP_VERSION,
-        exportedAt: new Date().toISOString(),
-        songs: allSongs,
-        setlists,
-      }, null, 2)
+      const jsonContent = JSON.stringify(createBackupPayload(allSongs, setlists,
+        import.meta.env.DEV ? GTAR_DEV_VERSION : GTAR_APP_VERSION), null, 2)
       await navigator.clipboard.writeText(jsonContent)
       showFeedback('success', 'Backup JSON copied to clipboard!')
     } catch {
@@ -83,102 +78,26 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
 
     try {
       const text = await file.text()
-      const parsed = parseBackupJson(text)
-
+      const parsed = parseBackupJson(text, { mode: isWipeAndReplace ? 'replace' : 'merge', existingSongs: allSongs })
       if (!parsed.isValid) {
-        showFeedback('error', parsed.error || 'Corrupted or invalid GTAR JSON format.')
+        showFeedback('error', parsed.error || 'Invalid GTAR backup.')
         return
       }
-
-      // Restore custom theme & stage settings if included in backup
-      if (parsed.customThemeColors) {
-        try {
-          applyCustomThemeStyles(parsed.customThemeColors)
-          localStorage.setItem('gtar_custom_theme', JSON.stringify(parsed.customThemeColors))
-        } catch {}
-      }
-      if (parsed.themeMode) {
-        try {
-          localStorage.setItem('gtar_theme_mode', parsed.themeMode)
-        } catch {}
-      }
-      if (parsed.stageSettings) {
-        try {
-          if (parsed.stageSettings.fontStyle) {
-            localStorage.setItem('gtar_stage_font_style', parsed.stageSettings.fontStyle)
-          }
-          if (parsed.stageSettings.fontSizePx) {
-            localStorage.setItem('gtar_stage_font_size', String(parsed.stageSettings.fontSizePx))
-          }
-          if (parsed.stageSettings.isTwoColumn !== undefined) {
-            localStorage.setItem('gtar_stage_two_column', String(parsed.stageSettings.isTwoColumn))
-          }
-          if (parsed.stageSettings.scrollSpeed) {
-            localStorage.setItem('gtar_stage_scroll_speed', String(parsed.stageSettings.scrollSpeed))
-          }
-        } catch {}
-      }
-
-      const incomingSongs = parsed.songs
-      const incomingSetlists = parsed.setlists
-
       if (isWipeAndReplace && !parsed.isSingleSetlist) {
-        const fullList: Array<Partial<ActiveSongState>> = incomingSongs.map((item) => ({
-          title: item.title || 'Imported Song',
-          artist: item.artist || '',
-          key: item.key || 'G',
-          capo: item.capo || '',
-          bpm: item.bpm || '120',
-          rawContent: item.rawContent || '',
-          format: item.format || 'CHORD_PRO',
-          transposeOffset: item.transposeOffset || 0,
-        }))
+        if (onFullRestore) onFullRestore(parsed.songs, parsed.setlists)
+        else if (onFullRestoreSongs) onFullRestoreSongs(parsed.songs)
+        else onImportAllSongs(parsed.songs)
+      } else if (onSmartMerge) onSmartMerge(parsed.songs, parsed.setlists)
+      else onImportAllSongs(parsed.songs)
 
-        if (onFullRestore) {
-          onFullRestore(fullList, incomingSetlists)
-        } else if (onFullRestoreSongs) {
-          onFullRestoreSongs(fullList)
-        } else {
-          onImportAllSongs(fullList)
-        }
-        showFeedback(
-          'success',
-          `Backup restored successfully: ${fullList.length} songs, ${incomingSetlists.length} setlists imported`
-        )
-      } else {
-        // Smart Merge: detect duplicates by lowercase title & artist
-        const existingTitles = new Set(
-          allSongs.map((s) => `${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`)
-        )
-        const toMerge: Array<Partial<ActiveSongState>> = []
-
-        for (const item of incomingSongs) {
-          const titleKey = `${(item.title || '').trim().toLowerCase()}::${(item.artist || '').trim().toLowerCase()}`
-          if (!existingTitles.has(titleKey)) {
-            existingTitles.add(titleKey)
-            toMerge.push({
-              title: item.title || 'Imported Song',
-              artist: item.artist || '',
-              key: item.key || 'G',
-              capo: item.capo || '',
-              bpm: item.bpm || '120',
-              rawContent: item.rawContent || '',
-              format: item.format || 'CHORD_PRO',
-              transposeOffset: item.transposeOffset || 0,
-            })
-          }
-        }
-
-        if (onSmartMerge) {
-          onSmartMerge(toMerge, incomingSetlists)
-        } else if (toMerge.length > 0) {
-          onImportAllSongs(toMerge)
-        }
-        showFeedback(
-          'success',
-          `Backup restored successfully: ${toMerge.length} songs, ${incomingSetlists.length} setlists imported`
-        )
-      }
+      // Parsing and reference validation have succeeded before the first write.
+      const { themeMode, customThemeColors, stageSettings } = parsed
+      restoreBackupSettings({
+        ...(themeMode !== undefined ? { themeMode } : {}),
+        ...(customThemeColors !== undefined ? { customThemeColors } : {}),
+        ...(stageSettings !== undefined ? { stageSettings } : {}),
+      })
+      showFeedback('success', `Backup restored: ${parsed.songs.length} songs, ${parsed.setlists.length} setlists`)
     } catch (err: any) {
       showFeedback('error', `Failed to parse backup JSON: ${err.message}`)
     }

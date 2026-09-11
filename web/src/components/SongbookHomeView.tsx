@@ -1,3 +1,4 @@
+import { resolveSetlistSong } from '../utils/setlistSongs'
 import React, { useState, useMemo } from 'react'
 import {
   Music,
@@ -62,7 +63,7 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
 
     try {
       const text = await file.text()
-      const parsed = parseBackupJson(text)
+      const parsed = parseBackupJson(text, { mode: 'merge', existingSongs: songs })
       if (parsed.isValid && parsed.setlists.length > 0) {
         onImportSingleSetlist?.(parsed.setlists[0], parsed.songs)
       } else {
@@ -125,7 +126,7 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
   const getSongSetlists = (song: ActiveSongState) => {
     return setlists.filter((sl) =>
       sl.songs.some(
-        (s) => s.id === song.id || (s.title && s.title.toLowerCase() === song.title.toLowerCase())
+        (ref) => resolveSetlistSong(ref, songs)?.id === song.id
       )
     )
   }
@@ -165,7 +166,7 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
         const sl = setlists.find((s) => String(s.id) === String(filterSetlistId))
         if (!sl) return false
         const inSetlist = sl.songs.some(
-          (s) => s.id === song.id || (s.title && s.title.toLowerCase() === song.title.toLowerCase())
+          (ref) => resolveSetlistSong(ref, songs)?.id === song.id
         )
         if (!inSetlist) return false
       }

@@ -13,6 +13,7 @@ export interface OnlineChordResult {
   votes: number
   rating: number
   tabUrl: string
+  offlineExample?: boolean
   tonality?: string
 }
 
@@ -25,6 +26,7 @@ export interface FetchedChordSheet {
   format: 'CHORD_PRO' | 'TWO_LINE'
   rawContent: string
   sourceUrl: string
+  offlineExample?: boolean
 }
 
 /**
@@ -94,8 +96,7 @@ async function fetchHtml(targetUrl: string, timeoutMs = 6000): Promise<string> {
       const url = proxyFn(targetUrl)
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeoutMs)
-      const res = await fetch(url, { signal: controller.signal })
-      clearTimeout(timer)
+      const res = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer))
       if (res.ok) {
         const text = await res.text()
         if (text && text.length > 500 && text.includes('js-store')) {
@@ -413,11 +414,13 @@ export async function searchOnlineChords(query: string): Promise<OnlineChordResu
   }
 
   // 2. Check curated catalog for instant zero-latency results
-  const curatedMatch = CURATED_CATALOG.find((cat) =>
-    cat.keywords.some((kw) => qLower.includes(kw))
-  )
+  const curatedMatch = CURATED_CATALOG.find(cat => {
+    const sample = cat.results[0]
+    return [sample.songName, `${sample.songName} ${sample.artistName}`, String(sample.id), sample.tabUrl]
+      .some(identity => identity.toLowerCase() === qLower)
+  })
   if (curatedMatch) {
-    return curatedMatch.results
+    return [{ ...curatedMatch.results[0], type: 'Offline example', offlineExample: true }]
   }
 
   // 3. Try direct live scraping from Ultimate Guitar via proxy
@@ -480,6 +483,16 @@ export async function searchOnlineChords(query: string): Promise<OnlineChordResu
  * Fetches and parses chord sheet text from a tab URL (parity with Android WebScraperEngine.scrapeUrl).
  */
 export async function fetchOnlineChordSheet(result: OnlineChordResult): Promise<FetchedChordSheet> {
+  if (result.offlineExample) {
+    const catalog = CURATED_CATALOG.find(cat => {
+      const sample = cat.results[0]
+      return sample.id === result.id && sample.tabUrl === result.tabUrl &&
+        sample.songName === result.songName && sample.artistName === result.artistName
+    })
+    if (!catalog) throw new Error('Unknown offline example source')
+    const sheet = catalog.sheet(1)
+    return { ...sheet, offlineExample: true, rawContent: `{comment: Offline example}\n${sheet.rawContent}` }
+  }
   // 1. Try Vite dev backend scraper endpoint first
   try {
     const res = await fetch(`/api/ug-tab?url=${encodeURIComponent(result.tabUrl)}`)
@@ -491,15 +504,6 @@ export async function fetchOnlineChordSheet(result: OnlineChordResult): Promise<
     }
   } catch (_) {
     // continue to fallback
-  }
-
-  // 2. Check curated catalog
-  const qLower = `${result.songName} ${result.artistName}`.toLowerCase()
-  const match = CURATED_CATALOG.find((cat) =>
-    cat.keywords.some((kw) => qLower.includes(kw))
-  )
-  if (match) {
-    return match.sheet(result.version || 1)
   }
 
   // 3. Try direct live fetch via proxy

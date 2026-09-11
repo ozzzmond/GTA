@@ -1,3 +1,5 @@
+import { parseBackupJson } from '../utils/jsonBackup'
+import { readBackupSettings } from '../utils/backupSettings'
 import React, { useState, useRef, useMemo } from 'react'
 import {
   X,
@@ -48,7 +50,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
   // Import states
   const [importJsonText, setImportJsonText] = useState('')
   const [importError, setImportError] = useState<string | null>(null)
-  const [detectedSongs, setDetectedSongs] = useState<Array<{ title: string; artist?: string; key?: string; content: string }>>([])
+  const [detectedSongs, setDetectedSongs] = useState<Array<Partial<ActiveSongState> & { title: string; content: string }>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [exportTimestamp] = useState(() => Date.now())
@@ -56,23 +58,23 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
   // Generate Song Room Entity, Setlist, and Full GTAR Backup payloads matching Android v1.0.42
   const { songRoomPayload, setlistPayload, backupPayload } = useMemo(() => {
     const isoString = new Date(exportTimestamp).toISOString()
-    const songList = allSongs && allSongs.length > 0 ? allSongs : [song]
+    const songList = allSongs ?? [song]
 
     // 1. Native SongEntity (.json)
     const songEntity: SongEntity = {
       id: song.id || 0,
       title: song.title || 'Untitled Song',
-      artist: song.artist || null,
-      key: song.key || null,
-      capo: song.capo || null,
+      artist: song.artist || '',
+      key: song.key || '',
+      capo: song.capo || '',
       rawContent: song.rawContent,
       format: song.format,
-      isFavorite: false,
+      isFavorite: song.isFavorite ?? false,
       transposeOffset: song.transposeOffset || 0,
-      tags: '',
-      isDeleted: false,
-      createdAt: exportTimestamp,
-      lastOpenedAt: exportTimestamp,
+      tags: song.tags ?? '',
+      isDeleted: song.isDeleted ?? false,
+      createdAt: song.createdAt ?? exportTimestamp,
+      lastOpenedAt: song.lastOpenedAt ?? exportTimestamp,
     }
 
     // 2. GTAR Setlist (.json) matching SetlistExportImportManager.kt
@@ -82,6 +84,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
       name: setlistName.trim() || 'GTAR Setlist',
       createdAt: isoString,
       songs: songList.map((s, index) => ({
+        ...s,
         title: s.title || 'Untitled Song',
         artist: s.artist || '',
         key: s.key || '',
@@ -92,6 +95,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
 
     // 3. Full GTAR Backup payload matching Android BackupManager.kt (v1.0.42)
     const gtarBackup: GtarBackup = {
+      ...(isOpen ? readBackupSettings() : {}),
       metadata: {
         appName: 'GTAR',
         appVersion: GTAR_APP_VERSION,
@@ -100,17 +104,17 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
       songs: songList.map((s, idx) => ({
         id: s.id || idx + 1,
         title: s.title || 'Untitled Song',
-        artist: s.artist || null,
-        key: s.key || null,
-        capo: s.capo || null,
+        artist: s.artist || '',
+        key: s.key || '',
+        capo: s.capo || '',
         rawContent: s.rawContent,
         format: s.format,
-        isFavorite: false,
+        isFavorite: s.isFavorite ?? false,
         transposeOffset: s.transposeOffset || 0,
-        tags: '',
-        isDeleted: false,
-        createdAt: exportTimestamp,
-        lastOpenedAt: exportTimestamp,
+        tags: s.tags ?? '',
+        isDeleted: s.isDeleted ?? false,
+        createdAt: s.createdAt ?? exportTimestamp,
+        lastOpenedAt: s.lastOpenedAt ?? exportTimestamp,
       })),
       setlists: [
         {
@@ -126,7 +130,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
     }
 
     return { songRoomPayload: songEntity, setlistPayload: gtarSetlist, backupPayload: gtarBackup }
-  }, [song, allSongs, setlistName, exportTimestamp])
+  }, [song, allSongs, setlistName, exportTimestamp, isOpen])
 
   if (!isOpen) return null
 
@@ -184,67 +188,19 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
     try {
       const data = JSON.parse(trimmed)
 
-      // Case 1: GTAR Setlist JSON format (type: "GTAR_SETLIST")
-      if (data.type === 'GTAR_SETLIST' && Array.isArray(data.songs)) {
-        const list = (data as GtarSetlist).songs.map((s) => ({
-          title: s.title,
-          artist: s.artist,
-          key: s.key,
-          content: s.chordsContent,
-        }))
-        if (list.length === 0) {
-          setImportError('Setlist contains no songs.')
-        } else {
-          setDetectedSongs(list)
-        }
+      // Adapt the native setlist content field, then use the shared strict parser.
+      const adaptSong = (item: any) => item && typeof item === 'object'
+        ? { ...item, rawContent: item.rawContent ?? item.chordsContent ?? item.content } : item
+      const payload = data?.type === 'GTAR_SETLIST' && Array.isArray(data.songs)
+        ? { songs: data.songs.map(adaptSong) }
+        : Array.isArray(data) ? data.map(adaptSong)
+        : data?.title ? adaptSong(data) : data
+      const parsed = parseBackupJson(JSON.stringify(payload), { mode: 'merge', existingSongs: allSongs ?? [] })
+      if (!parsed.isValid) {
+        setImportError(parsed.error || 'Invalid backup')
         return
       }
-
-      // Case 2: GTAR Backup JSON format (metadata.appName === "GTAR")
-      if (data.metadata?.appName === 'GTAR' && Array.isArray(data.songs)) {
-        const list = (data as GtarBackup).songs
-          .filter((s) => !s.isDeleted)
-          .map((s) => ({
-            title: s.title,
-            artist: s.artist || undefined,
-            key: s.key || undefined,
-            content: s.rawContent,
-          }))
-        if (list.length === 0) {
-          setImportError('Backup contains no active songs.')
-        } else {
-          setDetectedSongs(list)
-        }
-        return
-      }
-
-      // Case 3: Single Song Room Entity (has rawContent or chordsContent)
-      if (data.title && (data.rawContent || data.chordsContent)) {
-        setDetectedSongs([
-          {
-            title: data.title,
-            artist: data.artist || undefined,
-            key: data.key || undefined,
-            content: data.rawContent || data.chordsContent,
-          },
-        ])
-        return
-      }
-
-      // Case 4: Generic Array of songs
-      if (Array.isArray(data) && data.length > 0 && (data[0].rawContent || data[0].chordsContent || data[0].title)) {
-        setDetectedSongs(
-          data.map((item) => ({
-            title: item.title || 'Untitled',
-            artist: item.artist,
-            key: item.key,
-            content: item.rawContent || item.chordsContent || '',
-          }))
-        )
-        return
-      }
-
-      setImportError('Unrecognized GTAR JSON format. Expected GTAR_SETLIST, Backup JSON, or SongEntity.')
+      setDetectedSongs(parsed.songs.map(song => ({ ...song, content: song.rawContent })))
     } catch (err: unknown) {
       setImportError(`JSON syntax error: ${err instanceof Error ? err.message : 'Invalid JSON'}`)
     }
@@ -263,13 +219,14 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
     reader.readAsText(file)
   }
 
-  const handleSelectSongToLoad = (item: { title: string; artist?: string; key?: string; content: string }) => {
+  const handleSelectSongToLoad = (item: Partial<ActiveSongState> & { title: string; content: string }) => {
     onImportSong({
+      ...item,
       title: item.title,
       artist: item.artist || '',
       key: item.key || '',
       rawContent: item.content,
-      transposeOffset: 0,
+      transposeOffset: item.transposeOffset ?? 0,
     })
     onClose()
   }
@@ -496,6 +453,7 @@ export const JsonBridgeModal: React.FC<JsonBridgeModalProps> = ({
                         onClick={() => {
                           onImportAllSongs(
                             detectedSongs.map((s) => ({
+                              ...s,
                               title: s.title,
                               artist: s.artist || '',
                               key: s.key || '',

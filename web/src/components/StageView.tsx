@@ -1,3 +1,4 @@
+import { SETTINGS_KEYS, SETTINGS_CHANGED, readBackupSettings } from '../utils/backupSettings'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   createFullscreenController,
@@ -101,17 +102,17 @@ export const StageView: React.FC<StageViewProps> = ({
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
   const [scrollSpeed, setScrollSpeed] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('gtar_stage_scroll_speed')
+      const saved = localStorage.getItem(SETTINGS_KEYS.scrollSpeed)
       if (saved) {
         const val = parseInt(saved, 10)
-        if (!isNaN(val) && val >= 10 && val <= 150) return val
+        if (!isNaN(val) && val >= 5 && val <= 180) return val
       }
     }
     return 35
   })
   const [fontSizePx, setFontSizePx] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('gtar_stage_font_size')
+      const saved = localStorage.getItem(SETTINGS_KEYS.fontSizePx)
       if (saved) {
         const val = parseInt(saved, 10)
         if (!isNaN(val) && val >= 12 && val <= 38) return val
@@ -122,7 +123,7 @@ export const StageView: React.FC<StageViewProps> = ({
   const [localFontStyle, setLocalFontStyle] = useState<'mono' | 'sans' | 'serif'>('mono')
   const [localIsTwoColumn, setLocalIsTwoColumn] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('gtar_stage_two_column') === 'true'
+      return localStorage.getItem(SETTINGS_KEYS.isTwoColumn) === 'true'
     }
     return false
   })
@@ -147,9 +148,21 @@ export const StageView: React.FC<StageViewProps> = ({
       setLocalIsTwoColumn(enabled)
     }
     if (typeof window !== 'undefined') {
-      localStorage.setItem('gtar_stage_two_column', String(enabled))
+      localStorage.setItem(SETTINGS_KEYS.isTwoColumn, String(enabled))
     }
   }
+
+  useEffect(() => {
+    const reloadSettings = () => {
+      const stage = readBackupSettings().stageSettings
+      if (stage?.fontSizePx !== undefined) setFontSizePx(stage.fontSizePx)
+      if (stage?.scrollSpeed !== undefined) setScrollSpeed(stage.scrollSpeed)
+      if (stage?.fontStyle !== undefined) setLocalFontStyle(stage.fontStyle)
+      if (stage?.isTwoColumn !== undefined) setLocalIsTwoColumn(stage.isTwoColumn)
+    }
+    window.addEventListener(SETTINGS_CHANGED, reloadSettings)
+    return () => window.removeEventListener(SETTINGS_CHANGED, reloadSettings)
+  }, [])
 
   // Modals & Drawers
   const [isKeyPickerOpen, setIsKeyPickerOpen] = useState(false)
@@ -435,7 +448,7 @@ export const StageView: React.FC<StageViewProps> = ({
     const clamped = Math.max(10, Math.min(150, newSpeed))
     setScrollSpeed(clamped)
     if (typeof window !== 'undefined') {
-      localStorage.setItem('gtar_stage_scroll_speed', String(clamped))
+      localStorage.setItem(SETTINGS_KEYS.scrollSpeed, String(clamped))
     }
     if (syncState.role === 'HOST') {
       bandSync.broadcastAutoScroll(isAutoScrolling, clamped)
@@ -728,7 +741,7 @@ export const StageView: React.FC<StageViewProps> = ({
                 const next = Math.max(12, fontSizePx - 1)
                 setFontSizePx(next)
                 if (typeof window !== 'undefined') {
-                  localStorage.setItem('gtar_stage_font_size', String(next))
+                  localStorage.setItem(SETTINGS_KEYS.fontSizePx, String(next))
                 }
               }}
               className="px-2 py-1 text-xs font-extrabold text-[#EEE8D5] hover:text-[#2AA198] rounded cursor-pointer select-none"
@@ -745,7 +758,7 @@ export const StageView: React.FC<StageViewProps> = ({
                 const next = Math.min(38, fontSizePx + 1)
                 setFontSizePx(next)
                 if (typeof window !== 'undefined') {
-                  localStorage.setItem('gtar_stage_font_size', String(next))
+                  localStorage.setItem(SETTINGS_KEYS.fontSizePx, String(next))
                 }
               }}
               className="px-2 py-1 text-xs font-extrabold text-[#EEE8D5] hover:text-[#2AA198] rounded cursor-pointer select-none"
@@ -974,7 +987,12 @@ export const StageView: React.FC<StageViewProps> = ({
           <div className="h-[1px] bg-[#1A4A55] mb-4" />
 
           {/* Song Lines Rendering: 1 Column or 2 Columns */}
-          {isTwoColumn && col2Lines.length > 0 ? (
+          {song.isMissing ? (
+            <div role="alert" className="rounded-xl border border-amber-500 p-6 text-center">
+              <h2 className="text-xl font-bold">Missing song: {song.title}</h2>
+              <p className="mt-2">This setlist entry is unavailable. Restore the song from Trash or a backup, or remove this entry from the setlist.</p>
+            </div>
+          ) : isTwoColumn && col2Lines.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-10 items-start">
               <div className="min-w-0">
                 <SongLineRenderer
@@ -1206,13 +1224,13 @@ export const StageView: React.FC<StageViewProps> = ({
               <span className="text-xs font-mono text-[#93A1A1] w-20 shrink-0">Font Size</span>
               <div className="flex items-center bg-[#002B36] rounded-xl border border-[#1A4A55] flex-1">
                 <button type="button"
-                  onClick={() => { const n = Math.max(12, fontSizePx - 1); setFontSizePx(n); localStorage.setItem('gtar_stage_font_size', String(n)) }}
+                  onClick={() => { const n = Math.max(12, fontSizePx - 1); setFontSizePx(n); localStorage.setItem(SETTINGS_KEYS.fontSizePx, String(n)) }}
                   className="px-4 py-2 text-sm font-extrabold text-[#EEE8D5] hover:text-[#2AA198] cursor-pointer">
                   A-
                 </button>
                 <span className="flex-1 text-center text-sm font-mono font-bold text-[#B58900]">{fontSizePx}px</span>
                 <button type="button"
-                  onClick={() => { const n = Math.min(38, fontSizePx + 1); setFontSizePx(n); localStorage.setItem('gtar_stage_font_size', String(n)) }}
+                  onClick={() => { const n = Math.min(38, fontSizePx + 1); setFontSizePx(n); localStorage.setItem(SETTINGS_KEYS.fontSizePx, String(n)) }}
                   className="px-4 py-2 text-sm font-extrabold text-[#EEE8D5] hover:text-[#2AA198] cursor-pointer">
                   A+
                 </button>

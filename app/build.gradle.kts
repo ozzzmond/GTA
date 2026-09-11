@@ -68,7 +68,9 @@ android {
         }
     }
     tasks.configureEach {
-        if (name.contains("Release") && name != "validateReleaseCredentials") {
+        // Analysis and unit-test tasks must not require production credentials.
+        if (name in setOf("packageRelease", "assembleRelease", "bundleRelease",
+                "packageReleaseBundle", "signReleaseBundle")) {
             dependsOn(validateReleaseCredentials)
         }
     }
@@ -102,7 +104,7 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-dev.3"
+            versionNameSuffix = "-dev.4"
             manifestPlaceholders["appName"] = "GTAR-Dev"
             signingConfig = signingConfigs.getByName("debug")
         }

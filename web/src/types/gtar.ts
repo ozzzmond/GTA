@@ -3,14 +3,14 @@
  */
 
 export const GTAR_APP_VERSION = '1.1.62'
-export const GTAR_DEV_VERSION = '1.0.62-DEV.6'
+export const GTAR_DEV_VERSION = '1.0.62-DEV.7'
 export const GTAR_SETLIST_VERSION = 1
 export const GTAR_SETLIST_TYPE = 'GTAR_SETLIST'
 
 export type SongFormat = 'TWO_LINE' | 'CHORD_PRO' | 'PLAIN'
 
 export interface SongEntity {
-  id?: number
+  id?: string | number
   title: string
   artist?: string | null
   key?: string | null
@@ -101,7 +101,7 @@ export function isValidGtarPayload(obj: any): boolean {
 }
 
 export interface ActiveSongState {
-  id?: number
+  id?: string | number
   title: string
   artist: string
   key: string
@@ -112,6 +112,10 @@ export interface ActiveSongState {
   transposeOffset: number
   tags?: string
   isDeleted?: boolean
+  isFavorite?: boolean
+  createdAt?: number
+  lastOpenedAt?: number
+  isMissing?: boolean
 }
 
 // Stage Lines Model matching Android SongLine.kt (v1.0.42)

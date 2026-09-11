@@ -1,4 +1,6 @@
-import { validateBackupEntries } from './utils/jsonBackup'
+import { SETTINGS_KEYS, SETTINGS_CHANGED, readBackupSettings } from './utils/backupSettings'
+import { parseBackupJson, normalizeBackupSong, createSingleSetlistPayload } from './utils/jsonBackup'
+import { bindLegacySetlists, ensureSongIds, resolveSetlistSong, mergeBackupLibrary, partitionSongs } from './utils/setlistSongs'
 import { useState, useEffect, useMemo } from 'react'
 import { LoginWall } from './components/LoginWall'
 import { Header } from './components/Header'
@@ -212,37 +214,22 @@ function App() {
   // View state: Songbook Library Home vs Desktop Editor vs Stage View vs Trash Bin
   const [activeView, setActiveView] = useState<'songbook' | 'editor' | 'stage' | 'trash'>('songbook')
 
-  // Songbook Library of Songs (Strictly separated from setlists, persisted in localStorage)
-  const [songs, setSongs] = useState<ActiveSongState[]>(() => {
-    try {
-      const saved = localStorage.getItem('gtar_songs_store')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load songs from localStorage', e)
+  // Load once so legacy songs receive the same IDs used by the setlist migration.
+  const [initialLibrary] = useState(() => {
+    const readSongs = (key: string, fallback: ActiveSongState[]) => {
+      try {
+        const raw = localStorage.getItem(key)
+        const parsed = raw === null ? fallback : JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed as ActiveSongState[] : fallback
+      } catch { return fallback }
     }
-    return DEFAULT_SETLIST
+    const storedSongs = readSongs('gtar_songs_store', DEFAULT_SETLIST)
+    const storedTrash = readSongs('gtar_trash_songs_store', []).map(song => ({ ...song, isDeleted: true }))
+    const combined = ensureSongIds([...storedSongs, ...storedTrash])
+    return partitionSongs([...new Map(combined.map(song => [String(song.id), song])).values()])
   })
-
-  // Soft-deleted songs (Trash bin, persisted in localStorage)
-  const [deletedSongs, setDeletedSongs] = useState<ActiveSongState[]>(() => {
-    try {
-      const saved = localStorage.getItem('gtar_trash_songs_store')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed)) {
-          return parsed
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load trash from localStorage', e)
-    }
-    return []
-  })
+  const [songs, setSongs] = useState<ActiveSongState[]>(initialLibrary.active)
+  const [deletedSongs, setDeletedSongs] = useState<ActiveSongState[]>(initialLibrary.deleted)
 
   // Custom Setlists (persisted in localStorage)
   const [setlists, setSetlists] = useState<WebSetlist[]>(() => {
@@ -251,19 +238,19 @@ function App() {
       if (saved) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed)) {
-          return parsed
+          return bindLegacySetlists(parsed, [...songs, ...deletedSongs])
         }
       }
     } catch (e) {
       console.error('Failed to load setlists from localStorage', e)
     }
-    return DEFAULT_SAMPLE_SETLISTS
+    return bindLegacySetlists(DEFAULT_SAMPLE_SETLISTS, [...songs, ...deletedSongs])
   })
 
   // Stage Color Theme (persisted in localStorage)
   const [stageTheme, setStageTheme] = useState<ThemeMode>(() => {
     try {
-      const saved = localStorage.getItem('gtar_theme_store') as ThemeMode
+      const saved = localStorage.getItem(SETTINGS_KEYS.themeMode) as ThemeMode
       if (saved) return saved
     } catch (e) {
       console.error('Failed to load theme from localStorage', e)
@@ -274,7 +261,7 @@ function App() {
   // Custom Stage Theme Colors (persisted in localStorage)
   const [customThemeColors, setCustomThemeColors] = useState<CustomThemeColors>(() => {
     try {
-      const saved = localStorage.getItem('gtar_custom_theme_colors')
+      const saved = localStorage.getItem(SETTINGS_KEYS.customThemeColors)
       if (saved) {
         return { ...DEFAULT_CUSTOM_COLORS, ...JSON.parse(saved) }
       }
@@ -299,18 +286,30 @@ function App() {
   // Display Settings (persisted in localStorage)
   const [fontStyle, setFontStyle] = useState<SongFontStyleOption>(() => {
     try {
-      const saved = localStorage.getItem('gtar_font_style_store') as SongFontStyleOption
+      const saved = localStorage.getItem(SETTINGS_KEYS.fontStyle) as SongFontStyleOption
       if (saved) return saved
     } catch (_) {}
     return 'mono'
   })
   const [isTwoColumn, setIsTwoColumn] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem('gtar_twocolumn_store')
+      const saved = localStorage.getItem(SETTINGS_KEYS.isTwoColumn)
       if (saved !== null) return JSON.parse(saved)
     } catch (_) {}
     return false
   })
+
+  useEffect(() => {
+    const reloadSettings = () => {
+      const settings = readBackupSettings()
+      if (settings.themeMode !== undefined) setStageTheme(settings.themeMode)
+      if (settings.customThemeColors !== undefined) setCustomThemeColors(settings.customThemeColors)
+      if (settings.stageSettings?.fontStyle !== undefined) setFontStyle(settings.stageSettings.fontStyle)
+      if (settings.stageSettings?.isTwoColumn !== undefined) setIsTwoColumn(settings.stageSettings.isTwoColumn)
+    }
+    window.addEventListener(SETTINGS_CHANGED, reloadSettings)
+    return () => window.removeEventListener(SETTINGS_CHANGED, reloadSettings)
+  }, [])
 
   // Save songs to localStorage on any change
   useEffect(() => {
@@ -349,21 +348,21 @@ function App() {
   // Save font style to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('gtar_font_style_store', fontStyle)
+      localStorage.setItem(SETTINGS_KEYS.fontStyle, fontStyle)
     } catch (_) {}
   }, [fontStyle])
 
   // Save two-column state to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('gtar_twocolumn_store', JSON.stringify(isTwoColumn))
+      localStorage.setItem(SETTINGS_KEYS.isTwoColumn, JSON.stringify(isTwoColumn))
     } catch (_) {}
   }, [isTwoColumn])
 
   // Apply theme to document.body and persist
   useEffect(() => {
     try {
-      localStorage.setItem('gtar_theme_store', stageTheme)
+      localStorage.setItem(SETTINGS_KEYS.themeMode, stageTheme)
     } catch (_) {}
 
     document.body.classList.remove(
@@ -390,28 +389,12 @@ function App() {
     )
   }, [setlists, activeSetlistId])
 
-  // Resolved Setlist Songs
+  // Keep queue positions, including an explicit unavailable-song entry.
   const activeSetlistSongs: ActiveSongState[] = useMemo(() => {
     if (!activeSetlist) return []
-    return activeSetlist.songs.map((ref, idx) => {
-      const match = songs.find(
-        (s) =>
-          s.title.trim().toLowerCase() === ref.title.trim().toLowerCase() &&
-          (!ref.artist || (s.artist || '').trim().toLowerCase() === ref.artist.trim().toLowerCase())
-      )
-      return (
-        match || {
-          id: (ref.id as number) || Date.now() + idx,
-          title: ref.title,
-          artist: ref.artist || '',
-          key: (ref as any).key || 'G',
-          capo: (ref as any).capo || 'No Capo',
-          bpm: (ref as any).bpm || '120',
-          format: 'CHORD_PRO',
-          transposeOffset: 0,
-          rawContent: `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
-        }
-      )
+    return activeSetlist.songs.map(ref => resolveSetlistSong(ref, songs) ?? {
+      id: ref.id, title: ref.title, artist: ref.artist ?? '', isMissing: true,
+      key: '', capo: '', bpm: '', format: 'PLAIN', transposeOffset: 0, rawContent: '',
     })
   }, [activeSetlist, songs])
 
@@ -642,6 +625,7 @@ function App() {
 
   // Transpose handler
   const handleTransposeChange = (newOffset: number) => {
+    if (!Number.isSafeInteger(newOffset) || newOffset < -11 || newOffset > 11) return
     if (isInSetlistMode) {
       const target = activeSetlistSongs[activeSetlistSongIndex]
       if (target) {
@@ -764,25 +748,13 @@ function App() {
       return { success: false, message: msg }
     }
 
-    // Resolve complete song data from library
-    const payloadSongs = targetSetlist.songs.map((ref) => {
-      const matched = songs.find(
-        (s) =>
-          s.title.trim().toLowerCase() === ref.title.trim().toLowerCase() &&
-          (!ref.artist || (s.artist || '').trim().toLowerCase() === ref.artist.trim().toLowerCase())
-      )
-      return {
-        title: ref.title,
-        artist: ref.artist || matched?.artist || '',
-        key: matched?.key || (ref as any).key || 'G',
-        capo: matched?.capo || (ref as any).capo || 'No Capo',
-        bpm: matched?.bpm || (ref as any).bpm || '120',
-        format: matched?.format || 'CHORD_PRO',
-        rawContent:
-          matched?.rawContent ||
-          `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
-      }
-    })
+    let payloadSongs: ActiveSongState[]
+    try { payloadSongs = createSingleSetlistPayload(targetSetlist, songs).setlist.songs }
+    catch (error) {
+      const message = error instanceof Error ? error.message : 'Setlist contains a missing song'
+      setToastMessage(message)
+      return { success: false, message }
+    }
 
     bandSync.broadcastSetlist(targetSetlist.name, payloadSongs)
     const successMsg = `Pushed setlist '${targetSetlist.name}' (${payloadSongs.length} songs) to band members via BandSync!`
@@ -794,34 +766,7 @@ function App() {
   // Export / Share Setlist (.json download & clipboard copy)
   const handleShareSetlist = (setlist: WebSetlist) => {
     try {
-      const exportData = {
-        app: 'GTAR',
-        version: import.meta.env.DEV ? GTAR_DEV_VERSION : GTAR_APP_VERSION,
-        type: 'SETLIST_EXPORT',
-        exportedAt: new Date().toISOString(),
-        setlist: {
-          id: setlist.id,
-          name: setlist.name,
-          songs: setlist.songs.map((ref) => {
-            const matched = songs.find(
-              (s) =>
-                s.title.trim().toLowerCase() === ref.title.trim().toLowerCase() &&
-                (!ref.artist || (s.artist || '').trim().toLowerCase() === ref.artist.trim().toLowerCase())
-            )
-            return {
-              title: ref.title,
-              artist: ref.artist || matched?.artist || '',
-              key: matched?.key || (ref as any).key || 'G',
-              capo: matched?.capo || (ref as any).capo || 'No Capo',
-              bpm: matched?.bpm || (ref as any).bpm || '120',
-              format: matched?.format || 'CHORD_PRO',
-              rawContent:
-                matched?.rawContent ||
-                `{title: ${ref.title}}\n{artist: ${ref.artist || ''}}\n\n[Verse 1]\n`,
-            }
-          }),
-        },
-      }
+      const exportData = createSingleSetlistPayload(setlist, [...songs, ...deletedSongs])
 
       const jsonStr = JSON.stringify(exportData, null, 2)
 
@@ -1017,9 +962,9 @@ function App() {
   // Update song fields in editor
   const handleUpdateSong = (updated: Partial<ActiveSongState>) => {
     setSongs((prev) =>
-      prev.map((s, idx) => {
-        if (idx !== activeSongIndex) return s
-        const next = { ...s, ...updated }
+      prev.map((s) => {
+        if (s.id !== currentSong.id) return s
+        const next = { ...s, ...updated, id: s.id }
         if (updated.rawContent !== undefined) {
           const meta = extractDirectives(updated.rawContent)
           if (meta.title) next.title = meta.title
@@ -1037,7 +982,7 @@ function App() {
   // Explicit save action from DesktopEditor
   const handleSaveSongFromEditor = (updatedSong: ActiveSongState) => {
     setSongs((prev) => {
-      const nextSongs = prev.map((s, idx) => (idx === activeSongIndex ? updatedSong : s))
+      const nextSongs = prev.map((s) => (s.id === currentSong.id ? { ...s, ...updatedSong, id: s.id } : s))
       try {
         localStorage.setItem('gtar_songs_store', JSON.stringify(nextSongs))
       } catch (err) {
@@ -1049,143 +994,54 @@ function App() {
     setTimeout(() => setToastMessage(null), 3500)
   }
 
-  // Import single song
   const handleImportSong = (imported: Partial<ActiveSongState>) => {
-    const newSong: ActiveSongState = {
-      id: Date.now(),
-      title: imported.title || 'Imported Song',
-      artist: imported.artist || '',
-      key: imported.key || 'G',
-      capo: imported.capo || '',
-      bpm: imported.bpm || '120',
-      rawContent: imported.rawContent || '',
-      format: imported.format || 'CHORD_PRO',
-      transposeOffset: imported.transposeOffset || 0,
-    }
-    setSongs((prev) => [newSong, ...prev])
+    const song = normalizeBackupSong({ ...imported, id: crypto.randomUUID(), title: imported.title || 'Imported Song' })
+    if (song.isDeleted) setDeletedSongs(prev => [song, ...prev])
+    else setSongs(prev => [song, ...prev])
     setActiveSongIndex(0)
     setActiveSetlistId(null)
   }
 
-  // Batch import all detected songs
   const handleImportAllSongs = (importedSongs: Array<Partial<ActiveSongState>>) => {
-    if (importedSongs.length === 0) return
-    const completeSongs: ActiveSongState[] = importedSongs.map((s, idx) => ({
-      id: Date.now() + idx,
-      title: s.title || 'Imported Song',
-      artist: s.artist || '',
-      key: s.key || 'G',
-      capo: s.capo || 'No Capo',
-      bpm: s.bpm || '120',
-      format: s.format || 'CHORD_PRO',
-      transposeOffset: s.transposeOffset || 0,
-      rawContent: s.rawContent || '',
-    }))
-
-    setSongs((prev) => [...prev, ...completeSongs])
+    const normalized = importedSongs.map(song => normalizeBackupSong({ ...song, id: crypto.randomUUID(), title: song.title || 'Imported Song' }))
+    const partition = partitionSongs(normalized)
+    setSongs(prev => [...prev, ...partition.active])
+    setDeletedSongs(prev => [...prev, ...partition.deleted])
   }
 
-  // Full Restore (Wipe & Replace): Clear -> Insert songs -> Insert setlists -> Reset active playback queue
-  const handleFullRestore = (
-    importedSongs: Array<Partial<ActiveSongState>>,
-    importedSetlists: WebSetlist[]
-  ) => {
-    const errors = validateBackupEntries(importedSongs, importedSetlists)
-    if (errors.length) throw new Error(errors.join('\n'))
-    const completeSongs: ActiveSongState[] = importedSongs.map((s, idx) => ({
-      id: s.id || Date.now() + idx,
-      title: s.title || 'Imported Song',
-      artist: s.artist || '',
-      key: s.key || 'G',
-      capo: s.capo || 'No Capo',
-      bpm: s.bpm || '120',
-      format: s.format || 'CHORD_PRO',
-      transposeOffset: s.transposeOffset || 0,
-      rawContent: s.rawContent || '',
-    }))
-
-    // 1. songs array ONLY populates the Songbook Library
-    setSongs(completeSongs)
-    // 2. setlists array restores into setlists table/state
-    setSetlists(importedSetlists || [])
-    // 3. Reset active playback queue to first song or empty (never create an all-songs setlist)
+  const handleFullRestore = (importedSongs: Array<Partial<ActiveSongState>>, importedSetlists: WebSetlist[]) => {
+    const parsed = parseBackupJson(JSON.stringify({ songs: importedSongs, setlists: importedSetlists }))
+    if (!parsed.isValid) throw new Error(parsed.error)
+    const partition = partitionSongs(parsed.songs)
+    setSongs(partition.active)
+    setDeletedSongs(partition.deleted)
+    setSetlists(parsed.setlists)
     setActiveSetlistId(null)
     setActiveSongIndex(0)
     setActiveSetlistSongIndex(0)
+    setQueueMode('library')
   }
 
-  // Smart Merge: Upsert songs by match (title + artist) -> Append setlists uniquely
-  const handleSmartMerge = (
-    importedSongs: Array<Partial<ActiveSongState>>,
-    importedSetlists: WebSetlist[]
-  ) => {
-    const errors = validateBackupEntries(importedSongs, importedSetlists)
-    if (errors.length) throw new Error(errors.join('\n'))
-    // 1. Upsert songs by match (title + artist)
-    setSongs((prev) => {
-      const existingMap = new Map(
-        prev.map((s) => [`${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`, s])
-      )
-      for (const item of importedSongs) {
-        const key = `${(item.title || '').trim().toLowerCase()}::${(item.artist || '').trim().toLowerCase()}`
-        if (!existingMap.has(key)) {
-          existingMap.set(key, {
-            id: item.id || Date.now() + existingMap.size,
-            title: item.title || 'Imported Song',
-            artist: item.artist || '',
-            key: item.key || 'G',
-            capo: item.capo || 'No Capo',
-            bpm: item.bpm || '120',
-            format: item.format || 'CHORD_PRO',
-            transposeOffset: item.transposeOffset || 0,
-            rawContent: item.rawContent || '',
-          })
-        }
-      }
-      return Array.from(existingMap.values())
-    })
-
-    // 2. Append setlists uniquely by name
-    if (importedSetlists && importedSetlists.length > 0) {
-      setSetlists((prev) => {
-        const existingNames = new Set(prev.map((sl) => sl.name.trim().toLowerCase()))
-        const newSetlists = importedSetlists.filter(
-          (sl) => !existingNames.has(sl.name.trim().toLowerCase())
-        )
-        return [...prev, ...newSetlists]
-      })
+  const handleSmartMerge = (importedSongs: Array<Partial<ActiveSongState>>, importedSetlists: WebSetlist[]) => {
+    const existingSongs = [...songs, ...deletedSongs]
+    const parsed = parseBackupJson(JSON.stringify({ songs: importedSongs, setlists: importedSetlists }), { mode: 'merge', existingSongs })
+    if (!parsed.isValid) throw new Error(parsed.error)
+    const merged = mergeBackupLibrary(existingSongs, parsed.songs, parsed.setlists)
+    const partition = partitionSongs(merged.songs)
+    const nextSetlists = [...setlists]
+    for (const setlist of merged.setlists) {
+      const index = nextSetlists.findIndex(item => String(item.id) === String(setlist.id))
+      if (index >= 0) nextSetlists[index] = setlist
+      else nextSetlists.push(setlist)
     }
+    setSongs(partition.active)
+    setDeletedSongs(partition.deleted)
+    setSetlists(nextSetlists)
   }
 
-  // Direct import single setlist (.json)
-  const handleImportSingleSetlist = (
-    importedSetlist: WebSetlist,
-    newSongs: ActiveSongState[]
-  ) => {
-    if (newSongs && newSongs.length > 0) {
-      setSongs((prev) => {
-        const existing = new Set(
-          prev.map((s) => `${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`)
-        )
-        const toAdd = newSongs.filter(
-          (s) => !existing.has(`${s.title.trim().toLowerCase()}::${(s.artist || '').trim().toLowerCase()}`)
-        )
-        return [...toAdd, ...prev]
-      })
-    }
-    setSetlists((prev) => {
-      const finalSl: WebSetlist = {
-        ...importedSetlist,
-        id: prev.some((s) => String(s.id) === String(importedSetlist.id))
-          ? `sl_${Date.now()}`
-          : importedSetlist.id,
-        name: importedSetlist.name || 'Imported Setlist',
-        createdAt: importedSetlist.createdAt || Date.now(),
-        songs: importedSetlist.songs || [],
-      }
-      return [...prev, finalSl]
-    })
-    setToastMessage(`Imported setlist "${importedSetlist.name}" (${importedSetlist.songs?.length || 0} songs)!`)
+  const handleImportSingleSetlist = (setlist: WebSetlist, newSongs: ActiveSongState[]) => {
+    handleSmartMerge(newSongs, [setlist])
+    setToastMessage(`Imported setlist "${setlist.name}" (${setlist.songs.length} songs)`)
     setTimeout(() => setToastMessage(null), 4000)
   }
 
@@ -1353,7 +1209,7 @@ function App() {
         onNewSetlist={handleNewSetlist}
         onImportSingleSetlist={handleImportSingleSetlist}
         onSmartMerge={handleSmartMerge}
-        onExportAllData={() => exportAllDataJson(songs, setlists)}
+        onExportAllData={() => exportAllDataJson([...songs, ...deletedSongs], setlists)}
       />
 
       {/* Stage Color Theme Modal */}
@@ -1390,7 +1246,7 @@ function App() {
         isOpen={isBackupRestoreModalOpen}
         onClose={() => setIsBackupRestoreModalOpen(false)}
         currentSong={currentSong}
-        allSongs={songs}
+        allSongs={[...songs, ...deletedSongs]}
         setlists={setlists}
         onImportAllSongs={handleImportAllSongs}
         onFullRestore={handleFullRestore}
@@ -1415,7 +1271,7 @@ function App() {
           setIsThemeModalOpen(true)
         }}
         onCheckForUpdates={handleCheckForUpdates}
-        onExportAllData={() => exportAllDataJson(songs, setlists)}
+        onExportAllData={() => exportAllDataJson([...songs, ...deletedSongs], setlists)}
         onOpenBackupRestoreModal={() => {
           setIsStageSettingsModalOpen(false)
           setIsBackupRestoreModalOpen(true)
@@ -1438,7 +1294,7 @@ function App() {
         initialTab="export"
         onClose={() => setIsJsonModalOpen(false)}
         song={currentSong}
-        allSongs={songs}
+        allSongs={[...songs, ...deletedSongs]}
         onImportSong={handleImportSong}
         onImportAllSongs={handleImportAllSongs}
       />

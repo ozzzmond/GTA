@@ -1,7 +1,9 @@
+import { SETTINGS_KEYS } from '../utils/backupSettings'
 import React, { useState, useEffect } from 'react'
 import { X, Check, Palette, Sliders } from 'lucide-react'
 
-export type ThemeMode = 'solarized-dark' | 'amber-stage' | 'oled-black' | 'paper-light' | 'custom'
+import type { ThemeMode, CustomThemeColors } from '../utils/backupSettings'
+export type { ThemeMode, CustomThemeColors } from '../utils/backupSettings'
 
 export interface ThemeOption {
   id: ThemeMode
@@ -12,13 +14,6 @@ export interface ThemeOption {
   accentHex: string
   textHex: string
   tag?: string
-}
-
-export interface CustomThemeColors {
-  bgHex: string
-  textHex: string
-  chordHex: string
-  sectionHex: string
 }
 
 export const DEFAULT_CUSTOM_COLORS: CustomThemeColors = {
@@ -147,9 +142,9 @@ export const ThemeModal: React.FC<ThemeModalProps> = ({
 
   const handleSaveAndApply = () => {
     try {
-      localStorage.setItem('gtar_theme_store', stagedTheme)
+      localStorage.setItem(SETTINGS_KEYS.themeMode, stagedTheme)
       if (stagedTheme === 'custom') {
-        localStorage.setItem('gtar_custom_theme_colors', JSON.stringify(stagedCustomColors))
+        localStorage.setItem(SETTINGS_KEYS.customThemeColors, JSON.stringify(stagedCustomColors))
         applyCustomThemeStyles(stagedCustomColors)
       }
     } catch (e) {

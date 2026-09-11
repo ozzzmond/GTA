@@ -1,3 +1,4 @@
+import { resolveSetlistSong } from '../utils/setlistSongs'
 import React, { useState } from 'react'
 import {
   X,
@@ -100,7 +101,7 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
 
     try {
       const text = await file.text()
-      const parsed = parseBackupJson(text)
+      const parsed = parseBackupJson(text, { mode: 'merge', existingSongs: songs })
 
       if (!parsed.isValid) {
         showDrawerToast(parsed.error || 'Invalid or corrupted JSON file.')
@@ -395,6 +396,7 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
                           </div>
                         ) : (
                           slSongs.map((sRef: any, sIdx: number) => {
+                            const resolvedSong = resolveSetlistSong(sRef, songs)
                             const isCurrentSetlistSong =
                               activeSetlistId === sl.id && activeSetlistSongIndex === sIdx
                             return (
@@ -431,10 +433,10 @@ export const SetlistDrawer: React.FC<SetlistDrawerProps> = ({
                                         isCurrentSetlistSong ? 'text-[#FDF6E3] font-bold' : 'text-[#EEE8D5]'
                                       }`}
                                     >
-                                      {sRef.title}
+                                      {resolvedSong?.title ?? `Missing song: ${sRef.title}`}
                                     </div>
                                     <div className="text-[10px] text-[#93A1A1] truncate">
-                                      {[sRef.artist, sRef.key ? `Key: ${sRef.key}` : null]
+                                      {[resolvedSong?.artist ?? sRef.artist, resolvedSong?.key ? `Key: ${resolvedSong.key}` : null]
                                         .filter(Boolean)
                                         .join(' • ')}
                                     </div>

@@ -16,7 +16,8 @@ import {
 } from 'lucide-react'
 import { GTAR_APP_VERSION, GTAR_DEV_VERSION } from '../types/gtar'
 
-export type SongFontStyleOption = 'mono' | 'sans' | 'serif'
+import type { SongFontStyleOption } from '../utils/backupSettings'
+export type { SongFontStyleOption } from '../utils/backupSettings'
 
 interface StageSettingsModalProps {
   isOpen: boolean
