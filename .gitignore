@@ -68,3 +68,4 @@ keystore_base64.txt
 # Web companion app
 web/node_modules/
 web/dist/
+__pycache__/
