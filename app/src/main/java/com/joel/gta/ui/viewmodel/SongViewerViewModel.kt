@@ -1669,7 +1669,7 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
                 _updateCheckResult.value = result
                 when (result) {
                     is UpdateCheckResult.UpToDate -> {
-                        val ver = if (BuildConfig.VERSION_NAME.startsWith("v")) BuildConfig.VERSION_NAME else "v${BuildConfig.VERSION_NAME}"
+                        val ver = BuildConfig.VERSION_NAME
                         onUpToDate("GTAR is up to date ($ver)!")
                     }
                     is UpdateCheckResult.Error -> {
