@@ -35,6 +35,12 @@ export { CHORD_TOKEN_REGEX } from './chordTransposer'
 // Tab lines regex (e.g. e|---0-2-3---|)
 export const TAB_LINE_REGEX = /^[eEaAdDgGbB]\|[0-9-xpbrh~/\\|\s]+$/
 
+// Fixed-pitch diagrams must bypass chord detection and transposition.
+export function isTabChartLine(line: string): boolean {
+  return TAB_LINE_REGEX.test(line.trim()) || /-(?:[0-9]+|x)-/i.test(line) ||
+    /^\s*(?:chords?|chord\s+(?:chart|diagrams?|definitions?))\s*:/i.test(line)
+}
+
 // Check if token is a musical separator/delimiter
 function isDelimiterToken(token: string): boolean {
   const t = token.trim().toLowerCase()
@@ -438,7 +444,24 @@ export function parseGtarSong(rawText: string, transposeOffset: number = 0): Par
   let chordProCount = 0
   let twoLineCount = 0
 
+  let explicitTab = false
+  let chartBlock = false
   for (const sourceLine of lines) {
+    if (/^\s*\{(?:sot|start_of_tab)\}\s*$/i.test(sourceLine)) {
+      explicitTab = true
+      continue
+    }
+    if (/^\s*\{(?:eot|end_of_tab)\}\s*$/i.test(sourceLine)) {
+      explicitTab = false
+      chartBlock = false
+      continue
+    }
+    if (!sourceLine.trim() || isSectionHeader(sourceLine)) chartBlock = false
+    if (explicitTab || chartBlock || isTabChartLine(sourceLine)) {
+      parsedLines.push({ type: 'TAB', content: sourceLine })
+      chartBlock = chartBlock || /^\s*(?:chords?|chord\s+(?:chart|diagrams?|definitions?))\s*:/i.test(sourceLine)
+      continue
+    }
     const rawLine = sourceLine.replace(/\{([^{}]*)\}/g, (match) => sourceLine.trim() === match ? match : '')
     const trimmed = rawLine.trim()
 

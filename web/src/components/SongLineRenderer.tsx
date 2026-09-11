@@ -50,7 +50,7 @@ function renderInteractiveChordLine(
               <span
                 key={`chord-${start}-${sIdx}`}
                 onClick={() => onChordClick?.(cleanSub)}
-                className="hover:text-[#2AA198] hover:underline cursor-pointer active:scale-95 transition-colors select-none"
+                className="stage-chord-token cursor-pointer select-none"
                 title={`View ${cleanSub} fretboard diagram`}
               >
                 {cleanSub}
@@ -67,7 +67,7 @@ function renderInteractiveChordLine(
             <span
               key={`chord-${start}`}
               onClick={() => onChordClick?.(cleanToken)}
-              className="hover:text-[#2AA198] hover:underline cursor-pointer active:scale-95 transition-colors select-none"
+              className="stage-chord-token cursor-pointer select-none"
               title={`View ${cleanToken} fretboard diagram`}
             >
               {cleanToken}
@@ -132,38 +132,6 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
             )
 
           case 'CHORD_ROW':
-            // If standalone progression (e.g. Intro: [A] [F#m] [D] [E] [A] or [G] [A7] [C] [G]):
-            // Render as clean, floating chord labels with comfortable spacing (no boxes/borders)
-            if (!line.isOverLyric) {
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    paddingTop: '4px',
-                    paddingBottom: '4px',
-                  }}
-                  className="flex flex-wrap items-center gap-6 sm:gap-8 select-text"
-                >
-                  {line.chords.filter(Boolean).map((chord, cIdx) => (
-                    <span
-                      key={cIdx}
-                      onClick={() => onChordClick?.(chord)}
-                      style={{
-                        fontSize: `${fontSizePx}px`,
-                        lineHeight: `${fontSizePx * 1.35}px`,
-                        letterSpacing: '0.8px',
-                        color: '#B58900',
-                      }}
-                      className={`stage-mono stage-chord-text font-bold hover:text-[#2AA198] hover:underline cursor-pointer active:scale-95 transition-colors select-none`}
-                      title={`View ${chord} fretboard diagram`}
-                    >
-                      {chord}
-                    </span>
-                  ))}
-                </div>
-              )
-            }
-
             // If 2-line chord row over lyrics: exact monospace character-column alignment matching Compose
             return (
               <div
@@ -175,6 +143,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
                   lineHeight: `${fontSizePx * 1.35}px`,
                   letterSpacing: '0.8px',
                   color: '#B58900',
+                  whiteSpace: 'pre',
                 }}
                 className={`stage-mono stage-chord-text font-bold whitespace-pre select-text`}
               >
@@ -198,6 +167,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
                         lineHeight: `${fontSizePx * 1.35}px`,
                         letterSpacing: '0.8px',
                         color: '#B58900',
+                  whiteSpace: 'pre',
                       }}
                       className={`stage-mono stage-chord-text font-bold whitespace-pre`}
                     >
@@ -270,7 +240,7 @@ export const SongLineRenderer: React.FC<SongLineRendererProps> = ({
             return (
               <div key={idx} className={`${fontClass} select-text`} style={{ fontSize: fontSizePx, padding: '4px 0 5px' }}>
                 {line.segments.map((segment, index) => (
-                  <span key={index} className="inline-flex flex-col align-bottom" style={{ whiteSpace: 'pre-wrap', maxWidth: '100%' }}>
+                  <span key={index} className="inline-flex flex-col align-bottom" style={{ whiteSpace: 'pre-wrap', maxWidth: '100%', paddingRight: segment.chord && line.segments[index + 1]?.chord ? '1ch' : undefined }}>
                     <span className="text-amber-400 font-bold font-mono text-[0.85em] leading-none mb-1 select-none">
                       {segment.chord ? renderInteractiveChordLine(segment.chord, onChordClick) : '\u00a0'}
                     </span>

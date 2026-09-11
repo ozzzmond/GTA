@@ -78,3 +78,29 @@ test('ChordSheet HTML path also separates section markers from slash chords', ()
   assert.match(result.html, /(?:D#|Eb)\/G/)
   assert.doesNotMatch(result.html, /(?:D#|Eb)\/F#/)
 })
+
+
+test('standalone chords preserve source columns and share slash styling', () => {
+  const raw = '  Cadd9    A7sus4\tEm7  G/D   C/E'
+  const html = renderToStaticMarkup(React.createElement(SongLineRenderer, { lines: parseGtarSong(raw).lines, fontSizePx: 24 }))
+  assert.equal(html.replace(/<[^>]*>/g, ''), raw)
+  assert.match(html, /white-space:pre/)
+  assert.equal((html.match(/class="stage-chord-token cursor-pointer select-none"/g) || []).length, 5)
+  assert.doesNotMatch(html, /underline|2AA198/)
+})
+
+test('tab charts stay literal during transposition and resume parsing after a boundary', () => {
+  const chart = 'Chords: G D Cadd9 F G/D Dsus4\n        G/D     C/E\n        -3-     -X-'
+  for (const input of [chart, '{start_of_tab}\n' + chart + '\n{end_of_tab}']) {
+    const parsed = parseGtarSong(input + '\n\n[Verse]\n[G/D]Sing', 1)
+    assert.deepEqual(parsed.lines.slice(0, 3).map(line => line.type), ['TAB', 'TAB', 'TAB'])
+    assert.equal(parsed.lines.slice(0, 3).map(line => line.content).join('\n'), chart)
+    const html = renderToStaticMarkup(React.createElement(SongLineRenderer, { lines: parsed.lines.slice(0, 3), fontSizePx: 24 }))
+    assert.doesNotMatch(html, /stage-chord-token|cursor-pointer|fretboard/)
+    assert.equal(parsed.lines.at(-1).segments[0].chord, 'G#/D#')
+  }
+})
+
+test('a fret marker line does not swallow the following lyric or chord row', () => {
+  assert.deepEqual(parseGtarSong('e|--3--X--|\nG/D C/E\nSing along').lines.map(line => line.type), ['TAB', 'CHORD_ROW', 'LYRIC'])
+})
