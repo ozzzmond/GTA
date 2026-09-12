@@ -40,6 +40,12 @@ body {
   overflow-x: hidden;
 }
 
+#root {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 /* Custom scrollbars matching Solarized Stage Dark */
 ::-webkit-scrollbar {
   width: 8px;
@@ -369,6 +375,7 @@ body.theme-custom .chord-sheet-container .comment {
   top: calc(100% + 8px);
   right: 0;
   width: 260px;
+  max-width: calc(100vw - 1.5rem);
   background: #073642;
   border: 1px solid #1A4A55;
   border-radius: 16px;
@@ -387,6 +394,8 @@ body.theme-custom .chord-sheet-container .comment {
   border-radius: 999px;
   padding: 6px 14px;
   transition: border-color 0.15s;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .pill-search:focus-within {
   border-color: #2AA198;
@@ -399,6 +408,7 @@ body.theme-custom .chord-sheet-container .comment {
   font-size: 13px;
   flex: 1;
   min-width: 0;
+  width: 100%;
 }
 .pill-search input::placeholder {
   color: rgba(147, 161, 161, 0.7);

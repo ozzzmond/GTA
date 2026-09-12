@@ -94,18 +94,18 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fade-in select-none">
-      <div className="relative w-full max-w-lg bg-[#073642] border border-[#1A4A55] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-[#EEE8D5]">
+      <div className="relative w-full max-w-lg max-w-[calc(100vw-1.5rem)] bg-[#073642] border border-[#1A4A55] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-[#EEE8D5]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1A4A55] bg-[#002B36]">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-[#073642] text-[#2AA198] border border-[#1A4A55]">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-[#1A4A55] bg-[#002B36]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-[#073642] text-[#2AA198] border border-[#1A4A55] shrink-0">
               <Shield className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-[#FDF6E3]">User Whitelist &amp; Access Control</h2>
+                <h2 className="text-sm sm:text-base font-bold text-[#FDF6E3] truncate">User Whitelist &amp; Access Control</h2>
               </div>
-              <p className="text-xs text-[#93A1A1]">
+              <p className="text-[11px] sm:text-xs text-[#93A1A1] truncate">
                 Manage accounts authorized to log in, view songs, and sync
               </p>
             </div>
@@ -114,7 +114,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl hover:bg-[#073642] text-[#93A1A1] hover:text-[#FDF6E3] transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl hover:bg-[#073642] text-[#93A1A1] hover:text-[#FDF6E3] transition-colors cursor-pointer shrink-0 ml-2"
             title="Close"
           >
             <X className="w-5 h-5" />
@@ -122,7 +122,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         </div>
 
         {/* Content Body */}
-        <div className="p-5 space-y-4 overflow-y-auto max-h-[65vh]">
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[65vh]">
           {/* Add User Form */}
           <form onSubmit={handleAdd} className="space-y-2">
             <label className="text-xs font-bold text-[#FDF6E3] flex items-center gap-1.5">

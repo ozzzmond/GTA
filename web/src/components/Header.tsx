@@ -370,7 +370,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="h-14 border-b border-[#1A4A55] bg-[#073642] px-3 sm:px-5 flex items-center justify-between gap-2 select-none z-30 sticky top-0 shadow-md">
+      <header className="h-14 border-b border-[#1A4A55] bg-[#073642] px-3 sm:px-5 flex items-center justify-between gap-2 select-none z-30 sticky top-0 shadow-md max-w-full overflow-x-clip">
         {/* =================================================================== */}
         {/* 1. LEFT: App Branding — Logo, GTAR-Dev, DEV badge, version badge    */}
         {/* =================================================================== */}
@@ -380,7 +380,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-2 cursor-pointer group select-none transition-transform active:scale-95"
             title="Return to Songbook Library Home"
           >
-            <div className="w-8 h-8 rounded-xl bg-[#002B36] border border-[#2AA198]/40 group-hover:border-[#2AA198] flex items-center justify-center text-[#2AA198] group-hover:text-[#35B8AD] shadow-inner transition-colors">
+            <div className="w-8 h-8 rounded-xl bg-[#002B36] border border-[#2AA198]/40 group-hover:border-[#2AA198] flex items-center justify-center text-[#2AA198] group-hover:text-[#35B8AD] shadow-inner transition-colors shrink-0">
               <GtaLogoIcon className="w-4.5 h-4.5 fill-current" />
             </div>
             <div className="flex items-center gap-1.5 leading-none">
@@ -399,7 +399,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onCheckForUpdates?.()
                 }}
                 title={isDevApp ? `Click to check for updates (web v${GTAR_DEV_VERSION})` : `Click to check for updates (web v${GTAR_APP_VERSION})`}
-                className="text-[9px] font-mono font-bold uppercase bg-transparent text-[#2AA198] px-1.5 py-0.5 rounded border border-[#2AA198]/40 hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1"
+                className="hidden sm:flex text-[9px] font-mono font-bold uppercase bg-transparent text-[#2AA198] px-1.5 py-0.5 rounded border border-[#2AA198]/40 hover:border-[#2AA198] transition-colors cursor-pointer items-center gap-1 shrink-0"
               >
                 {isCheckingUpdates && (
                   <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
@@ -413,7 +413,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* =================================================================== */}
         {/* 2. CENTER: Icon-only Toolbar — no text labels, cyan dot active      */}
         {/* =================================================================== */}
-        <div className="flex items-center gap-0.5 bg-[#002B36]/60 p-0.5 rounded-xl border border-[#1A4A55]/50">
+        <div className="flex items-center gap-0.5 bg-[#002B36]/60 p-0.5 rounded-xl border border-[#1A4A55]/50 shrink-0">
           <ToolbarIconButton
             icon={Music}
             label={`Songbook${songsCount !== undefined ? ` (${songsCount})` : ''}`}
@@ -438,7 +438,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Cascading Dropdown Menu */}
             {isSetlistDropdownOpen && (
-              <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-80 rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl p-2.5 z-50 animate-scale-in text-xs select-none">
+              <div className="fixed sm:absolute left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 top-14 sm:top-full mt-2 w-auto sm:w-80 max-w-[calc(100vw-1rem)] rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl p-2.5 z-50 animate-scale-in text-xs select-none">
                 {/* Active Setlist Header & Quick Actions */}
                 <div className="px-2 py-1.5 border-b border-[#1A4A55]/60 mb-1 flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -564,13 +564,14 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          <div className="w-[1px] h-5 bg-[#1A4A55]/50 mx-0.5" />
+          <div className="hidden sm:block w-[1px] h-5 bg-[#1A4A55]/50 mx-0.5" />
 
           <ToolbarIconButton
             icon={FileEdit}
             label="Editor"
             isActive={activeView === 'editor'}
             onClick={() => onViewChange('editor')}
+            className="hidden sm:flex"
           />
           <ToolbarIconButton
             icon={Eye}
@@ -582,25 +583,29 @@ export const Header: React.FC<HeaderProps> = ({
             icon={Globe}
             label="Web Sources"
             onClick={onOpenWebsiteUrlSource}
+            className="hidden md:flex"
           />
           <ToolbarIconButton
             icon={Trash2}
             label={`Trash${deletedSongsCount > 0 ? ` (${deletedSongsCount})` : ''}`}
             isActive={activeView === 'trash'}
             onClick={() => onViewChange('trash')}
+            className="hidden lg:flex"
           />
 
-          <div className="w-[1px] h-5 bg-[#1A4A55]/50 mx-0.5" />
+          <div className="hidden md:block w-[1px] h-5 bg-[#1A4A55]/50 mx-0.5" />
 
           <ToolbarIconButton
             icon={Radio}
             label="Band Sync"
             onClick={onOpenStageTools}
+            className="hidden md:flex"
           />
           <ToolbarIconButton
             icon={Palette}
             label="Theme"
             onClick={onToggleTheme}
+            className="hidden sm:flex"
           />
           <ToolbarIconButton
             icon={MoreVertical}
@@ -794,10 +799,10 @@ export const Header: React.FC<HeaderProps> = ({
       {activeView === 'songbook' && (
         <div
           ref={searchContainerRef}
-          className="sticky top-14 z-20 bg-[#073642] border-b border-[#1A4A55] px-4 sm:px-6 py-2"
+          className="sticky top-14 z-20 bg-[#073642] border-b border-[#1A4A55] px-3 sm:px-6 py-2 max-w-full overflow-hidden"
         >
-          <div className="max-w-3xl mx-auto relative">
-            <div className="pill-search">
+          <div className="max-w-3xl mx-auto relative w-full">
+            <div className="pill-search w-full">
               <Search className="w-4 h-4 text-[#93A1A1] shrink-0" />
               <input
                 id="search-input"
@@ -809,8 +814,9 @@ export const Header: React.FC<HeaderProps> = ({
                   setIsSearchFocused(true)
                 }}
                 placeholder="Search local songbook & online chords..."
+                className="min-w-0 flex-1 w-full"
               />
-              <span className="kbd-hint hidden sm:inline">Ctrl K</span>
+              <span className="kbd-hint hidden sm:inline shrink-0">Ctrl K</span>
               {searchQuery && (
                 <button
                   type="button"
@@ -818,7 +824,7 @@ export const Header: React.FC<HeaderProps> = ({
                     onSearchQueryChange('')
                     setIsSearchFocused(false)
                   }}
-                  className="text-[#93A1A1] hover:text-[#FDF6E3] cursor-pointer"
+                  className="text-[#93A1A1] hover:text-[#FDF6E3] cursor-pointer shrink-0"
                   title="Clear search"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -996,7 +1002,61 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* 3-Dots Overflow Menu */}
       {showOverflowMenu && (
-        <div ref={overflowMenuRef} className="fixed right-4 top-14 w-52 rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl py-2 z-50 animate-scale-in">
+        <div
+          ref={overflowMenuRef}
+          className="fixed right-2 sm:right-4 top-14 w-56 max-w-[calc(100vw-1rem)] rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl py-2 z-50 animate-scale-in"
+        >
+          {/* Mobile Secondary Action Shortcuts (shown when hidden from top bar) */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowOverflowMenu(false)
+              onViewChange('editor')
+            }}
+            className="sm:hidden w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center gap-3 cursor-pointer"
+          >
+            <FileEdit className="w-4 h-4 text-[#2AA198]" />
+            <span className="font-semibold">Song Editor</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowOverflowMenu(false)
+              onOpenWebsiteUrlSource()
+            }}
+            className="md:hidden w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center gap-3 cursor-pointer"
+          >
+            <Globe className="w-4 h-4 text-[#2AA198]" />
+            <span className="font-semibold">Web Sources</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowOverflowMenu(false)
+              onOpenStageTools()
+            }}
+            className="md:hidden w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center gap-3 cursor-pointer"
+          >
+            <Radio className="w-4 h-4 text-[#2AA198]" />
+            <span className="font-semibold">Band Sync</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowOverflowMenu(false)
+              onToggleTheme()
+            }}
+            className="sm:hidden w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center gap-3 cursor-pointer"
+          >
+            <Palette className="w-4 h-4 text-[#2AA198]" />
+            <span className="font-semibold">Stage Theme</span>
+          </button>
+
+          <div className="sm:hidden h-[1px] bg-[#1A4A55]/60 my-1" />
+
           {/* 0. Install App (PWA) */}
           {!isAppInstalled && (
             <>
