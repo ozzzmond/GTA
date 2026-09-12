@@ -7,7 +7,7 @@ The **OFFICIAL STANDARD** uses strictly positive whole-integer dev iterations, i
 | Web | `web v1.0.<base>-dev.<integer>` | `web v1.1.<base>` |
 | Android | `app v1.0.<base>-dev.<integer>` | `app v1.1.<base>` |
 
-Examples: `web v1.0.62-dev.9`, `app v1.0.62-dev.5`. Promotion uses only the whole integer iteration: `new_base = current_base + iteration`. Letter suffixes have no numeric weight and are never automatically converted into extra fixes. The next cycle resets to `-dev.1`. Historical tags are retained unchanged as legacy records.
+Examples: `web v1.0.62-dev.9`, `app v1.0.62-dev.5`. The 1:1 lifecycle scheme directly mirrors the active patch: `1.0.<X>-dev.*` promotes to production `1.1.<X>`. The next dev cycle baseline increments the patch by 1 and resets iteration to 1: `1.0.<X+1>-dev.1`. Historical tags are retained unchanged as legacy records.
 
 Both scripts are standalone Python 3.9+ programs using only the standard library. Git must be installed for tag validation and version mutations. Run them from any directory; paths resolve relative to the scripts.
 
@@ -42,7 +42,7 @@ python release_android.py --promote-to-prod --dry-run
 python release_android.py --promote-to-prod
 ```
 
-Promotion calculates `new_base = base + iteration`, commits production version files, creates an annotated `web-v1.1.<new_base>` or `app-v1.1.<new_base>` tag, then commits the next dev configuration `1.0.<new_base>-dev.1`. The current branch remains `dev`; the production tag references the preceding production commit. Production promotion does not push, deploy, dispatch CI or build artifacts. Tests/builds should be verified before committing the source to promote. Existing repository hooks still run normally.
+Promotion uses a direct 1:1 mapping (`prod = 1.1.<base>`), commits production version files, creates an annotated `web-v1.1.<base>` or `app-v1.1.<base>` tag, then commits the next dev configuration `1.0.<base+1>-dev.1`. The current branch remains `dev`; the production tag references the preceding production commit. Production promotion does not push, deploy, dispatch CI or build artifacts. Tests/builds should be verified before committing the source to promote. Existing repository hooks still run normally.
 
 Web package and lockfile versions remain valid numeric semver without a display prefix. UI labels gain `web v`, while dev/prod constants remain numeric. Android versionName uses `app v`, with a separate debug suffix. The production snapshot has an empty dev suffix. Each dev bump increments Android versionCode once. Promotion increments it once for production, then once again for the next dev reset so both configurations have increasing codes.
 

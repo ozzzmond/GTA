@@ -59,22 +59,22 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(self.git('tag'), '')
     def test_web_promotion_tags_prod_then_resets_dev(self):
         self.run_script('web', '--promote-to-prod')
-        tagged = json.loads(self.git('show', 'web-v1.1.62:web/package.json'))
-        self.assertEqual(tagged['version'], '1.1.62')
-        self.assertEqual(json.loads((self.root / 'web/package.json').read_text())['version'], '1.0.62-dev.1')
-        self.assertIn("GTAR_APP_VERSION = '1.1.62'", (self.root / 'web/src/types/gtar.ts').read_text())
+        tagged = json.loads(self.git('show', 'web-v1.1.50:web/package.json'))
+        self.assertEqual(tagged['version'], '1.1.50')
+        self.assertEqual(json.loads((self.root / 'web/package.json').read_text())['version'], '1.0.51-dev.1')
+        self.assertIn("GTAR_APP_VERSION = '1.1.50'", (self.root / 'web/src/types/gtar.ts').read_text())
         self.assertEqual(self.git('branch', '--show-current'), 'dev')
         self.assertEqual(self.git('status', '--porcelain'), '')
         self.assertEqual(self.git('rev-list', '--count', 'HEAD'), '3')
     def test_android_promotion_has_correct_tag_suffix_and_monotonic_codes(self):
         self.run_script('android', '--promote-to-prod')
-        tagged = self.git('show', 'app-v1.1.62:app/build.gradle.kts')
+        tagged = self.git('show', 'app-v1.1.50:app/build.gradle.kts')
         self.assertIn('versionCode = 67', tagged)
-        self.assertIn('versionName = "app v1.1.62"', tagged)
+        self.assertIn('versionName = "app v1.1.50"', tagged)
         self.assertIn('versionNameSuffix = ""', tagged)
         current = (self.root / 'app/build.gradle.kts').read_text()
         self.assertIn('versionCode = 68', current)
-        self.assertIn('versionName = "app v1.0.62"', current)
+        self.assertIn('versionName = "app v1.0.51"', current)
         self.assertIn('versionNameSuffix = "-dev.1"', current)
         self.run_script('android', '--bump-dev')
         self.assertIn('versionCode = 69', (self.root / 'app/build.gradle.kts').read_text())
@@ -85,7 +85,7 @@ class ReleaseTests(unittest.TestCase):
         self.git('checkout', '-b', 'main')
         self.assertIn('dev branch', self.run_script('android', '--bump-dev', success=False))
         self.git('checkout', 'dev')
-        self.git('tag', 'web-v1.1.62')
+        self.git('tag', 'web-v1.1.50')
         self.assertIn('already exists', self.run_script('web', '--promote-to-prod', success=False))
         self.assertEqual(self.git('status', '--porcelain'), '')
     def test_legacy_iteration_requires_explicit_mapping(self):
@@ -95,7 +95,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn('--legacy-iteration', self.run_script('web'))
         self.run_script('web', '--bump-dev', '--dry-run', success=False)
         output = self.run_script('web', '--promote-to-prod', '--dry-run', '--legacy-iteration', '10')
-        self.assertIn('web v1.1.72', output)
+        self.assertIn('web v1.1.62', output)
     def test_integer_standard_and_platform_prefixes(self):
         import runpy
         for script, prefix in [('release_web.py', 'web'), ('release_android.py', 'app')]:
@@ -155,17 +155,17 @@ class ReleaseTests(unittest.TestCase):
 
     def test_ci_production_metadata_and_dev_workflow_guard(self):
         self.run_script('android', '--promote-to-prod')
-        self.git('checkout', 'app-v1.1.62')
+        self.git('checkout', 'app-v1.1.50')
         for dev_only in [False, True]:
             result = subprocess.run([sys.executable, str(self.root / '.github/release_metadata.py'),
                 '--platform', 'app'] + (['--dev-only'] if dev_only else []),
                 cwd=self.root, capture_output=True, text=True,
-                env={**os.environ, 'GITHUB_REF_TYPE': 'tag', 'GITHUB_REF_NAME': 'app-v1.1.62', 'GITHUB_ENV': ''})
+                env={**os.environ, 'GITHUB_REF_TYPE': 'tag', 'GITHUB_REF_NAME': 'app-v1.1.50', 'GITHUB_ENV': ''})
             self.assertEqual(result.returncode, 1 if dev_only else 0, result.stderr)
             if not dev_only:
-                self.assertIn('RELEASE_TAG=app-v1.1.62', result.stdout)
+                self.assertIn('RELEASE_TAG=app-v1.1.50', result.stdout)
                 self.assertIn('IS_PRERELEASE=false', result.stdout)
-        self.git('check-ref-format', 'refs/tags/app-v1.1.62')
+        self.git('check-ref-format', 'refs/tags/app-v1.1.50')
 
     def test_push_dev_release_to_local_origin(self):
         remote = self.root / 'origin.git'

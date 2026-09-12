@@ -103,13 +103,13 @@ def main(argv=None):
             raise
         if PLATFORM == "web":
             metadata["dev"] = f"1.0.{base}-dev.{iteration}"
-        prod = f"1.1.{base + iteration}"
-        reset = f"1.0.{base + iteration}-dev.1"
+        prod = f"1.1.{base}"
+        reset = f"1.0.{base + 1}-dev.1"
         bump = f"1.0.{base}-dev.{iteration + 1}"
         prod_info = release_metadata(prod)
         bump_info = release_metadata(bump)
         print(f"[PLAN] Dev bump: {bump_info['title']}; tag {bump_info['tag']}")
-        print(f"[PLAN] Promotion: {base} + {iteration} = {base + iteration}; {PLATFORM} v{prod}; tag {prod_info['tag']}")
+        print(f"[PLAN] Promotion: 1:1 -> {PLATFORM} v{prod}; tag {prod_info['tag']}")
         print(f"[PLAN] Next dev: {PLATFORM} v{reset}")
         if metadata.get("code") is not None:
             code = metadata["code"]
