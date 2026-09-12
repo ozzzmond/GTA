@@ -24,6 +24,7 @@ import {
   LogOut,
   User,
   Clock,
+  Shield,
 } from 'lucide-react'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 import { GTAR_APP_VERSION, GTAR_DEV_VERSION } from '../types/gtar'
@@ -35,7 +36,9 @@ import {
 } from '../utils/onlineSearch'
 import { ChordPreviewModal } from './ChordPreviewModal'
 import { DebugLogsModal } from './DebugLogsModal'
+import { UserManagementModal } from './UserManagementModal'
 import { GtaLogoIcon } from './GtaLogoIcon'
+import { useGoogleAuth } from './AuthGate'
 
 // Sync session type matching useDriveSync return shape
 export interface SyncSessionInfo {
@@ -175,11 +178,23 @@ export const Header: React.FC<HeaderProps> = ({
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null)
   const [isAppInstalled, setIsAppInstalled] = useState(false)
   const [showDebugLogsModal, setShowDebugLogsModal] = useState(false)
+  const [showUserManagementModal, setShowUserManagementModal] = useState(false)
   const [showAvatarPopover, setShowAvatarPopover] = useState(false)
+
+  // Retrieve user role from AuthGate context
+  let isSuperAdmin = false
+  try {
+    const auth = useGoogleAuth()
+    isSuperAdmin = auth.isSuperAdmin
+  } catch {
+    // Header rendered outside AuthGate (e.g. isolated test or preview)
+  }
+
   const isDevApp =
-    import.meta.env.DEV ||
+    (import.meta.env.DEV ||
     import.meta.env.VITE_APP_ENV === 'debug' ||
-    (typeof window !== 'undefined' && window.location.hostname.includes('dev.gtar-web.pages.dev'))
+    (typeof window !== 'undefined' && window.location.hostname.includes('dev.gtar-web.pages.dev'))) &&
+    isSuperAdmin
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
@@ -646,14 +661,40 @@ export const Header: React.FC<HeaderProps> = ({
                         />
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold text-[#FDF6E3] truncate">
-                          {syncSession.user.name || 'User'}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-[#FDF6E3] truncate">
+                            {syncSession.user.name || 'User'}
+                          </span>
+                          {isSuperAdmin ? (
+                            <span className="text-[8px] font-bold px-1.5 py-0.2 rounded bg-[#B58900]/25 text-[#B58900] border border-[#B58900]/30 shrink-0">
+                              ADMIN
+                            </span>
+                          ) : (
+                            <span className="text-[8px] font-bold px-1.5 py-0.2 rounded bg-[#2AA198]/20 text-[#2AA198] border border-[#2AA198]/30 shrink-0">
+                              USER
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-[#93A1A1] truncate">
                           {syncSession.user.email}
                         </div>
                       </div>
                     </div>
+
+                    {/* Super Admin Access Control */}
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAvatarPopover(false)
+                          setShowUserManagementModal(true)
+                        }}
+                        className="w-full px-3 py-2 rounded-xl bg-[#002B36] hover:bg-[#002B36]/80 text-[#2AA198] text-xs font-bold flex items-center justify-center gap-2 border border-[#2AA198]/30 transition-all cursor-pointer mb-2"
+                      >
+                        <Shield className="w-3.5 h-3.5" />
+                        <span>Manage Users &amp; Whitelist</span>
+                      </button>
+                    )}
 
                     {/* Sync Now */}
                     <button
@@ -1080,6 +1121,12 @@ export const Header: React.FC<HeaderProps> = ({
       <DebugLogsModal
         isOpen={showDebugLogsModal}
         onClose={() => setShowDebugLogsModal(false)}
+      />
+
+      {/* Super Admin User Whitelist Management Modal */}
+      <UserManagementModal
+        isOpen={showUserManagementModal}
+        onClose={() => setShowUserManagementModal(false)}
       />
     </>
   )

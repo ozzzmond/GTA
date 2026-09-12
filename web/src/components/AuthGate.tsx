@@ -1,9 +1,17 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { authorizedEmail, allowLocalBypass } from '../utils/authPolicy'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { authorizedEmail, allowLocalBypass, getUserRole, type UserRole } from '../utils/authPolicy'
 import { loadGoogleIdentity, readGoogleSession, requestGoogleSession, refreshGoogleSession, saveGoogleSession, validSession, verifyGoogleSession, type GoogleSession } from '../utils/googleAuth'
 import { GtaLogoIcon } from './GtaLogoIcon'
 
-interface AuthState { session: GoogleSession | null; signOut: () => void; signIn: () => Promise<void>; ready: boolean; bypass: boolean }
+interface AuthState {
+  session: GoogleSession | null
+  signOut: () => void
+  signIn: () => Promise<void>
+  ready: boolean
+  bypass: boolean
+  role: UserRole
+  isSuperAdmin: boolean
+}
 const AuthContext = createContext<AuthState | null>(null)
 export function useGoogleAuth() {
   const auth = useContext(AuthContext)
@@ -23,6 +31,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
   const permitted = !!session && validSession(session) && authorizedEmail(session.user.email, import.meta.env.VITE_AUTHORIZED_EMAILS)
   const canBypass = allowLocalBypass(import.meta.env.DEV, window.location.hostname)
+
+  const role: UserRole = useMemo(() => {
+    if (bypass && canBypass) return 'SUPER_ADMIN'
+    return getUserRole(session?.user?.email, import.meta.env.VITE_ROOT_ADMIN_EMAIL, import.meta.env.VITE_AUTHORIZED_EMAILS)
+  }, [session, bypass, canBypass])
+
+  const isSuperAdmin = role === 'SUPER_ADMIN'
   const signOut = useCallback(() => {
     epoch.current++
     saveGoogleSession(null)
@@ -139,7 +154,7 @@ User Agent: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'
     })
   }
 
-  if (permitted || (bypass && canBypass)) return <AuthContext.Provider value={{ session: permitted ? session : null, signOut, signIn, ready, bypass }}>
+  if (permitted || (bypass && canBypass)) return <AuthContext.Provider value={{ session: permitted ? session : null, signOut, signIn, ready, bypass, role, isSuperAdmin }}>
     {bypass && <div className="bg-amber-500 text-black px-4 py-2 text-sm">Local development bypass · Drive sync disabled <button className="underline ml-3" onClick={signOut}>Exit bypass</button></div>}
     {children}
   </AuthContext.Provider>
