@@ -1101,6 +1101,7 @@ function LibraryApp() {
           onSyncNow={() => void driveSync.syncNow()}
           onExportSyncRecovery={() => void driveSync.exportRecovery()}
           onPublishResolvedLibrary={() => void driveSync.publishResolvedLibrary()}
+          onAdoptCloudLibrary={() => void driveSync.adoptCloudLibrary()}
           onSignOut={driveSync.signOut}
           onSignIn={() => void driveSync.signIn()}
           syncReady={driveSync.ready}

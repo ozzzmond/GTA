@@ -86,6 +86,7 @@ interface HeaderProps {
   syncStatus?: string
   syncBusy?: boolean
   onPublishResolvedLibrary?: () => void
+  onAdoptCloudLibrary?: () => void
   onExportSyncRecovery?: () => void
   onSyncNow?: () => void
   onSignOut?: () => void
@@ -159,6 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSyncNow,
   onExportSyncRecovery,
   onPublishResolvedLibrary,
+  onAdoptCloudLibrary,
   onSignOut,
   onSignIn,
   syncReady = false,
@@ -671,10 +673,38 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>{syncBusy ? 'Syncing...' : 'Sync Now'}</span>
                     </button>
 
-                    <button type="button" onClick={onExportSyncRecovery} className="w-full text-xs underline py-2">Download sync recovery data</button>
-                    {syncStatus.includes('Conflicting') && <button type="button" disabled={syncBusy} onClick={() => {
-                      if (window.confirm('First download sync recovery data and reconcile all charts and setlists on this device. Publish this device library as the resolved version? Previous cloud revisions will be retained.')) onPublishResolvedLibrary?.()
-                    }} className="w-full text-xs underline py-2">Publish resolved device library</button>}
+                    <button type="button" onClick={onExportSyncRecovery} className="w-full text-xs underline py-1 text-[#93A1A1] hover:text-[#FDF6E3]">Download sync recovery data</button>
+                    {syncStatus.includes('Conflicting') && (
+                      <div className="flex flex-col gap-1.5 my-2 p-2 rounded-lg bg-[#002B36] border border-[#DC6E67]/40">
+                        <div className="text-[10px] text-[#DC6E67] font-semibold">Conflict Detected:</div>
+                        <button
+                          type="button"
+                          disabled={syncBusy}
+                          onClick={() => {
+                            if (window.confirm('Discard local device changes and restore the cloud library? Make sure to download sync recovery data first if you wish to keep local edits.')) {
+                              onAdoptCloudLibrary?.()
+                              setShowAvatarPopover(false)
+                            }
+                          }}
+                          className="w-full px-2 py-1.5 rounded bg-[#2AA198]/20 hover:bg-[#2AA198] text-[#2AA198] hover:text-[#002B36] text-[11px] font-bold transition-all text-center cursor-pointer disabled:opacity-50"
+                        >
+                          Adopt Cloud Library
+                        </button>
+                        <button
+                          type="button"
+                          disabled={syncBusy}
+                          onClick={() => {
+                            if (window.confirm('First download sync recovery data and reconcile all charts and setlists on this device. Publish this device library as the authoritative resolved version? Previous cloud revisions will be retained.')) {
+                              onPublishResolvedLibrary?.()
+                              setShowAvatarPopover(false)
+                            }
+                          }}
+                          className="w-full px-2 py-1.5 rounded bg-[#D33682]/20 hover:bg-[#D33682] text-[#D33682] hover:text-[#FDF6E3] text-[11px] font-bold transition-all text-center cursor-pointer disabled:opacity-50"
+                        >
+                          Publish Resolved Device Library
+                        </button>
+                      </div>
+                    )}
                     {/* Sync Status */}
                     <div className="flex items-center gap-1.5 px-1 mb-3">
                       <Clock className="w-3 h-3 text-[#93A1A1] shrink-0" />

@@ -5,6 +5,7 @@ import { validSession } from '../utils/googleAuth'
 import { openSyncJournal, persistLibrary, readRecoverySnapshots } from '../utils/syncJournal'
 import { useGoogleAuth } from '../components/AuthGate'
 import { mergeSyncLibrary, type SyncLibrary } from '../utils/syncMerge'
+import { isDefaultTemplateLibrary } from '../utils/defaultTemplateLibrary'
 
 export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary) => void) {
   const { session, signOut: lockApp, signIn, ready } = useGoogleAuth()
@@ -52,9 +53,18 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
       if (epoch !== generation.current || latest.current.session?.user.sub !== auth.user.sub) return
       journal.archive(cloud)
       const before = latest.current.library
-      // Rebase edits made during the download onto any interrupted local apply.
-      const resumed = mergeSyncLibrary(before, journal.local, latestAtStart)
-      const merged = mergeSyncLibrary(resumed, cloud, journal.baseline)
+
+      // First-connect reconciliation: If this device has no baseline yet and local state is just
+      // default template songs (or empty), adopt the cloud library cleanly as the initial restore baseline.
+      let merged: SyncLibrary
+      if (cloud && journal.baseline === null && isDefaultTemplateLibrary(before)) {
+        merged = cloud
+      } else {
+        // Rebase edits made during the download onto any interrupted local apply.
+        const resumed = mergeSyncLibrary(before, journal.local, latestAtStart)
+        merged = mergeSyncLibrary(resumed, cloud, journal.baseline)
+      }
+
       journal.prepare(before, merged)
       await pushCloudBackup(auth.token, createBackupPayload(merged.songs, merged.setlists))
       if (epoch !== generation.current || latest.current.session?.user.sub !== auth.user.sub) return
@@ -112,6 +122,43 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
     } catch (error) { setStatus(error instanceof Error ? error.message : 'Resolution failed; recovery copies retained.') }
     finally { running.current = false; setBusy(false) }
   }
+  const adoptCloudLibrary = async () => {
+    const auth = latest.current.session
+    if (!auth || running.current) return
+    const epoch = generation.current
+    running.current = true; setBusy(true)
+    setStatus('Adopting cloud library...')
+    try {
+      const before = latest.current.library
+      const journal = openSyncJournal(auth.user.sub, before, localStorage, false)
+      journal.archive(null)
+      let cloud: SyncLibrary | null = null
+      try {
+        cloud = await pullCloudBackup(auth.token)
+      } catch {
+        // If there are divergent cloud revisions, prepareCloudResolution sets up parents to resolve them
+        await prepareCloudResolution(auth.token)
+        cloud = await pullCloudBackup(auth.token)
+      }
+      if (epoch !== generation.current) return
+      if (!cloud) {
+        setStatus('Cloud library is empty. Nothing to adopt.')
+        return
+      }
+      journal.archive(cloud)
+      journal.prepare(before, cloud)
+      journal.acknowledge()
+      persistLibrary(cloud)
+      latest.current.library = cloud
+      latest.current.apply(cloud)
+      journal.complete()
+      setStatus('Cloud library adopted successfully.')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to adopt cloud library.')
+    } finally {
+      running.current = false; setBusy(false)
+    }
+  }
   const exportRecovery = async () => {
     const auth = latest.current.session
     if (!auth) return
@@ -123,5 +170,6 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
       setStatus('Device recovery archive exported. Cloud download failed; cloud revisions are retained in Drive.')
     }
   }
-  return { session, busy, status, exportRecovery, publishResolvedLibrary, signIn, signOut, syncNow, ready }
+  return { session, busy, status, exportRecovery, publishResolvedLibrary, adoptCloudLibrary, signIn, signOut, syncNow, ready }
 }
+

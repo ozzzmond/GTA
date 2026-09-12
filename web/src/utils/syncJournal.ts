@@ -7,6 +7,22 @@ interface Journal {
 }
 const key = (account: string) => `gtar_sync_v1:${account}`
 const ownerKey = 'gtar_sync_library_owner'
+const MAX_RECOVERY_SNAPSHOTS = 2
+
+function pruneRecoverySnapshots(storage: Storage, account: string, maxAllowed: number) {
+  const prefix = `gtar_sync_recovery:${account}:`
+  const existingKeys: string[] = []
+  for (let i = 0; i < storage.length; i++) {
+    const k = storage.key(i)
+    if (k?.startsWith(prefix)) existingKeys.push(k)
+  }
+  while (existingKeys.length > maxAllowed) {
+    const oldest = existingKeys.shift()
+    if (oldest) {
+      try { storage.removeItem(oldest) } catch { /* ignore storage error on remove */ }
+    }
+  }
+}
 
 /** Storage failures stop sync before network writes or local replacement. No tokens are stored. */
 export function openSyncJournal(account: string, local: SyncLibrary, storage: Storage = localStorage, resumePending = true) {
@@ -23,24 +39,54 @@ export function openSyncJournal(account: string, local: SyncLibrary, storage: St
   return {
     local: resumed, baseline,
     archive(remote: SyncLibrary | null) {
-      const recovery = `gtar_sync_recovery:${account}:${crypto.randomUUID()}`
-      storage.setItem(recovery, JSON.stringify({ local, remote, journal }))
+      // Prune older recovery entries to keep at most MAX_RECOVERY_SNAPSHOTS - 1 before adding new
+      pruneRecoverySnapshots(storage, account, Math.max(0, MAX_RECOVERY_SNAPSHOTS - 1))
+      const prefix = `gtar_sync_recovery:${account}:`
+      const recovery = `${prefix}${crypto.randomUUID()}`
+      try {
+        storage.setItem(recovery, JSON.stringify({ local, remote, journal }))
+      } catch (e) {
+        // If quota exceeded, aggressively purge older recovery snapshots and try once more
+        console.warn('Initial recovery snapshot save failed. Purging older snapshots to free quota.', e)
+        pruneRecoverySnapshots(storage, account, 0)
+        try {
+          storage.setItem(recovery, JSON.stringify({ local, remote, journal }))
+        } catch (retryErr) {
+          console.warn('Unable to persist recovery snapshot to storage (quota exceeded). Proceeding with sync.', retryErr)
+        }
+      }
     },
     prepare(before: SyncLibrary, merged: SyncLibrary) {
       journal.baseline = baseline
       journal.pending = { before, merged, acknowledged: false }
-      storage.setItem(key(account), JSON.stringify(journal))
+      try {
+        storage.setItem(key(account), JSON.stringify(journal))
+      } catch {
+        // Free recovery snapshots if quota is hit when updating the journal
+        pruneRecoverySnapshots(storage, account, 0)
+        storage.setItem(key(account), JSON.stringify(journal))
+      }
     },
     complete() {
       if (!journal.pending?.acknowledged) throw new Error('Upload is not acknowledged')
       journal.baseline = journal.pending.merged
       delete journal.pending
-      storage.setItem(key(account), JSON.stringify(journal))
+      try {
+        storage.setItem(key(account), JSON.stringify(journal))
+      } catch {
+        pruneRecoverySnapshots(storage, account, 0)
+        storage.setItem(key(account), JSON.stringify(journal))
+      }
     },
     acknowledge() {
       if (!journal.pending) throw new Error('Missing prepared sync journal')
       journal.pending.acknowledged = true
-      storage.setItem(key(account), JSON.stringify(journal))
+      try {
+        storage.setItem(key(account), JSON.stringify(journal))
+      } catch {
+        pruneRecoverySnapshots(storage, account, 0)
+        storage.setItem(key(account), JSON.stringify(journal))
+      }
     },
   }
 }
