@@ -41,6 +41,9 @@ class MainActivity : ComponentActivity() {
     private val googleSignIn = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
         googleSync.signInResult(result.data)
     }
+    private val syncRecoveryExport = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) googleSync.exportRecovery(uri)
+    }
     private val viewModel: SongViewerViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -396,6 +399,14 @@ class MainActivity : ComponentActivity() {
                         onGoogleSignIn = { googleSignIn.launch(googleSync.signInIntent()) },
                         onGoogleSignOut = googleSync::signOut,
                         onSyncNow = googleSync::syncNow,
+                        onExportSyncRecovery = { syncRecoveryExport.launch("gtar-sync-recovery.json") },
+                        onPublishResolvedLibrary = {
+                            android.app.AlertDialog.Builder(this@MainActivity)
+                                .setTitle("Publish resolved device library?")
+                                .setMessage("Export sync recovery data first and reconcile all charts and setlists on this device. Previous cloud revisions will be retained.")
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Publish") { _, _ -> googleSync.publishResolvedLibrary() }.show()
+                        },
                         keepScreenOn = keepScreenOn,
                         onToggleKeepScreenOn = { enabled -> viewModel.setKeepScreenOn(enabled) },
                         songFontStyle = songFontStyle,

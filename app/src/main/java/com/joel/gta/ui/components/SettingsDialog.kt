@@ -31,6 +31,8 @@ fun SettingsDialog(
     onGoogleSignIn: () -> Unit = {},
     onGoogleSignOut: () -> Unit = {},
     onSyncNow: () -> Unit = {},
+    onExportSyncRecovery: () -> Unit = {},
+    onPublishResolvedLibrary: () -> Unit = {},
     keepScreenOn: Boolean,
     onToggleKeepScreenOn: (Boolean) -> Unit,
     songFontStyle: SongFontStyle = SongFontStyle.MONOSPACE,
@@ -123,6 +125,10 @@ fun SettingsDialog(
                 Text("Google Drive Backup", fontWeight = FontWeight.Bold)
                 Text(googleSyncState.email ?: "Not signed in", fontSize = 12.sp)
                 Text(googleSyncState.status, fontSize = 12.sp)
+                TextButton(onClick = onExportSyncRecovery) { Text("Export sync recovery data") }
+                if (googleSyncState.status.contains("Conflicting")) {
+                    TextButton(onClick = onPublishResolvedLibrary, enabled = !googleSyncState.busy) { Text("Publish resolved device library") }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (googleSyncState.email == null) {
                         TextButton(onClick = onGoogleSignIn, enabled = !googleSyncState.busy) { Text("Sign In with Google") }

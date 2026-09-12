@@ -1,35 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createBackupPayload } from '../utils/jsonBackup'
-import { clearDriveSession, DriveSyncError, pullCloudBackup, pushCloudBackup } from '../utils/driveSync'
+import { createBackupPayload, exportRecoveryData } from '../utils/jsonBackup'
+import { clearDriveSession, readCloudRecovery, prepareCloudResolution, DriveSyncError, pullCloudBackup, pushCloudBackup } from '../utils/driveSync'
 import { validSession } from '../utils/googleAuth'
+import { openSyncJournal, persistLibrary, readRecoverySnapshots } from '../utils/syncJournal'
 import { useGoogleAuth } from '../components/AuthGate'
-import { initializeSyncLibrary, mergeSyncLibrary, type SyncLibrary } from '../utils/syncMerge'
+import { mergeSyncLibrary, type SyncLibrary } from '../utils/syncMerge'
+import { isDefaultTemplateLibrary } from '../utils/defaultTemplateLibrary'
 
 export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary) => void) {
   const { session, signOut: lockApp, signIn, ready } = useGoogleAuth()
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState(import.meta.env.VITE_GOOGLE_CLIENT_ID ? 'Local changes are saved on this device.' : 'Google sync is not configured. Local editing is available.')
   const latest = useRef({ library, apply, session })
-  latest.current = { library, apply, session }
+  useEffect(() => { latest.current = { library, apply, session } }, [library, apply, session])
   const generation = useRef(0)
   const running = useRef(false)
   const queued = useRef(false)
-  const initialized = useRef(false)
-  const baseline = useRef<SyncLibrary | null>(null)
   const signOut = useCallback(() => {
     generation.current++
     if (latest.current.session) clearDriveSession(latest.current.session.token)
     latest.current.session = null
     lockApp()
-    initialized.current = false
-    baseline.current = null
-    setStatus('Signed out. Local editing is available.')
+    setStatus('Signed out. Sign in to access your saved device library.')
   }, [lockApp])
   useEffect(() => {
     if (!session) return
-    const timer = setTimeout(() => { signOut(); setStatus('Google session expired. Sign in to resume sync.') }, Math.max(0, session.expiresAt - Date.now() - 30000))
+    const timer = setTimeout(() => {
+      setStatus('Drive sync paused (offline).')
+    }, Math.max(0, session.expiresAt - Date.now() - 30000))
     return () => clearTimeout(timer)
-  }, [session, signOut])
+  }, [session])
   useEffect(() => () => {
     generation.current++
     const token = latest.current.session?.token
@@ -37,41 +37,53 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
     latest.current.session = null
     queued.current = false
   }, [])
-  const syncNow = useCallback(async () => {
+  const syncNow = useCallback(async function runSync() {
     const auth = latest.current.session
     if (!auth) return
     if (running.current) { queued.current = true; return }
-    if (!validSession(auth)) { signOut(); setStatus('Google session expired. Sign in to resume sync.'); return }
-    if (!navigator.onLine) { setStatus('Offline. Local changes will sync when connected.'); return }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setStatus('Drive sync paused (offline). Local changes are saved.')
+      return
+    }
+    if (!validSession(auth)) {
+      setStatus('Drive sync paused (offline).')
+      return
+    }
     const epoch = generation.current
     running.current = true
     setBusy(true)
     setStatus('Syncing...')
     try {
-      const pullStarted = latest.current.library
+      const latestAtStart = latest.current.library
+      const journal = openSyncJournal(auth.user.sub, latest.current.library)
+      journal.archive(null)
       const cloud = await pullCloudBackup(auth.token)
-      if (epoch !== generation.current) return
-      if (!initialized.current && cloud) {
-        const restored = initializeSyncLibrary(pullStarted, cloud)
-        // Retain edits made while the initial download was in flight.
-        const current = mergeSyncLibrary(latest.current.library, restored, pullStarted)
-        baseline.current = { songs: cloud.songs, setlists: cloud.setlists }
-        initialized.current = true
+      if (epoch !== generation.current || latest.current.session?.user.sub !== auth.user.sub) return
+      journal.archive(cloud)
+      const before = latest.current.library
+
+      // First-connect reconciliation: If this device has no baseline yet and local state is just
+      // default template songs (or empty), adopt the cloud library cleanly as the initial restore baseline.
+      let merged: SyncLibrary
+      if (cloud && journal.baseline === null && isDefaultTemplateLibrary(before)) {
+        merged = cloud
+      } else {
+        // Rebase edits made during the download onto any interrupted local apply.
+        const resumed = mergeSyncLibrary(before, journal.local, latestAtStart)
+        merged = mergeSyncLibrary(resumed, cloud, journal.baseline)
+      }
+
+      journal.prepare(before, merged)
+      await pushCloudBackup(auth.token, createBackupPayload(merged.songs, merged.setlists))
+      if (epoch !== generation.current || latest.current.session?.user.sub !== auth.user.sub) return
+      journal.acknowledge()
+      const current = mergeSyncLibrary(latest.current.library, merged, before)
+      persistLibrary(current)
+      if (JSON.stringify(current) !== JSON.stringify(latest.current.library)) {
         latest.current.library = current
         latest.current.apply(current)
-        queued.current = true
-        setStatus('Cloud library restored. Local changes are saved on this device.')
-        return
       }
-      initialized.current = true
-      const before = latest.current.library
-      const merged = mergeSyncLibrary(before, cloud, baseline.current)
-      await pushCloudBackup(auth.token, createBackupPayload(merged.songs, merged.setlists))
-      if (epoch !== generation.current) return
-      // Edits made during upload are reconciled against its input, never replaced by a stale snapshot.
-      const current = mergeSyncLibrary(latest.current.library, merged, before)
-      baseline.current = merged
-      if (JSON.stringify(current) !== JSON.stringify(latest.current.library)) latest.current.apply(current)
+      journal.complete()
       setStatus('Synced with Google Drive.')
     } catch (error) {
       if (epoch !== generation.current) return
@@ -79,11 +91,13 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
       setStatus(error instanceof Error ? error.message : 'Sync failed. Local changes are saved.')
     } finally {
       running.current = false; setBusy(false)
-      if (queued.current) { queued.current = false; setTimeout(() => { void syncNow() }, 1500) }
+      if (queued.current) { queued.current = false; setTimeout(() => { void runSync() }, 1500) }
     }
   }, [signOut])
   useEffect(() => {
-    if (session) void syncNow()
+    if (!session) return
+    const timer = setTimeout(() => { void syncNow() }, 0)
+    return () => clearTimeout(timer)
   }, [session, syncNow])
   useEffect(() => {
     if (!session) return
@@ -95,5 +109,75 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
     window.addEventListener('online', online)
     return () => window.removeEventListener('online', online)
   }, [syncNow])
-  return { session, busy, status, signIn, signOut, syncNow, ready }
+  const publishResolvedLibrary = async () => {
+    const auth = latest.current.session
+    if (!auth || running.current) return
+    const epoch = generation.current
+    running.current = true; setBusy(true)
+    try {
+      const before = latest.current.library
+      const journal = openSyncJournal(auth.user.sub, before, localStorage, false)
+      journal.archive(null)
+      await prepareCloudResolution(auth.token)
+      if (epoch !== generation.current) return
+      journal.prepare(before, before)
+      await pushCloudBackup(auth.token, createBackupPayload(before.songs, before.setlists))
+      if (epoch !== generation.current) return
+      journal.acknowledge()
+      persistLibrary(latest.current.library)
+      journal.complete()
+      setStatus('Resolved device library published. Previous cloud revisions are retained.')
+    } catch (error) { setStatus(error instanceof Error ? error.message : 'Resolution failed; recovery copies retained.') }
+    finally { running.current = false; setBusy(false) }
+  }
+  const adoptCloudLibrary = async () => {
+    const auth = latest.current.session
+    if (!auth || running.current) return
+    const epoch = generation.current
+    running.current = true; setBusy(true)
+    setStatus('Adopting cloud library...')
+    try {
+      const before = latest.current.library
+      const journal = openSyncJournal(auth.user.sub, before, localStorage, false)
+      journal.archive(null)
+      let cloud: SyncLibrary | null = null
+      try {
+        cloud = await pullCloudBackup(auth.token)
+      } catch {
+        // If there are divergent cloud revisions, prepareCloudResolution sets up parents to resolve them
+        await prepareCloudResolution(auth.token)
+        cloud = await pullCloudBackup(auth.token)
+      }
+      if (epoch !== generation.current) return
+      if (!cloud) {
+        setStatus('Cloud library is empty. Nothing to adopt.')
+        return
+      }
+      journal.archive(cloud)
+      journal.prepare(before, cloud)
+      journal.acknowledge()
+      persistLibrary(cloud)
+      latest.current.library = cloud
+      latest.current.apply(cloud)
+      journal.complete()
+      setStatus('Cloud library adopted successfully.')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to adopt cloud library.')
+    } finally {
+      running.current = false; setBusy(false)
+    }
+  }
+  const exportRecovery = async () => {
+    const auth = latest.current.session
+    if (!auth) return
+    const local = latest.current.library
+    const snapshots = readRecoverySnapshots(auth.user.sub)
+    try { exportRecoveryData({ local, snapshots, cloud: await readCloudRecovery(auth.token) }) }
+    catch (error) {
+      exportRecoveryData({ local, snapshots, cloudError: error instanceof Error ? error.message : 'Cloud unavailable' })
+      setStatus('Device recovery archive exported. Cloud download failed; cloud revisions are retained in Drive.')
+    }
+  }
+  return { session, busy, status, exportRecovery, publishResolvedLibrary, adoptCloudLibrary, signIn, signOut, syncNow, ready }
 }
+

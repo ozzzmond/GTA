@@ -2,19 +2,32 @@ export const GOOGLE_SCOPES = 'openid email profile https://www.googleapis.com/au
 const KEY = 'gtar_google_session'
 export interface GoogleSession { token: string; expiresAt: number; user: { sub: string; email: string; picture?: string } }
 interface TokenResponse { access_token: string; expires_in: number; scope: string; error?: string }
-interface TokenClient { requestAccessToken(options: { prompt: string }): void }
+interface TokenClientOptions { prompt?: string; hint?: string }
+interface TokenClient { requestAccessToken(options?: TokenClientOptions): void }
 interface GIS { accounts: { oauth2: { initTokenClient(config: { client_id: string; scope: string; include_granted_scopes: boolean; callback: (response: TokenResponse) => void; error_callback: () => void }): TokenClient } } }
 declare global { interface Window { google?: GIS } }
 export function validSession(session: GoogleSession | null): session is GoogleSession { return !!session && session.expiresAt > Date.now() + 30000 }
 export function readGoogleSession(): GoogleSession | null {
   try {
-    const value = JSON.parse(sessionStorage.getItem(KEY) ?? 'null')
+    let raw: string | null = null
+    try { raw = typeof localStorage !== 'undefined' ? localStorage.getItem(KEY) : null } catch { /* ignore */ }
+    if (!raw) {
+      try { raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(KEY) : null } catch { /* ignore */ }
+    }
+    const value = JSON.parse(raw ?? 'null')
     if (validSession(value) && typeof value.token === 'string' && typeof value.user?.sub === 'string' && typeof value.user?.email === 'string') return value
   } catch { /* Storage unavailable or stale. */ }
   return null
 }
 export function saveGoogleSession(session: GoogleSession | null) {
-  try { if (session) sessionStorage.setItem(KEY, JSON.stringify(session)); else sessionStorage.removeItem(KEY) } catch { /* In-memory sign-in still works. */ }
+  try {
+    if (session) {
+      try { if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, JSON.stringify(session)) } catch { /* ignore */ }
+    } else {
+      try { if (typeof localStorage !== 'undefined') localStorage.removeItem(KEY) } catch { /* ignore */ }
+    }
+    try { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(KEY) } catch { /* ignore */ }
+  } catch { /* In-memory sign-in still works. */ }
 }
 export async function verifyGoogleSession(session: GoogleSession): Promise<GoogleSession> {
   if (!validSession(session)) throw new Error('Google session expired. Sign in again.')
@@ -40,8 +53,12 @@ export function loadGoogleIdentity(): Promise<void> {
   })
   return loading
 }
-// Call only from a user gesture. Rehydration never opens an OAuth popup.
-export function requestGoogleSession(clientId: string): Promise<GoogleSession> {
+export interface RequestSessionOptions {
+  prompt?: string
+  hint?: string
+}
+// Request session via Google Identity Services. Interactive prompt by default, or silent when prompt: '' and hint is provided.
+export function requestGoogleSession(clientId: string, options?: RequestSessionOptions): Promise<GoogleSession> {
   return new Promise((resolve, reject) => {
     if (!window.google) { reject(new Error('Google sign-in is still loading. Try again.')); return }
     const client = window.google.accounts.oauth2.initTokenClient({ client_id: clientId, scope: GOOGLE_SCOPES, include_granted_scopes: false,
@@ -55,6 +72,20 @@ export function requestGoogleSession(clientId: string): Promise<GoogleSession> {
         } catch (error) { reject(error) }
       },
     })
-    client.requestAccessToken({ prompt: 'select_account' })
+    const reqOptions: TokenClientOptions = { prompt: options?.prompt ?? 'select_account' }
+    if (options?.hint) reqOptions.hint = options.hint
+    client.requestAccessToken(reqOptions)
   })
+}
+// Silently renews an existing session in the background without user prompts or 2FA alerts
+export async function refreshGoogleSession(clientId: string, currentSession: GoogleSession): Promise<GoogleSession> {
+  const renewed = await requestGoogleSession(clientId, { prompt: '', hint: currentSession.user.email })
+  return {
+    ...renewed,
+    user: {
+      sub: renewed.user.sub || currentSession.user.sub,
+      email: renewed.user.email || currentSession.user.email,
+      picture: renewed.user.picture || currentSession.user.picture,
+    },
+  }
 }

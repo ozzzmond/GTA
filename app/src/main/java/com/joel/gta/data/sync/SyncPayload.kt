@@ -90,9 +90,6 @@ object SyncPayload {
                     same(left, right) -> left
                     same(left, before) -> right
                     same(right, before) -> left
-                    left != null && right != null && field == "setlists" -> JSONObject(right.toString())
-                        .put("songs", SyncDedup.union(left.getJSONArray("songs"), right.getJSONArray("songs")))
-                    before == null -> right ?: left
                     else -> error("Conflicting edits to $field. Resolve backups before syncing.")
                 }
             }

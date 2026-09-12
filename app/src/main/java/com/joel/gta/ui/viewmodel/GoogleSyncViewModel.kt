@@ -11,13 +11,13 @@ import com.google.android.gms.common.api.Scope
 import com.joel.gta.data.local.GtaDatabase
 import com.joel.gta.data.sync.DriveAppDataClient
 import com.joel.gta.data.sync.RoomSyncStore
+import com.joel.gta.data.sync.SyncJournal
 import com.joel.gta.data.sync.SyncPayload
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
-import org.json.JSONObject
 
 data class GoogleSyncState(val email: String? = null, val status: String = "Idle", val busy: Boolean = false)
 
@@ -31,8 +31,7 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
     private val mutableState = MutableStateFlow(GoogleSyncState())
     val state = mutableState.asStateFlow()
     private var client: DriveAppDataClient? = null
-    private var baseline: JSONObject? = null
-    private var needsUpload = false
+    private var accountId: String? = null
     private var generation = 0
     private val mutex = Mutex()
     private val changes = Channel<Unit>(Channel.CONFLATED)
@@ -51,11 +50,12 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
             for (change in changes) {
                 delay(1500)
                 while (changes.tryReceive().isSuccess) delay(1500)
-                sync(false)
+                sync()
             }
         }
         GoogleSignIn.getLastSignedInAccount(application)?.let { account ->
             if (GoogleSignIn.hasPermissions(account, Scope(DriveAppDataClient.SCOPE))) {
+                accountId = account.id
                 client = DriveAppDataClient(application, account)
                 mutableState.value = GoogleSyncState(account.email)
                 syncNow()
@@ -67,48 +67,81 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
         try {
             val account = GoogleSignIn.getSignedInAccountFromIntent(data).getResult(com.google.android.gms.common.api.ApiException::class.java)
             check(GoogleSignIn.hasPermissions(account, Scope(DriveAppDataClient.SCOPE))) { "Allow Drive application data access." }
-            generation++; baseline = null
+            generation++; accountId = account.id
             client = DriveAppDataClient(getApplication(), account)
             mutableState.value = GoogleSyncState(account.email)
             syncNow()
         } catch (_: Exception) { mutableState.value = GoogleSyncState(status = "Error: Sign-in cancelled or unavailable. Local editing is available.") }
     }
     fun signOut() {
-        generation++; client = null; baseline = null
+        generation++; client = null; accountId = null
         mutableState.value = GoogleSyncState()
         auth.signOut()
     }
-    fun syncNow() { viewModelScope.launch { sync(true) } }
-    private suspend fun sync(manual: Boolean) {
+    fun publishResolvedLibrary() { viewModelScope.launch {
+        mutex.lock()
+        val epoch = generation
+        try {
+            val service = client ?: return@launch
+            val local = withContext(Dispatchers.IO) { store.snapshot() }
+            val journal = SyncJournal(getApplication(), requireNotNull(accountId))
+            journal.archive(local, null)
+            mutableState.value = mutableState.value.copy(status = "Publishing resolved library", busy = true)
+            withContext(Dispatchers.IO) { service.prepareResolution() }
+            if (epoch != generation) return@launch
+            journal.prepare(local, local)
+            withContext(Dispatchers.IO) { service.push(local) }
+            if (epoch != generation) return@launch
+            journal.acknowledge(); journal.complete()
+            mutableState.value = mutableState.value.copy(status = "Resolved library published; previous revisions retained", busy = false)
+        } catch (error: Exception) {
+            if (epoch == generation) mutableState.value = mutableState.value.copy(status = "Resolution failed: ${error.message}", busy = false)
+        } finally { mutex.unlock() }
+    } }
+    fun exportRecovery(uri: android.net.Uri) {
+        val account = accountId
+        val service = client
+        viewModelScope.launch {
+            try {
+                val archive = withContext(Dispatchers.IO) {
+                    org.json.JSONObject().put("exportType", "RECOVERY_ARCHIVE").put("local", store.snapshot()).apply {
+                        if (account != null) put("snapshots", SyncJournal(getApplication(), account).recovery())
+                        try { if (service != null) put("cloud", service.recovery()) }
+                        catch (error: Exception) { put("cloudError", error.message) }
+                    }
+                }
+                withContext(Dispatchers.IO) {
+                    requireNotNull(getApplication<Application>().contentResolver.openOutputStream(uri)).bufferedWriter().use { it.write(archive.toString(2)) }
+                }
+                mutableState.value = mutableState.value.copy(status = "Recovery archive exported; inspect cloudError for download failures.")
+            } catch (error: Exception) { mutableState.value = mutableState.value.copy(status = "Recovery export failed: ${error.message}") }
+        }
+    }
+    fun syncNow() { viewModelScope.launch { sync() } }
+    private suspend fun sync() {
         mutex.lock()
         val epoch = generation
         try {
             val local = withContext(Dispatchers.IO) { store.cleanup() }
             val service = client ?: return
-            if (!manual && !needsUpload && baseline?.let { SyncPayload.sameLibrary(local, it) } == true) return
+            val journal = SyncJournal(getApplication(), requireNotNull(accountId))
+            val resumed = journal.resume(local)
             mutableState.value = mutableState.value.copy(status = "Syncing", busy = true)
+            journal.archive(local, null)
             val cloud = withContext(Dispatchers.IO) { service.pull() }
             if (epoch != generation) return
-            val merged = if (cloud == null) local else SyncPayload.merge(local, cloud, baseline)
-            // Restore to Room first, independently of upload success.
-            val normalized = withContext(Dispatchers.IO) { store.apply(local, merged) }
-            if (epoch != generation) return
-            if (baseline == null && cloud != null) {
-                baseline = cloud
-                needsUpload = true
-                mutableState.value = mutableState.value.copy(status = "Synced: Cloud library restored", busy = false)
-                changes.trySend(Unit)
-                return
-            }
-            merged.put("songs", normalized.getJSONArray("songs")).put("setlists", normalized.getJSONArray("setlists"))
-                .put("exportedAt", java.time.Instant.now().toString())
+            journal.archive(local, cloud)
+            val merged = if (cloud == null) resumed else SyncPayload.merge(resumed, cloud, journal.baseline())
+            journal.prepare(local, merged)
+            merged.put("exportedAt", java.time.Instant.now().toString())
             for (setlist in SyncPayload.objects(merged.getJSONArray("setlists"))) {
                 setlist.put("songIds", org.json.JSONArray(SyncPayload.objects(setlist.getJSONArray("songs")).map { SyncPayload.id(it) }))
             }
             withContext(Dispatchers.IO) { service.push(merged) }
             if (epoch != generation) return
-            baseline = normalized
-            needsUpload = false
+            journal.acknowledge()
+            withContext(Dispatchers.IO) { store.apply(local, merged) }
+            journal.complete()
             mutableState.value = mutableState.value.copy(status = "Synced", busy = false)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {

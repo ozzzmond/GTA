@@ -1,29 +1,12 @@
-import { bindLegacySetlists, ensureSongIds, resolveSetlistSong, songIdentity, validateSetlistReferences } from './setlistSongs'
+import { bindLegacySetlists, ensureSongIds, resolveSetlistSong, validateSetlistReferences } from './setlistSongs'
 import type { ActiveSongState, WebSetlist } from '../types/gtar'
 export interface SyncLibrary { songs: ActiveSongState[]; setlists: WebSetlist[] }
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item)
 const equal = (a: unknown, b: unknown) => canonical(a) === canonical(b)
-const nameIdentity = (setlist: WebSetlist) => setlist.name.trim().toLowerCase()
-
-/** Exact IDs and normalized identities form one equivalence class, even across renames. */
-function aliases<T extends { id?: string | number }>(items: T[], identity: (item: T) => string) {
-  const parent = new Map<string, string>()
-  const firstIdentity = new Map<string, string>()
-  const root = (id: string): string => {
-    const next = parent.get(id)!
-    if (next === id) return id
-    const resolved = root(next); parent.set(id, resolved); return resolved
-  }
-  for (const item of items) {
-    const id = String(item.id)
-    if (!parent.has(id)) parent.set(id, id)
-    const key = identity(item), previous = firstIdentity.get(key)
-    if (previous !== undefined) parent.set(root(id), root(previous))
-    else firstIdentity.set(key, id)
-  }
-  const primary = new Map<string, string | number>()
-  for (const item of items) if (!primary.has(root(String(item.id)))) primary.set(root(String(item.id)), item.id!)
-  return new Map(items.map(item => [String(item.id), primary.get(root(String(item.id)))!]))
+// Stable IDs are authoritative. Legacy names resolve only references without IDs;
+// they never merge two independently identified records.
+function aliases<T extends { id?: string | number }>(groups: T[][]) {
+  return new Map(groups.flat().map(item => [String(item.id), item.id!]))
 }
 function unionRefs(a: WebSetlist['songs'], b: WebSetlist['songs']) {
   const seen = new Set<string>()
@@ -31,8 +14,8 @@ function unionRefs(a: WebSetlist['songs'], b: WebSetlist['songs']) {
 }
 function align(libraries: SyncLibrary[]): SyncLibrary[] {
   const prepared = libraries.map(library => ({ songs: ensureSongIds(library.songs), setlists: library.setlists }))
-  const songIds = aliases(prepared.flatMap(library => library.songs), songIdentity)
-  const setlistIds = aliases(prepared.flatMap(library => library.setlists), nameIdentity)
+  const songIds = aliases(prepared.map(library => library.songs))
+  const setlistIds = aliases(prepared.map(library => library.setlists))
   return prepared.map(library => {
     const songs = new Map<string, ActiveSongState>()
     for (const song of library.songs) {
@@ -49,10 +32,10 @@ function align(libraries: SyncLibrary[]): SyncLibrary[] {
     return { songs: [...songs.values()], setlists: bindLegacySetlists([...setlists.values()], [...songs.values()]) }
   })
 }
-/** Idempotent repair: retain the first record, rewrite references, and union named setlists. */
+/** Normalize references without collapsing distinct stable IDs within a library. */
 export function deduplicateLibrary(library: SyncLibrary): SyncLibrary { return align([library])[0] }
 
-function reconcile<T extends { id?: string | number }>(local: T[], remote: T[], base: T[], combine?: (left: T, right: T) => T) {
+function reconcile<T extends { id?: string | number }>(local: T[], remote: T[], base: T[]) {
   const result: T[] = []
   const l = new Map(local.map(item => [String(item.id), item]))
   const r = new Map(remote.map(item => [String(item.id), item]))
@@ -63,8 +46,6 @@ function reconcile<T extends { id?: string | number }>(local: T[], remote: T[], 
     if (equal(left, right)) chosen = left
     else if (equal(left, before)) chosen = right
     else if (equal(right, before)) chosen = left
-    else if (left && right && combine) chosen = combine(left, right)
-    else if (!before) chosen = right ?? left
     else throw new Error('Conflicting local and cloud edits. Export both backups and resolve them before syncing.')
     if (chosen) result.push(chosen)
   }
@@ -74,8 +55,7 @@ export function mergeSyncLibrary(local: SyncLibrary, remote: SyncLibrary | null,
   if (!remote) return deduplicateLibrary(local)
   const [l, r, b] = align([local, remote, base ?? { songs: [], setlists: [] }])
   const songs = reconcile(l.songs, r.songs, b.songs)
-  const setlists = bindLegacySetlists(reconcile(l.setlists, r.setlists, b.setlists,
-    (left, right) => ({ ...right, id: left.id, songs: unionRefs(left.songs, right.songs) })), songs)
+  const setlists = bindLegacySetlists(reconcile(l.setlists, r.setlists, b.setlists), songs)
   const errors = validateSetlistReferences(setlists, songs)
   if (errors.length) throw new Error(errors.join('\n'))
   return deduplicateLibrary({ songs, setlists })

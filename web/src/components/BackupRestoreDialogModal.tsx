@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react'
 import { CloudUpload, CloudDownload, Download, Copy, Check, AlertCircle, X, Database } from 'lucide-react'
 import type { ActiveSongState } from '../types/gtar'
 import { GTAR_APP_VERSION, GTAR_DEV_VERSION } from '../types/gtar'
-import { createBackupPayload, exportAllDataJson, parseBackupJson } from '../utils/jsonBackup'
+import { exportRecoveryData, createBackupPayload, exportAllDataJson, parseBackupJson } from '../utils/jsonBackup'
 import { restoreBackupSettings } from '../utils/backupSettings'
 
 interface BackupRestoreDialogModalProps {
@@ -55,7 +55,8 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
       const fileName = exportAllDataJson(allSongs, setlists)
       showFeedback('success', `Exported backup as ${fileName}`)
     } catch (err: any) {
-      showFeedback('error', `Failed to export backup: ${err.message}`)
+      exportRecoveryData({ songs: allSongs, setlists })
+      showFeedback('error', `Failed to export backup: ${err.message}. A raw recovery archive was downloaded with every original entry.`)
     }
   }
 
@@ -66,8 +67,8 @@ export const BackupRestoreDialogModal: React.FC<BackupRestoreDialogModalProps> =
         import.meta.env.DEV ? GTAR_DEV_VERSION : GTAR_APP_VERSION), null, 2)
       await navigator.clipboard.writeText(jsonContent)
       showFeedback('success', 'Backup JSON copied to clipboard!')
-    } catch {
-      showFeedback('error', 'Failed to copy to clipboard.')
+    } catch (error) {
+      showFeedback('error', error instanceof Error ? error.message : 'Failed to copy to clipboard.')
     }
   }
 

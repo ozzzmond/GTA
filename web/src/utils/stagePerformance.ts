@@ -1,3 +1,11 @@
+type VendorDocument = Document & {
+  webkitFullscreenEnabled?: boolean; mozFullScreenEnabled?: boolean; msFullscreenEnabled?: boolean
+  webkitFullscreenElement?: Element; mozFullScreenElement?: Element; msFullscreenElement?: Element
+  webkitExitFullscreen?: () => void; mozCancelFullScreen?: () => void; msExitFullscreen?: () => void
+}
+type VendorElement = HTMLElement & {
+  webkitRequestFullscreen?: () => void; mozRequestFullScreen?: () => void; msRequestFullscreen?: () => void
+}
 /**
  * stagePerformance.ts
  *
@@ -41,7 +49,7 @@ export function isIosDevice(): boolean {
 export function isStandalonePwa(): boolean {
   if (typeof window === 'undefined') return false
   // navigator.standalone is iOS-specific (true when launched from Home Screen)
-  if ((navigator as any).standalone === true) return true
+  if ((navigator as Navigator & { standalone?: boolean }).standalone === true) return true
   // display-mode: standalone covers Android Chrome PWAs and iOS Safari PWAs
   try {
     return window.matchMedia('(display-mode: standalone)').matches
@@ -58,9 +66,9 @@ export function isFullscreenApiSupported(): boolean {
   if (typeof document === 'undefined') return false
   return Boolean(
     document.fullscreenEnabled ||
-      (document as any).webkitFullscreenEnabled ||
-      (document as any).mozFullScreenEnabled ||
-      (document as any).msFullscreenEnabled
+      (document as VendorDocument).webkitFullscreenEnabled ||
+      (document as VendorDocument).mozFullScreenEnabled ||
+      (document as VendorDocument).msFullscreenEnabled
   )
 }
 
@@ -94,9 +102,9 @@ export function createFullscreenController(): FullscreenController {
   function getCurrentState(): boolean {
     return Boolean(
       document.fullscreenElement ||
-        (document as any).webkitFullscreenElement ||
-        (document as any).mozFullScreenElement ||
-        (document as any).msFullscreenElement
+        (document as VendorDocument).webkitFullscreenElement ||
+        (document as VendorDocument).mozFullScreenElement ||
+        (document as VendorDocument).msFullscreenElement
     )
   }
 
@@ -129,24 +137,24 @@ export function createFullscreenController(): FullscreenController {
           // Exit fullscreen
           if (document.exitFullscreen) {
             document.exitFullscreen().catch(() => {})
-          } else if ((document as any).webkitExitFullscreen) {
-            ;(document as any).webkitExitFullscreen()
-          } else if ((document as any).mozCancelFullScreen) {
-            ;(document as any).mozCancelFullScreen()
-          } else if ((document as any).msExitFullscreen) {
-            ;(document as any).msExitFullscreen()
+          } else if ((document as VendorDocument).webkitExitFullscreen) {
+            ;(document as VendorDocument).webkitExitFullscreen?.()
+          } else if ((document as VendorDocument).mozCancelFullScreen) {
+            ;(document as VendorDocument).mozCancelFullScreen?.()
+          } else if ((document as VendorDocument).msExitFullscreen) {
+            ;(document as VendorDocument).msExitFullscreen?.()
           }
         } else {
           // Enter fullscreen on the root element
           const el = document.documentElement
           if (el.requestFullscreen) {
             el.requestFullscreen().catch(() => {})
-          } else if ((el as any).webkitRequestFullscreen) {
-            ;(el as any).webkitRequestFullscreen()
-          } else if ((el as any).mozRequestFullScreen) {
-            ;(el as any).mozRequestFullScreen()
-          } else if ((el as any).msRequestFullscreen) {
-            ;(el as any).msRequestFullscreen()
+          } else if ((el as VendorElement).webkitRequestFullscreen) {
+            ;(el as VendorElement).webkitRequestFullscreen?.()
+          } else if ((el as VendorElement).mozRequestFullScreen) {
+            ;(el as VendorElement).mozRequestFullScreen?.()
+          } else if ((el as VendorElement).msRequestFullscreen) {
+            ;(el as VendorElement).msRequestFullscreen?.()
           }
         }
       } catch {
@@ -200,20 +208,26 @@ export function createWakeLockController(): WakeLockController {
   let visibilityHandler: (() => void) | null = null
   let destroyed = false
 
-  async function acquireInternal(): Promise<void> {
-    if (!supported || destroyed) return
-    // If we already hold an active sentinel, nothing to do
-    if (sentinel && !sentinel.released) return
-    try {
-      sentinel = await (navigator as any).wakeLock.request('screen')
-    } catch {
-      // NotAllowedError when the page is not visible, or the browser denied it.
-      // This is expected and safe to ignore.
-      sentinel = null
-    }
+  let pending: Promise<void> | null = null
+  let releaseGeneration = 0
+  function acquireInternal(): Promise<void> {
+    if (!supported || destroyed || (sentinel && !sentinel.released)) return Promise.resolve()
+    if (pending) return pending
+    const generation = releaseGeneration
+    pending = (async () => {
+      try {
+        const acquired = await navigator.wakeLock.request('screen')
+        if (destroyed || generation !== releaseGeneration) await acquired.release()
+        else sentinel = acquired
+      } catch {
+        // Hidden pages and denied requests are expected.
+      } finally { pending = null }
+    })()
+    return pending
   }
 
   async function releaseInternal(): Promise<void> {
+    releaseGeneration++
     if (sentinel && !sentinel.released) {
       try {
         await sentinel.release()
