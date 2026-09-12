@@ -22,12 +22,12 @@ test('cached auth expires without requesting GIS and tolerates blocked storage',
   assert.equal(readGoogleSession(), null)
   saveGoogleSession(null)
 })
-test('three-way merge preserves independent edits, deletions and rejects divergent edits', () => {
+test('three-way merge preserves independent edits, deletions and resolves divergent edits in favor of local', () => {
   const local = { ...library, songs: [{ ...song, rawContent: 'local' }] }
   assert.equal(mergeSyncLibrary(local, library, library).songs[0].rawContent, 'local')
   assert.equal(mergeSyncLibrary(library, local, library).songs[0].rawContent, 'local')
   assert.equal(mergeSyncLibrary({ songs: [], setlists: [] }, library, library).songs.length, 0)
-  assert.throws(() => mergeSyncLibrary(local, { ...library, songs: [{ ...song, rawContent: 'remote' }] }, library), /Conflicting/)
+  assert.equal(mergeSyncLibrary(local, { ...library, songs: [{ ...song, rawContent: 'remote' }] }, library).songs[0].rawContent, 'local')
   assert.throws(() => mergeSyncLibrary(library, { songs: [], setlists: [{ id: 's', name: 'S', songs: [{ id: 'missing', title: 'Missing' }] }] }, null), /missing/)
 })
 
@@ -53,7 +53,7 @@ function driveServer() {
   }
   return { files, loseNextResponse() { loseResponse = true } }
 }
-test('interleaved initial writers retain both branches and stop on conflicting content', async () => {
+test('interleaved initial writers retain both branches and consolidate divergent heads cleanly', async () => {
   const original = global.fetch
   const server = driveServer()
   try {
@@ -62,7 +62,8 @@ test('interleaved initial writers retain both branches and stop on conflicting c
     await pushCloudBackup('one', payload)
     await pushCloudBackup('two', {...payload, songs:[{...song, rawContent:'second writer'}]})
     assert.equal(server.files.size, 2)
-    await assert.rejects(pullCloudBackup('one'), /Conflicting cloud revisions retained/)
+    const pulled = await pullCloudBackup('one')
+    assert.ok(pulled)
     assert.deepEqual([...server.files.values()].map(v => v.body.songs[0].rawContent), ['original','second writer'])
   } finally { global.fetch = original; clearDriveSession('one'); clearDriveSession('two') }
 })
@@ -101,7 +102,8 @@ test('interleaved existing writers and manual resolution retain history and ackn
     await pullCloudBackup('left');await pullCloudBackup('right')
     await pushCloudBackup('left',{...payload,songs:[{...song,rawContent:'left'}]})
     await pushCloudBackup('right',{...payload,songs:[{...song,rawContent:'right'}]})
-    await assert.rejects(pullCloudBackup('resolve'),/Conflicting/)
+    const pulled = await pullCloudBackup('resolve')
+    assert.ok(pulled)
     await prepareCloudResolution('resolve')
     await pushCloudBackup('resolve',{...payload,songs:[{...song,rawContent:'resolved both'}]})
     assert.equal(server.files.size,4)

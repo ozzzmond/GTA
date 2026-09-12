@@ -99,11 +99,18 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
     const timer = setTimeout(() => { void syncNow() }, 0)
     return () => clearTimeout(timer)
   }, [session, syncNow])
+  // Debounced auto-sync after library modifications (5-minute cooldown)
   useEffect(() => {
     if (!session) return
-    const timer = setTimeout(() => { void syncNow() }, 1500)
+    const timer = setTimeout(() => { void syncNow() }, 5 * 60 * 1000)
     return () => clearTimeout(timer)
   }, [library.songs, library.setlists, session, syncNow])
+  // Periodic safety net sync every 1 hour
+  useEffect(() => {
+    if (!session) return
+    const interval = setInterval(() => { void syncNow() }, 60 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [session, syncNow])
   useEffect(() => {
     const online = () => { void syncNow() }
     window.addEventListener('online', online)
