@@ -25,9 +25,11 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
   }, [lockApp])
   useEffect(() => {
     if (!session) return
-    const timer = setTimeout(() => { signOut(); setStatus('Google session expired. Sign in to resume sync.') }, Math.max(0, session.expiresAt - Date.now() - 30000))
+    const timer = setTimeout(() => {
+      setStatus('Drive sync paused (offline).')
+    }, Math.max(0, session.expiresAt - Date.now() - 30000))
     return () => clearTimeout(timer)
-  }, [session, signOut])
+  }, [session])
   useEffect(() => () => {
     generation.current++
     const token = latest.current.session?.token
@@ -39,8 +41,14 @@ export function useDriveSync(library: SyncLibrary, apply: (library: SyncLibrary)
     const auth = latest.current.session
     if (!auth) return
     if (running.current) { queued.current = true; return }
-    if (!validSession(auth)) { signOut(); setStatus('Google session expired. Sign in to resume sync.'); return }
-    if (!navigator.onLine) { setStatus('Offline. Local changes will sync when connected.'); return }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setStatus('Drive sync paused (offline). Local changes are saved.')
+      return
+    }
+    if (!validSession(auth)) {
+      setStatus('Drive sync paused (offline).')
+      return
+    }
     const epoch = generation.current
     running.current = true
     setBusy(true)
