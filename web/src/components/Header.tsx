@@ -370,10 +370,12 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="h-14 border-b border-[#1A4A55] bg-[#073642] px-3 sm:px-5 flex items-center justify-between gap-2 select-none z-30 sticky top-0 shadow-md max-w-full overflow-x-clip">
-        {/* =================================================================== */}
-        {/* 1. LEFT: App Branding — Logo, GTAR-Dev, DEV badge, version badge    */}
-        {/* =================================================================== */}
+      <header className="border-b border-[#1A4A55] bg-[#073642] flex flex-col select-none z-30 sticky top-0 shadow-md max-w-full">
+      {/* =================================================================== */}
+      {/* TIER 1 (Top Bar): Branding & User Profile Avatar                   */}
+      {/* =================================================================== */}
+      <div className="h-12 sm:h-14 px-3 sm:px-5 flex items-center justify-between w-full">
+        {/* Left: Logo + App Title ("GTAR-Dev") + DEV Badge + Version Badge */}
         <div className="flex items-center gap-2 shrink-0">
           <div
             onClick={onNavigateHome}
@@ -399,7 +401,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onCheckForUpdates?.()
                 }}
                 title={isDevApp ? `Click to check for updates (web v${GTAR_DEV_VERSION})` : `Click to check for updates (web v${GTAR_APP_VERSION})`}
-                className="hidden sm:flex text-[9px] font-mono font-bold uppercase bg-transparent text-[#2AA198] px-1.5 py-0.5 rounded border border-[#2AA198]/40 hover:border-[#2AA198] transition-colors cursor-pointer items-center gap-1 shrink-0"
+                className="text-[9px] font-mono font-bold uppercase bg-transparent text-[#2AA198] px-1.5 py-0.5 rounded border border-[#2AA198]/40 hover:border-[#2AA198] transition-colors cursor-pointer flex items-center gap-1 shrink-0"
               >
                 {isCheckingUpdates && (
                   <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#B58900]" />
@@ -410,213 +412,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* =================================================================== */}
-        {/* 2. CENTER: Icon-only Toolbar — no text labels, cyan dot active      */}
-        {/* =================================================================== */}
-        <div className="flex items-center gap-0.5 bg-[#002B36]/60 p-0.5 rounded-xl border border-[#1A4A55]/50 shrink-0">
-          <ToolbarIconButton
-            icon={Music}
-            label={`Songbook${songsCount !== undefined ? ` (${songsCount})` : ''}`}
-            isActive={activeView === 'songbook'}
-            onClick={() => onViewChange('songbook')}
-          />
-
-          {/* Setlists with cascading dropdown */}
-          <div
-            ref={setlistDropdownRef}
-            className="relative"
-            onMouseEnter={handleMouseEnterSetlists}
-            onMouseLeave={handleMouseLeaveSetlists}
-          >
-            <ToolbarIconButton
-              icon={ListMusic}
-              label={`Setlists${displaySetlistSongs.length > 0 ? ` (${activeSetlistSongIndex !== undefined ? activeSetlistSongIndex + 1 : 1}/${displaySetlistSongs.length})` : ''}`}
-              isActive={queueMode === 'setlist' || isSetlistDropdownOpen}
-              onClick={() => setIsSetlistDropdownOpen((prev) => !prev)}
-              className={queueMode === 'setlist' ? '!text-[#B58900]' : ''}
-            />
-
-            {/* Cascading Dropdown Menu */}
-            {isSetlistDropdownOpen && (
-              <div className="fixed sm:absolute left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 top-14 sm:top-full mt-2 w-auto sm:w-80 max-w-[calc(100vw-1rem)] rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl p-2.5 z-50 animate-scale-in text-xs select-none">
-                {/* Active Setlist Header & Quick Actions */}
-                <div className="px-2 py-1.5 border-b border-[#1A4A55]/60 mb-1 flex items-center justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <span className="text-[10px] font-mono text-[#93A1A1] uppercase tracking-wider block">
-                      Active Setlist
-                    </span>
-                    <span className="font-extrabold text-[#FDF6E3] text-xs truncate block">
-                      {activeSetlistName || currentActiveSetlist?.name || 'Active Setlist'}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono font-bold text-[#B58900] bg-[#B58900]/15 px-1.5 py-0.5 rounded border border-[#B58900]/30 shrink-0">
-                    {displaySetlistSongs.length} SONGS
-                  </span>
-                </div>
-
-                {/* Song List with Direct 1-Click Selection */}
-                <div className="max-h-60 overflow-y-auto py-1 space-y-0.5 px-1">
-                  {displaySetlistSongs && displaySetlistSongs.length > 0 ? (
-                    displaySetlistSongs.map((s, idx) => {
-                      const isCurrent =
-                        queueMode === 'setlist' && activeSetlistSongIndex === idx
-                      return (
-                        <button
-                          key={`${s.title}-${idx}`}
-                          type="button"
-                          onClick={() => {
-                            if (onSelectSetlistSong && currentActiveSetlist) {
-                              onSelectSetlistSong(currentActiveSetlist.id, idx)
-                            }
-                            onViewChange('stage')
-                            setIsSetlistDropdownOpen(false)
-                          }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-xl transition-all flex items-center justify-between gap-2 group cursor-pointer ${isCurrent
-                            ? 'bg-[#B58900]/20 text-[#FDF6E3] border border-[#B58900]/40'
-                            : 'hover:bg-[#002B36] text-[#EEE8D5]'
-                            }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className={`w-5 h-5 rounded-lg flex items-center justify-center font-mono text-[10px] font-bold shrink-0 ${isCurrent
-                                ? 'bg-[#B58900] text-[#002B36]'
-                                : 'bg-[#002B36] text-[#93A1A1] group-hover:text-[#2AA198]'
-                                }`}
-                            >
-                              {idx + 1}
-                            </span>
-                            <div className="truncate">
-                              <p
-                                className={`text-xs font-bold truncate leading-tight ${isCurrent
-                                  ? 'text-[#B58900]'
-                                  : 'text-[#FDF6E3] group-hover:text-[#2AA198]'
-                                  }`}
-                              >
-                                {s.title}
-                              </p>
-                              {s.artist && (
-                                <p className="text-[10px] text-[#93A1A1] truncate leading-tight">
-                                  {s.artist}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1 shrink-0">
-                            {s.key && (
-                              <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-[#002B36] text-[#2AA198] font-bold">
-                                {s.key}
-                              </span>
-                            )}
-                            {isCurrent && (
-                              <Check className="w-3.5 h-3.5 text-[#B58900] shrink-0" />
-                            )}
-                          </div>
-                        </button>
-                      )
-                    })
-                  ) : (
-                    <div className="px-3 py-4 text-center text-xs text-[#93A1A1]">
-                      No songs in active setlist
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer Switcher / Drawer Trigger */}
-                <div className="border-t border-[#1A4A55]/60 pt-1.5 mt-1 px-1.5 flex items-center justify-between gap-1">
-                  {setlists.length > 1 && (
-                    <div className="flex items-center gap-1 overflow-x-auto max-w-[180px] py-0.5">
-                      {setlists.map((sl) => (
-                        <button
-                          key={sl.id}
-                          type="button"
-                          onClick={() => {
-                            if (onSelectSetlist) {
-                              onSelectSetlist(sl.id)
-                            }
-                          }}
-                          className={`text-[10px] px-2 py-0.5 rounded-lg whitespace-nowrap transition-colors cursor-pointer ${String(sl.id) === String(activeSetlistId)
-                            ? 'bg-[#B58900] text-[#002B36] font-bold'
-                            : 'bg-[#002B36] text-[#93A1A1] hover:text-[#FDF6E3]'
-                            }`}
-                          title={`Switch to setlist: ${sl.name}`}
-                        >
-                          {sl.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {onOpenSetlistDrawer && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsSetlistDropdownOpen(false)
-                        onOpenSetlistDrawer()
-                      }}
-                      className="ml-auto text-[10px] font-bold text-[#2AA198] hover:underline px-2 py-1 flex items-center gap-1 cursor-pointer"
-                    >
-                      <Layers className="w-3 h-3" />
-                      <span>Manage All...</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="hidden sm:block w-[1px] h-5 bg-[#1A4A55]/50 mx-0.5" />
-
-          <ToolbarIconButton
-            icon={FileEdit}
-            label="Editor"
-            isActive={activeView === 'editor'}
-            onClick={() => onViewChange('editor')}
-            className="hidden sm:flex"
-          />
-          <ToolbarIconButton
-            icon={Eye}
-            label="Stage Mode"
-            isActive={activeView === 'stage'}
-            onClick={() => onViewChange('stage')}
-          />
-          <ToolbarIconButton
-            icon={Globe}
-            label="Web Sources"
-            onClick={onOpenWebsiteUrlSource}
-            className="hidden md:flex"
-          />
-          <ToolbarIconButton
-            icon={Trash2}
-            label={`Trash${deletedSongsCount > 0 ? ` (${deletedSongsCount})` : ''}`}
-            isActive={activeView === 'trash'}
-            onClick={() => onViewChange('trash')}
-            className="hidden lg:flex"
-          />
-
-          <div className="hidden md:block w-[1px] h-5 bg-[#1A4A55]/50 mx-0.5" />
-
-          <ToolbarIconButton
-            icon={Radio}
-            label="Band Sync"
-            onClick={onOpenStageTools}
-            className="hidden md:flex"
-          />
-          <ToolbarIconButton
-            icon={Palette}
-            label="Theme"
-            onClick={onToggleTheme}
-            className="hidden sm:flex"
-          />
-          <ToolbarIconButton
-            icon={MoreVertical}
-            label="More"
-            onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-          />
-        </div>
-
-        {/* =================================================================== */}
-        {/* 3. RIGHT: Profile Avatar with Sync Status Dot                       */}
-        {/* =================================================================== */}
+        {/* Right: User Profile Avatar button (with its status indicator) */}
         <div className="flex items-center gap-2 shrink-0">
           {/* PWA Install App Button (when available and not standalone) */}
           {deferredInstallPrompt && !isAppInstalled && (
@@ -773,15 +569,17 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   </>
                 ) : (
-                  <div className="text-center py-2">
-                    <div className="text-xs text-[#93A1A1] mb-3">Sign in to sync your songbook to Google Drive</div>
+                  <div className="text-center py-2 space-y-3">
+                    <p className="text-xs text-[#93A1A1]">
+                      Sign in with Google to sync your songbook across devices.
+                    </p>
                     <button
                       type="button"
-                      disabled={!syncReady}
                       onClick={() => {
-                        onSignIn?.()
                         setShowAvatarPopover(false)
+                        onSignIn?.()
                       }}
+                      disabled={!syncReady}
                       className="w-full px-3 py-2 rounded-xl bg-[#2AA198] hover:bg-[#35B8AD] text-[#002B36] text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                     >
                       <User className="w-3.5 h-3.5" />
@@ -793,16 +591,227 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Search Bar — rendered below header, above main content (in songbook view) */}
+      {/* =================================================================== */}
+      {/* TIER 2 (Middle Action Bar): Toolbar Action Icons                   */}
+      {/* =================================================================== */}
+      <div className="w-full bg-[#002B36]/50 border-t border-[#1A4A55]/40 px-2 sm:px-4 py-1">
+        <div className="flex items-center justify-start sm:justify-center gap-1 sm:gap-2 w-full overflow-x-auto py-1 no-scrollbar">
+          <ToolbarIconButton
+            icon={Music}
+            label={`Songbook${songsCount !== undefined ? ` (${songsCount})` : ''}`}
+            isActive={activeView === 'songbook'}
+            onClick={() => onViewChange('songbook')}
+            className="shrink-0"
+          />
+
+          {/* Setlists with cascading dropdown */}
+          <div
+            ref={setlistDropdownRef}
+            className="relative shrink-0"
+            onMouseEnter={handleMouseEnterSetlists}
+            onMouseLeave={handleMouseLeaveSetlists}
+          >
+            <ToolbarIconButton
+              icon={ListMusic}
+              label={`Setlists${displaySetlistSongs.length > 0 ? ` (${activeSetlistSongIndex !== undefined ? activeSetlistSongIndex + 1 : 1}/${displaySetlistSongs.length})` : ''}`}
+              isActive={queueMode === 'setlist' || isSetlistDropdownOpen}
+              onClick={() => setIsSetlistDropdownOpen((prev) => !prev)}
+              className={`shrink-0 ${queueMode === 'setlist' ? '!text-[#B58900]' : ''}`}
+            />
+
+            {/* Cascading Dropdown Menu */}
+            {isSetlistDropdownOpen && (
+              <div className="fixed sm:absolute left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 top-24 sm:top-full mt-2 w-auto sm:w-80 max-w-[calc(100vw-1rem)] rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl p-2.5 z-50 animate-scale-in text-xs select-none">
+                {/* Active Setlist Header & Quick Actions */}
+                <div className="px-2 py-1.5 border-b border-[#1A4A55]/60 mb-1 flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-mono text-[#93A1A1] uppercase tracking-wider block">
+                      Active Setlist
+                    </span>
+                    <span className="font-extrabold text-[#FDF6E3] text-xs truncate block">
+                      {activeSetlistName || currentActiveSetlist?.name || 'Active Setlist'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-[#B58900] bg-[#B58900]/15 px-1.5 py-0.5 rounded border border-[#B58900]/30 shrink-0">
+                    {displaySetlistSongs.length} SONGS
+                  </span>
+                </div>
+
+                {/* Song List with Direct 1-Click Selection */}
+                <div className="max-h-60 overflow-y-auto py-1 space-y-0.5 px-1">
+                  {displaySetlistSongs && displaySetlistSongs.length > 0 ? (
+                    displaySetlistSongs.map((s, idx) => {
+                      const isCurrent =
+                        queueMode === 'setlist' && activeSetlistSongIndex === idx
+                      return (
+                        <button
+                          key={`${s.title}-${idx}`}
+                          type="button"
+                          onClick={() => {
+                            if (onSelectSetlistSong && currentActiveSetlist) {
+                              onSelectSetlistSong(currentActiveSetlist.id, idx)
+                            }
+                            onViewChange('stage')
+                            setIsSetlistDropdownOpen(false)
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl transition-all flex items-center justify-between gap-2 group cursor-pointer ${isCurrent
+                            ? 'bg-[#B58900]/20 text-[#FDF6E3] border border-[#B58900]/40'
+                            : 'hover:bg-[#002B36] text-[#EEE8D5]'
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`w-5 h-5 rounded-lg flex items-center justify-center font-mono text-[10px] font-bold shrink-0 ${isCurrent
+                                ? 'bg-[#B58900] text-[#002B36]'
+                                : 'bg-[#002B36] text-[#93A1A1] group-hover:text-[#2AA198]'
+                                }`}
+                            >
+                              {idx + 1}
+                            </span>
+                            <div className="truncate">
+                              <p
+                                className={`text-xs font-bold truncate leading-tight ${isCurrent
+                                  ? 'text-[#B58900]'
+                                  : 'text-[#FDF6E3] group-hover:text-[#2AA198]'
+                                  }`}
+                              >
+                                {s.title}
+                              </p>
+                              {s.artist && (
+                                <p className="text-[10px] text-[#93A1A1] truncate leading-tight">
+                                  {s.artist}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {s.key && (
+                              <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-[#002B36] text-[#2AA198] font-bold">
+                                {s.key}
+                              </span>
+                            )}
+                            {isCurrent && (
+                              <Check className="w-3.5 h-3.5 text-[#B58900] shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })
+                  ) : (
+                    <div className="px-3 py-4 text-center text-xs text-[#93A1A1]">
+                      No songs in active setlist
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Switcher / Drawer Trigger */}
+                <div className="border-t border-[#1A4A55]/60 pt-1.5 mt-1 px-1.5 flex items-center justify-between gap-1">
+                  {setlists.length > 1 && (
+                    <div className="flex items-center gap-1 overflow-x-auto max-w-[180px] py-0.5">
+                      {setlists.map((sl) => (
+                        <button
+                          key={sl.id}
+                          type="button"
+                          onClick={() => {
+                            if (onSelectSetlist) {
+                              onSelectSetlist(sl.id)
+                            }
+                          }}
+                          className={`text-[10px] px-2 py-0.5 rounded-lg whitespace-nowrap transition-colors cursor-pointer ${String(sl.id) === String(activeSetlistId)
+                            ? 'bg-[#B58900] text-[#002B36] font-bold'
+                            : 'bg-[#002B36] text-[#93A1A1] hover:text-[#FDF6E3]'
+                            }`}
+                          title={`Switch to setlist: ${sl.name}`}
+                        >
+                          {sl.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {onOpenSetlistDrawer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSetlistDropdownOpen(false)
+                        onOpenSetlistDrawer()
+                      }}
+                      className="ml-auto text-[10px] font-bold text-[#2AA198] hover:underline px-2 py-1 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Layers className="w-3 h-3" />
+                      <span>Manage All...</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="w-[1px] h-5 bg-[#1A4A55]/50 mx-0.5 shrink-0" />
+
+          <ToolbarIconButton
+            icon={FileEdit}
+            label="Editor"
+            isActive={activeView === 'editor'}
+            onClick={() => onViewChange('editor')}
+            className="shrink-0"
+          />
+          <ToolbarIconButton
+            icon={Eye}
+            label="Stage Mode"
+            isActive={activeView === 'stage'}
+            onClick={() => onViewChange('stage')}
+            className="shrink-0"
+          />
+          <ToolbarIconButton
+            icon={Globe}
+            label="Web Sources"
+            onClick={onOpenWebsiteUrlSource}
+            className="shrink-0"
+          />
+          <ToolbarIconButton
+            icon={Trash2}
+            label={`Trash${deletedSongsCount > 0 ? ` (${deletedSongsCount})` : ''}`}
+            isActive={activeView === 'trash'}
+            onClick={() => onViewChange('trash')}
+            className="shrink-0"
+          />
+
+          <div className="w-[1px] h-5 bg-[#1A4A55]/50 mx-0.5 shrink-0" />
+
+          <ToolbarIconButton
+            icon={Radio}
+            label="Band Sync"
+            onClick={onOpenStageTools}
+            className="shrink-0"
+          />
+          <ToolbarIconButton
+            icon={Palette}
+            label="Theme"
+            onClick={onToggleTheme}
+            className="shrink-0"
+          />
+          <ToolbarIconButton
+            icon={MoreVertical}
+            label="More"
+            onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+            className="shrink-0"
+          />
+        </div>
+      </div>
+
+      {/* =================================================================== */}
+      {/* TIER 3 (Bottom Search Bar): Full Width Search Input Container       */}
+      {/* =================================================================== */}
       {activeView === 'songbook' && (
         <div
           ref={searchContainerRef}
-          className="sticky top-14 z-20 bg-[#073642] border-b border-[#1A4A55] px-3 sm:px-6 py-2 max-w-full overflow-hidden"
+          className="w-full px-3 sm:px-6 py-2 bg-[#073642] border-t border-[#1A4A55]/50 relative"
         >
-          <div className="max-w-3xl mx-auto relative w-full">
-            <div className="pill-search w-full">
+          <div className="w-full flex items-center relative">
+            <div className="pill-search w-full flex items-center">
               <Search className="w-4 h-4 text-[#93A1A1] shrink-0" />
               <input
                 id="search-input"
@@ -824,7 +833,7 @@ export const Header: React.FC<HeaderProps> = ({
                     onSearchQueryChange('')
                     setIsSearchFocused(false)
                   }}
-                  className="text-[#93A1A1] hover:text-[#FDF6E3] cursor-pointer shrink-0"
+                  className="text-[#93A1A1] hover:text-[#FDF6E3] cursor-pointer"
                   title="Clear search"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -996,67 +1005,17 @@ export const Header: React.FC<HeaderProps> = ({
                 ) : null}
               </div>
             )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </header>
 
       {/* 3-Dots Overflow Menu */}
       {showOverflowMenu && (
         <div
           ref={overflowMenuRef}
-          className="fixed right-2 sm:right-4 top-14 w-56 max-w-[calc(100vw-1rem)] rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl py-2 z-50 animate-scale-in"
+          className="fixed right-2 sm:right-4 top-24 sm:top-28 w-56 max-w-[calc(100vw-1rem)] rounded-2xl border border-[#1A4A55] bg-[#073642] shadow-2xl py-2 z-50 animate-scale-in"
         >
-          {/* Mobile Secondary Action Shortcuts (shown when hidden from top bar) */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowOverflowMenu(false)
-              onViewChange('editor')
-            }}
-            className="sm:hidden w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center gap-3 cursor-pointer"
-          >
-            <FileEdit className="w-4 h-4 text-[#2AA198]" />
-            <span className="font-semibold">Song Editor</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowOverflowMenu(false)
-              onOpenWebsiteUrlSource()
-            }}
-            className="md:hidden w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center gap-3 cursor-pointer"
-          >
-            <Globe className="w-4 h-4 text-[#2AA198]" />
-            <span className="font-semibold">Web Sources</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowOverflowMenu(false)
-              onOpenStageTools()
-            }}
-            className="md:hidden w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center gap-3 cursor-pointer"
-          >
-            <Radio className="w-4 h-4 text-[#2AA198]" />
-            <span className="font-semibold">Band Sync</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowOverflowMenu(false)
-              onToggleTheme()
-            }}
-            className="sm:hidden w-full text-left px-4 py-2.5 text-xs text-[#FDF6E3] hover:bg-[#002B36] hover:text-[#2AA198] transition-colors flex items-center gap-3 cursor-pointer"
-          >
-            <Palette className="w-4 h-4 text-[#2AA198]" />
-            <span className="font-semibold">Stage Theme</span>
-          </button>
-
-          <div className="sm:hidden h-[1px] bg-[#1A4A55]/60 my-1" />
-
           {/* 0. Install App (PWA) */}
           {!isAppInstalled && (
             <>
