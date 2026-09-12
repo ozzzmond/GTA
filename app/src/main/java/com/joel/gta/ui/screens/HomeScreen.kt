@@ -2702,6 +2702,22 @@ private fun SetlistCard(
                     }
                 }
 
+                // Direct 1-Click Rename Setlist Button
+                IconButton(
+                    onClick = {
+                        renameNameText = setlistWithSongs.setlist.name
+                        showRenameDialog = true
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Rename Setlist",
+                        tint = customColors.textSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
                 // Export & Share Setlist Menu
                 Box {
                     IconButton(
@@ -2733,21 +2749,6 @@ private fun SetlistCard(
                             onClick = {
                                 showExportMenu = false
                                 onShareDirect()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Rename Setlist", color = customColors.textPrimary) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = null,
-                                    tint = customColors.chordAccent
-                                )
-                            },
-                            onClick = {
-                                showExportMenu = false
-                                renameNameText = setlistWithSongs.setlist.name
-                                showRenameDialog = true
                             }
                         )
                         DropdownMenuItem(
