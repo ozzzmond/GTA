@@ -99,6 +99,27 @@ class SetlistExportImportTest {
         override suspend fun deleteAllCrossRefs() {
             crossRefs.clear()
         }
+        override suspend fun getActiveSetlistsDirect(): List<SetlistEntity> = setlists.filter { !it.isDeleted }
+        override fun getDeletedSetlistsWithSongs(): Flow<List<SetlistWithSongs>> = emptyFlow()
+        override suspend fun getDeletedSetlistsDirect(): List<SetlistEntity> = setlists.filter { it.isDeleted }
+        override suspend fun renameSetlist(id: Long, newName: String) {
+            val idx = setlists.indexOfFirst { it.id == id }
+            if (idx != -1) setlists[idx] = setlists[idx].copy(name = newName)
+        }
+        override suspend fun softDeleteSetlist(id: Long) {
+            val idx = setlists.indexOfFirst { it.id == id }
+            if (idx != -1) setlists[idx] = setlists[idx].copy(isDeleted = true)
+        }
+        override suspend fun restoreSetlist(id: Long) {
+            val idx = setlists.indexOfFirst { it.id == id }
+            if (idx != -1) setlists[idx] = setlists[idx].copy(isDeleted = false)
+        }
+        override suspend fun deleteSetlistById(id: Long) {
+            setlists.removeAll { it.id == id }
+        }
+        override suspend fun purgeDeletedSetlists() {
+            setlists.removeAll { it.isDeleted }
+        }
         override suspend fun deleteSetlist(setlist: SetlistEntity) {
             setlists.removeAll { it.id == setlist.id }
         }

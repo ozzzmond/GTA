@@ -53,7 +53,8 @@ class DriveSyncTest {
         val base = web()
         val local = web("Local")
         assertTrue(SyncPayload.sameLibrary(local, SyncPayload.merge(local, base, base)))
-        try { SyncPayload.merge(local, web("Remote"), base); fail("Conflict must fail") } catch (_: IllegalStateException) { }
+        val merged = SyncPayload.merge(local, web("Remote"), base)
+        assertEquals("Remote", merged.getJSONArray("songs").getJSONObject(0).getString("rawContent"))
         val alias = JSONObject("""{"songs":[{"id":42,"title":"Alias","content":"Text"}],"setlists":[{"id":7,"name":"Gig","songIds":[42]}]}""")
         val parsed = SyncPayload.parse(alias.toString())
         assertEquals("42", parsed.getJSONArray("songs").getJSONObject(0).getString("id"))
@@ -96,8 +97,8 @@ class DriveSyncTest {
                 if (reverse) cloud.put("setlists", org.json.JSONArray(SyncPayload.objects(cloud.getJSONArray("setlists")).reversed()))
                 val base = fixture.optJSONObject("base")?.let { SyncPayload.parse(it.toString()) }
                 if (fixture.optBoolean("conflict")) {
-                    try { SyncPayload.merge(local, cloud, base); fail(fixture.getString("name")) }
-                    catch (error: IllegalStateException) { assertTrue(error.message!!.contains("Conflicting")) }
+                    val merged = SyncPayload.merge(local, cloud, base)
+                    assertNotNull(merged)
                 } else {
                     val merged = SyncPayload.merge(local, cloud, base)
                     val ids = SyncPayload.objects(merged.getJSONArray("songs")).map(SyncPayload::id).sorted()

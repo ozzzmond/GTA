@@ -113,4 +113,31 @@ class TrashAndEditorTest {
         assertEquals("New Title", parsed.title)
         assertTrue(parsed.lines.isNotEmpty())
     }
+
+    @Test
+    fun testSetlistEntityDefaultIsNotDeleted() {
+        val setlist = com.joel.gta.data.local.entity.SetlistEntity(
+            id = 1,
+            name = "Sunday Service"
+        )
+        assertFalse(setlist.isDeleted)
+    }
+
+    @Test
+    fun testSetlistSoftDeleteAndRestore() {
+        var setlist = com.joel.gta.data.local.entity.SetlistEntity(
+            id = 1,
+            name = "Acoustic Gig",
+            isDeleted = false
+        )
+        assertFalse(setlist.isDeleted)
+
+        // Soft delete
+        setlist = setlist.copy(isDeleted = true)
+        assertTrue(setlist.isDeleted)
+
+        // Restore
+        setlist = setlist.copy(isDeleted = false)
+        assertFalse(setlist.isDeleted)
+    }
 }

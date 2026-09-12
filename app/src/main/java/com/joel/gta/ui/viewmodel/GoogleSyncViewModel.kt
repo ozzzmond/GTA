@@ -48,8 +48,14 @@ class GoogleSyncViewModel(application: Application) : AndroidViewModel(applicati
         syncNow() // Also repairs offline libraries without a signed-in account.
         viewModelScope.launch {
             for (change in changes) {
-                delay(1500)
-                while (changes.tryReceive().isSuccess) delay(1500)
+                delay(300_000L)
+                while (changes.tryReceive().isSuccess) delay(300_000L)
+                sync()
+            }
+        }
+        viewModelScope.launch {
+            while (isActive) {
+                delay(3_600_000L)
                 sync()
             }
         }

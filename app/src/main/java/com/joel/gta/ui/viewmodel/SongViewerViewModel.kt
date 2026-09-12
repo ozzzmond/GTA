@@ -97,6 +97,9 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
     val deletedSongs: StateFlow<List<SongEntity>> = repository.deletedSongs
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val deletedSetlists: StateFlow<List<SetlistWithSongs>> = repository.deletedSetlists
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     val searchHistory: StateFlow<List<SearchHistoryEntity>> = repository.searchHistory
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
@@ -621,9 +624,30 @@ class SongViewerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun restoreSetlist(id: Long) {
+        viewModelScope.launch {
+            repository.restoreSetlist(id)
+        }
+    }
+
+    fun permanentDeleteSetlist(id: Long) {
+        viewModelScope.launch {
+            repository.permanentDeleteSetlist(id)
+        }
+    }
+
     fun emptyTrash() {
         viewModelScope.launch {
             repository.emptyTrash()
+            repository.emptySetlistTrash()
+        }
+    }
+
+    fun renameSetlist(id: Long, newName: String) {
+        viewModelScope.launch {
+            if (newName.isNotBlank()) {
+                repository.renameSetlist(id, newName.trim())
+            }
         }
     }
 

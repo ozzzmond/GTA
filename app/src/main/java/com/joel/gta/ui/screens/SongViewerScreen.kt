@@ -398,7 +398,340 @@ fun SongViewerScreen(
                 enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
                 exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it }
             ) {
-                TopAppBar(
+                if (!isTabletOrLandscape) {
+                    Surface(
+                        color = customColors.surfaceBackground,
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.fillMaxWidth().statusBarsPadding()
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                            // Tier 1: Back Navigation, Prominent Song Title & Metadata, and Primary Actions
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(onClick = onBack) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back to Home",
+                                        tint = customColors.textPrimary
+                                    )
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 4.dp)
+                                ) {
+                                    Text(
+                                        text = song.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = customColors.textPrimary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    val subtitle = if (isInSetlistMode && setlistProgressText != null) {
+                                        setlistProgressText
+                                    } else {
+                                        listOfNotNull(
+                                            song.artist?.takeIf { it.isNotBlank() },
+                                            (song.key ?: originalKey)?.let { "Key: $it" }
+                                        ).joinToString(" • ").ifBlank { fileName ?: "GTAR Viewer" }
+                                    }
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (isInSetlistMode) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isInSetlistMode) customColors.chordAccent else customColors.textSecondary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                IconButton(onClick = onToggleFavorite) {
+                                    Icon(
+                                        imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                                        contentDescription = "Toggle Favorite",
+                                        tint = if (isFavorite) customColors.chordAccent else customColors.textSecondary
+                                    )
+                                }
+                                IconButton(onClick = { isFocusMode = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Fullscreen,
+                                        contentDescription = "Stage Focus Mode (Fullscreen)",
+                                        tint = customColors.textPrimary
+                                    )
+                                }
+                                IconButton(onClick = onOpenSettings) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Stage Settings",
+                                        tint = customColors.textSecondary
+                                    )
+                                }
+                            }
+
+                            // Tier 2: Scrollable Quick Stage Actions Row
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (isInSetlistMode) {
+                                    IconButton(
+                                        onClick = { onPreviousSong?.invoke() },
+                                        enabled = hasPreviousSong,
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SkipPrevious,
+                                            contentDescription = "Previous Song in Setlist",
+                                            tint = if (hasPreviousSong) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.35f)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { onNextSong?.invoke() },
+                                        enabled = hasNextSong,
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SkipNext,
+                                            contentDescription = "Next Song in Setlist",
+                                            tint = if (hasNextSong) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.35f)
+                                        )
+                                    }
+                                }
+
+                                if (songEntityId != null) {
+                                    IconButton(
+                                        onClick = { showEditSongDialog = true },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit Song in Songbook",
+                                            tint = customColors.textPrimary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = { showSetlistDialog = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                                        contentDescription = "Add to Setlist",
+                                        tint = customColors.textPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                // Font Size Stepper
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(customColors.canvasBackground)
+                                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { onAdjustFontSize(-1f) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.TextDecrease,
+                                            contentDescription = "Decrease text size",
+                                            tint = customColors.textPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "${fontSizeSp.toInt()}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = customColors.textSecondary,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+                                    IconButton(
+                                        onClick = { onAdjustFontSize(1f) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.TextIncrease,
+                                            contentDescription = "Increase text size",
+                                            tint = customColors.textPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                // Font Style
+                                IconButton(
+                                    onClick = {
+                                        val allStyles = SongFontStyle.entries
+                                        val nextStyle = allStyles[(allStyles.indexOf(songFontStyle) + 1) % allStyles.size]
+                                        onSelectSongFontStyle(nextStyle)
+                                        pedalFeedbackText = "FONT: ${nextStyle.displayName.uppercase()}"
+                                    },
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(customColors.canvasBackground)
+                                        .size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.FontDownload,
+                                        contentDescription = "Font Style: ${songFontStyle.displayName}",
+                                        tint = if (songFontStyle == SongFontStyle.MONOSPACE) customColors.chordAccent else customColors.textPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                // Transpose Stepper
+                                val offsetStr = when {
+                                    transposeOffset > 0 -> "+$transposeOffset"
+                                    transposeOffset < 0 -> "$transposeOffset"
+                                    else -> "0"
+                                }
+                                val currentEffectiveKey = song.key ?: originalKey ?: "Orig"
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (transposeOffset != 0) customColors.chordAccent.copy(alpha = 0.15f) else customColors.canvasBackground)
+                                        .border(
+                                            1.dp,
+                                            if (transposeOffset != 0) customColors.chordAccent else customColors.divider,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { onTranspose(-1) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Remove,
+                                            contentDescription = "Transpose Down (-1)",
+                                            tint = customColors.textPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { showKeyPickerDialog = true }
+                                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (transposeOffset != 0) "Key: $currentEffectiveKey ($offsetStr)" else "Key: $currentEffectiveKey",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (transposeOffset != 0) customColors.chordAccent else customColors.textPrimary
+                                        )
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = "Select Target Key",
+                                            tint = if (transposeOffset != 0) customColors.chordAccent else customColors.textSecondary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { onTranspose(1) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "Transpose Up (+1)",
+                                            tint = customColors.textPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                // Metronome / Tuner
+                                val metronomeState by MetronomeEngine.state.collectAsState()
+                                IconButton(
+                                    onClick = {
+                                        stageToolsInitialTab = StageToolTab.METRONOME
+                                        showStageToolsDialog = true
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Tune,
+                                            contentDescription = "Stage Tools (Metronome & Tuner)",
+                                            tint = if (metronomeState.isRunning) Color(0xFF10B981) else customColors.chordAccent,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        if (metronomeState.isRunning) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .align(Alignment.TopEnd)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF10B981))
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Cast & Screen Mirror
+                                IconButton(
+                                    onClick = { showCastDialog = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isProjecting) Icons.Default.CastConnected else if (isPrivacyCurtainActive) Icons.Default.VisibilityOff else Icons.Default.Cast,
+                                        contentDescription = "Stage Dual-Screen & Cast Projection",
+                                        tint = if (isProjecting) Color(0xFF10B981) else if (isPrivacyCurtainActive) Color(0xFFF59E0B) else if (availableDisplays.isNotEmpty()) customColors.chordAccent else customColors.textSecondary.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // BandSync
+                                IconButton(
+                                    onClick = {
+                                        stageToolsInitialTab = StageToolTab.BAND_SYNC
+                                        showStageToolsDialog = true
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.WifiTethering,
+                                        contentDescription = "BandSync",
+                                        tint = if (bandSyncState.isHost) Color(0xFF10B981) else if (bandSyncState.role == com.joel.gta.data.sync.BandSyncRole.CLIENT) Color(0xFF3B82F6) else customColors.textSecondary.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // Theme cycle
+                                IconButton(
+                                    onClick = onCycleTheme,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Palette,
+                                        contentDescription = "Switch Theme ($currentThemeName)",
+                                        tint = customColors.chordAccent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    TopAppBar(
                     title = {
                         Column {
                             Text(
@@ -701,6 +1034,7 @@ fun SongViewerScreen(
                         containerColor = customColors.surfaceBackground
                     )
                 )
+            }
             }
         },
         bottomBar = {
@@ -1150,51 +1484,15 @@ fun SongViewerScreen(
                     }
                 }
 
-                // Stage Focus Mode Fullscreen Exit Hint Pill (Upper Left)
+                // Stage Focus Mode Sleek Top Control Bar with Prominent Title & Minimalist Exit
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isFocusMode,
                     enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
                     exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it },
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(top = 16.dp, start = 16.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = customColors.surfaceBackground.copy(alpha = 0.88f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.chordAccent.copy(alpha = 0.5f)),
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.clickable { isFocusMode = false }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FullscreenExit,
-                                contentDescription = "Exit Focus Mode",
-                                tint = customColors.chordAccent,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "FOCUS MODE (Tap to Exit)",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = customColors.chordAccent
-                            )
-                        }
-                    }
-                }
-
-                // Stage Focus Mode: Clickable Transpose Badge (Upper Right)
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isFocusMode,
-                    enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
-                    exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 16.dp, end = 16.dp)
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(top = 12.dp, start = 16.dp, end = 16.dp)
                 ) {
                     val offsetStr = when {
                         transposeOffset > 0 -> "+$transposeOffset"
@@ -1202,33 +1500,99 @@ fun SongViewerScreen(
                         else -> "0"
                     }
                     val currentEffectiveKey = song.key ?: originalKey ?: "Orig"
+
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = customColors.surfaceBackground.copy(alpha = 0.90f),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (transposeOffset != 0) customColors.chordAccent else customColors.divider
-                        ),
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.clickable { showKeyPickerDialog = true }
+                        color = customColors.surfaceBackground.copy(alpha = 0.92f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider),
+                        shadowElevation = 6.dp
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = null,
-                                tint = if (transposeOffset != 0) customColors.chordAccent else customColors.textSecondary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (transposeOffset != 0) "KEY: $currentEffectiveKey ($offsetStr)" else "KEY: $currentEffectiveKey",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (transposeOffset != 0) customColors.chordAccent else customColors.textPrimary
-                            )
+                            // Prominently restored Song Title and metadata
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp)
+                            ) {
+                                Text(
+                                    text = song.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.textPrimary,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                val subtitle = if (isInSetlistMode && setlistProgressText != null) {
+                                    setlistProgressText
+                                } else {
+                                    song.artist?.takeIf { it.isNotBlank() } ?: fileName ?: ""
+                                }
+                                if (subtitle.isNotBlank()) {
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = customColors.textSecondary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            // Top Control Bar: Transpose / Key badge adjacent to Minimalist Exit button
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (transposeOffset != 0) customColors.chordAccent.copy(alpha = 0.15f) else customColors.canvasBackground,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (transposeOffset != 0) customColors.chordAccent else customColors.divider
+                                    ),
+                                    modifier = Modifier.clickable { showKeyPickerDialog = true }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Tune,
+                                            contentDescription = null,
+                                            tint = if (transposeOffset != 0) customColors.chordAccent else customColors.textSecondary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (transposeOffset != 0) "KEY: $currentEffectiveKey ($offsetStr)" else "KEY: $currentEffectiveKey",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (transposeOffset != 0) customColors.chordAccent else customColors.textPrimary
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = { isFocusMode = false },
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(customColors.chordAccent.copy(alpha = 0.15f))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.FullscreenExit,
+                                        contentDescription = "Exit Focus Mode",
+                                        tint = customColors.chordAccent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

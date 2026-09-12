@@ -22,7 +22,7 @@ import com.joel.gta.data.local.entity.SongEntity
         ChordVoicingEntity::class,
         SearchHistoryEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class GtaDatabase : RoomDatabase() {
@@ -35,6 +35,13 @@ abstract class GtaDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: GtaDatabase? = null
+
+        val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE setlists ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_setlists_isDeleted ON setlists(isDeleted)")
+            }
+        }
 
         val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -100,8 +107,7 @@ abstract class GtaDatabase : RoomDatabase() {
                     GtaDatabase::class.java,
                     "gta_database.db"
                 )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
-
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .build()
                 INSTANCE = instance
                 instance

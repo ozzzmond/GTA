@@ -11,20 +11,44 @@ interface SetlistDao {
     @Update
     suspend fun updateSetlist(setlist: SetlistEntity)
 
-
     @Transaction
-    @Query("SELECT * FROM setlists ORDER BY createdAt DESC")
+    @Query("SELECT * FROM setlists WHERE isDeleted = 0 ORDER BY createdAt DESC")
     fun getAllSetlistsWithSongs(): Flow<List<SetlistWithSongs>>
 
     @Transaction
-    @Query("SELECT * FROM setlists ORDER BY createdAt DESC")
+    @Query("SELECT * FROM setlists WHERE isDeleted = 0 ORDER BY createdAt DESC")
     suspend fun getAllSetlistsWithSongsDirect(): List<SetlistWithSongs>
+
+    @Query("SELECT * FROM setlists WHERE isDeleted = 0")
+    suspend fun getActiveSetlistsDirect(): List<SetlistEntity>
 
     @Query("SELECT * FROM setlists")
     suspend fun getAllSetlistsDirect(): List<SetlistEntity>
 
+    @Transaction
+    @Query("SELECT * FROM setlists WHERE isDeleted = 1 ORDER BY createdAt DESC")
+    fun getDeletedSetlistsWithSongs(): Flow<List<SetlistWithSongs>>
+
+    @Query("SELECT * FROM setlists WHERE isDeleted = 1")
+    suspend fun getDeletedSetlistsDirect(): List<SetlistEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSetlist(setlist: SetlistEntity): Long
+
+    @Query("UPDATE setlists SET name = :newName WHERE id = :id")
+    suspend fun renameSetlist(id: Long, newName: String)
+
+    @Query("UPDATE setlists SET isDeleted = 1 WHERE id = :id")
+    suspend fun softDeleteSetlist(id: Long)
+
+    @Query("UPDATE setlists SET isDeleted = 0 WHERE id = :id")
+    suspend fun restoreSetlist(id: Long)
+
+    @Query("DELETE FROM setlists WHERE id = :id")
+    suspend fun deleteSetlistById(id: Long)
+
+    @Query("DELETE FROM setlists WHERE isDeleted = 1")
+    suspend fun purgeDeletedSetlists()
 
     @Query("SELECT * FROM setlist_songs ORDER BY setlistId, position ASC")
     fun getAllCrossRefs(): Flow<List<SetlistSongCrossRef>>

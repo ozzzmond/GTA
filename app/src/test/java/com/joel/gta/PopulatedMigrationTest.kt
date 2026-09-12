@@ -16,7 +16,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class PopulatedMigrationTest {
-    private val migrations = arrayOf(GtaDatabase.MIGRATION_2_3, GtaDatabase.MIGRATION_3_4, GtaDatabase.MIGRATION_4_5, GtaDatabase.MIGRATION_5_6, GtaDatabase.MIGRATION_6_7)
+    private val migrations = arrayOf(GtaDatabase.MIGRATION_2_3, GtaDatabase.MIGRATION_3_4, GtaDatabase.MIGRATION_4_5, GtaDatabase.MIGRATION_5_6, GtaDatabase.MIGRATION_6_7, GtaDatabase.MIGRATION_7_8)
     private fun createV2(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE songs (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, title TEXT NOT NULL, artist TEXT, `key` TEXT, capo TEXT, rawContent TEXT NOT NULL, format TEXT NOT NULL, isFavorite INTEGER NOT NULL, transposeOffset INTEGER NOT NULL, createdAt INTEGER NOT NULL, lastOpenedAt INTEGER NOT NULL)")
         for (field in listOf("title", "isFavorite", "createdAt", "lastOpenedAt")) db.execSQL("CREATE INDEX index_songs_$field ON songs($field)")
@@ -30,7 +30,7 @@ class PopulatedMigrationTest {
     }
     @Test fun migrateEverySupportedInstalledVersionWithDataAndReopen() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
-        for (version in 2..7) {
+        for (version in 2..8) {
             val name = "populated-$version.db"
             context.deleteDatabase(name)
             val helper = FrameworkSQLiteOpenHelperFactory().create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name)
@@ -41,6 +41,7 @@ class PopulatedMigrationTest {
                         if (version >= 3) db.execSQL("UPDATE songs SET tags='set A' WHERE id=1")
                         if (version >= 4) db.execSQL("UPDATE songs SET isDeleted=1 WHERE id=2")
                         if (version >= 7) db.execSQL("UPDATE songs SET bpm='98',syncId='stable-one' WHERE id=1")
+                        if (version >= 8) db.execSQL("UPDATE setlists SET isDeleted=0 WHERE id=1")
                     }
                     override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected upgrade")
                 }).build())
@@ -59,6 +60,7 @@ class PopulatedMigrationTest {
                 if (version >= 7) assertEquals("stable-one", songs[0].syncId)
                 if (version >= 3) assertEquals("set A", songs[0].tags)
                 assertEquals(789L, db.setlistDao().getAllSetlistsDirect().single().createdAt)
+                assertFalse(db.setlistDao().getAllSetlistsDirect().single().isDeleted)
                 db.close(); db = open()
                 assertEquals(songs, db.songDao().getAllSongsDirect().sortedBy { it.id })
             } finally { db.close(); context.deleteDatabase(name) }

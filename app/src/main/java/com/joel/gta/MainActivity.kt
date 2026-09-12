@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
             val setlistSortOrder by viewModel.setlistSortOrder.collectAsState()
             val expandedSetlistIds by viewModel.expandedSetlistIds.collectAsState()
             val deletedSongs by viewModel.deletedSongs.collectAsState()
+            val deletedSetlists by viewModel.deletedSetlists.collectAsState()
             val searchHistory by viewModel.searchHistory.collectAsState()
             val bulkImportState by viewModel.bulkImportState.collectAsState()
             val webImportState by viewModel.webImportState.collectAsState()
@@ -171,11 +172,21 @@ class MainActivity : ComponentActivity() {
                                 viewModel.deleteSong(entity)
                             },
                             deletedSongs = deletedSongs,
+                            deletedSetlists = deletedSetlists,
                             onRestoreSong = { songId ->
                                 viewModel.restoreSong(songId)
                             },
                             onPermanentDeleteSong = { songId ->
                                 viewModel.permanentDeleteSong(songId)
+                            },
+                            onRenameSetlist = { id, newName ->
+                                viewModel.renameSetlist(id, newName)
+                            },
+                            onRestoreSetlist = { id ->
+                                viewModel.restoreSetlist(id)
+                            },
+                            onPermanentDeleteSetlist = { id ->
+                                viewModel.permanentDeleteSetlist(id)
                             },
                             onEmptyTrash = {
                                 viewModel.emptyTrash()

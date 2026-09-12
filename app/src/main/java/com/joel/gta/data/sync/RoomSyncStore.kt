@@ -1,4 +1,4 @@
-﻿package com.joel.gta.data.sync
+package com.joel.gta.data.sync
 
 import androidx.room.withTransaction
 import com.joel.gta.BuildConfig
@@ -27,7 +27,7 @@ class RoomSyncStore(private val db: GtaDatabase) {
             put("tags", s.tags); put("isFavorite", s.isFavorite); put("isDeleted", s.isDeleted)
             put("createdAt", s.createdAt); put("lastOpenedAt", s.lastOpenedAt)
         } }
-        val setlists = db.setlistDao().getAllSetlistsDirect().sortedBy { it.id }.map { s ->
+        val setlists = db.setlistDao().getActiveSetlistsDirect().sortedBy { it.id }.map { s ->
             val refs = db.setlistDao().getCrossRefsForSetlist(s.id).map { ref ->
                 val song = checkNotNull(byId[ref.songId]) { "Missing song ${ref.songId} in setlist ${s.name}; restore the song before syncing." }
                 JSONObject().put("id", song.syncId).put("title", song.title).put("artist", song.artist ?: "")

@@ -36,6 +36,18 @@ class SongRepository(private val database: GtaDatabase) {
             }
         }
 
+    val deletedSetlists: Flow<List<SetlistWithSongs>> = setlistDao.getDeletedSetlistsWithSongs()
+        .combine(setlistDao.getAllCrossRefs()) { setlists, crossRefs ->
+            val crossRefMap = crossRefs.groupBy { it.setlistId }
+            setlists.map { setlistWithSongs ->
+                val refs = crossRefMap[setlistWithSongs.setlist.id] ?: emptyList()
+                val songMap = setlistWithSongs.songs.associateBy { it.id }
+                val sortedSongs = refs.mapNotNull { songMap[it.songId] }
+                val remainingSongs = setlistWithSongs.songs.filter { it.id !in sortedSongs.map { s -> s.id } }
+                setlistWithSongs.copy(songs = sortedSongs + remainingSongs)
+            }
+        }
+
     suspend fun getSongById(id: Long): SongEntity? = withContext(Dispatchers.IO) {
         songDao.getSongById(id)
     }
@@ -167,8 +179,33 @@ class SongRepository(private val database: GtaDatabase) {
         setlistDao.removeSongFromSetlist(setlistId, songId)
     }
 
+    suspend fun renameSetlist(id: Long, newName: String) = withContext(Dispatchers.IO) {
+        setlistDao.renameSetlist(id, newName.trim())
+    }
+
     suspend fun deleteSetlist(setlist: SetlistEntity) = withContext(Dispatchers.IO) {
-        setlistDao.deleteSetlist(setlist)
+        setlistDao.softDeleteSetlist(setlist.id)
+    }
+
+    suspend fun softDeleteSetlist(id: Long) = withContext(Dispatchers.IO) {
+        setlistDao.softDeleteSetlist(id)
+    }
+
+    suspend fun restoreSetlist(id: Long) = withContext(Dispatchers.IO) {
+        setlistDao.restoreSetlist(id)
+    }
+
+    suspend fun permanentDeleteSetlist(id: Long) = withContext(Dispatchers.IO) {
+        setlistDao.deleteSetlistById(id)
+        setlistDao.clearSongsFromSetlist(id)
+    }
+
+    suspend fun emptySetlistTrash() = withContext(Dispatchers.IO) {
+        val deleted = setlistDao.getDeletedSetlistsDirect()
+        deleted.forEach { sl ->
+            setlistDao.clearSongsFromSetlist(sl.id)
+        }
+        setlistDao.purgeDeletedSetlists()
     }
 
     suspend fun createBackupPayload(appVersion: String): String = withContext(Dispatchers.IO) {

@@ -110,8 +110,12 @@ fun HomeScreen(
     onPushSetlistToMembers: () -> Unit = {},
     onPushSpecificSetlistToMembers: (SetlistWithSongs) -> Unit = {},
     deletedSongs: List<SongEntity> = emptyList(),
+    deletedSetlists: List<SetlistWithSongs> = emptyList(),
     onRestoreSong: (Long) -> Unit = {},
     onPermanentDeleteSong: (Long) -> Unit = {},
+    onRenameSetlist: (Long, String) -> Unit = { _, _ -> },
+    onRestoreSetlist: (Long) -> Unit = {},
+    onPermanentDeleteSetlist: (Long) -> Unit = {},
     onEmptyTrash: () -> Unit = {},
     onExportBackupShare: () -> Unit = {},
     onExportBackupSaf: (Uri) -> Unit = {},
@@ -1440,6 +1444,9 @@ fun HomeScreen(
                                         onDeleteSetlist = {
                                             onDeleteSetlist(setlistWithSongs.setlist)
                                         },
+                                        onRenameSetlist = { newName ->
+                                            onRenameSetlist(setlistWithSongs.setlist.id, newName)
+                                        },
                                         onShareDirect = {
                                             onExportSetlistShare(setlistWithSongs)
                                         },
@@ -1474,8 +1481,11 @@ fun HomeScreen(
                 HomeTab.TRASH -> {
                     TrashTabContent(
                         deletedSongs = deletedSongs,
+                        deletedSetlists = deletedSetlists,
                         onRestoreSong = onRestoreSong,
                         onPermanentDeleteSong = onPermanentDeleteSong,
+                        onRestoreSetlist = onRestoreSetlist,
+                        onPermanentDeleteSetlist = onPermanentDeleteSetlist,
                         onEmptyTrash = onEmptyTrash,
                         scrollState = trashListState
                     )
@@ -2606,12 +2616,16 @@ private fun SetlistCard(
     onMoveSong: (Long, Boolean) -> Unit,
     onRemoveSong: (Long) -> Unit,
     onDeleteSetlist: () -> Unit,
+    onRenameSetlist: (String) -> Unit = {},
     onShareDirect: () -> Unit = {},
     onExportSaf: () -> Unit = {},
     onPushToMembers: () -> Unit = {}
 ) {
     val customColors = LocalGtaColors.current
     var showExportMenu by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameNameText by remember(setlistWithSongs.setlist.name) { mutableStateOf(setlistWithSongs.setlist.name) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2722,6 +2736,21 @@ private fun SetlistCard(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("Rename Setlist", color = customColors.textPrimary) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    tint = customColors.chordAccent
+                                )
+                            },
+                            onClick = {
+                                showExportMenu = false
+                                renameNameText = setlistWithSongs.setlist.name
+                                showRenameDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Export to Local (.json)", color = customColors.textPrimary) },
                             leadingIcon = {
                                 Icon(
@@ -2746,7 +2775,7 @@ private fun SetlistCard(
                     )
                 }
 
-                IconButton(onClick = onDeleteSetlist) {
+                IconButton(onClick = { showDeleteConfirmDialog = true }) {
                     Icon(
                         imageVector = Icons.Default.DeleteOutline,
                         contentDescription = "Delete Setlist",
@@ -2945,6 +2974,93 @@ private fun SetlistCard(
             }
         }
     }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = {
+                Text(
+                    text = "Rename Setlist",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = renameNameText,
+                    onValueChange = { renameNameText = it },
+                    label = { Text("Setlist Name") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = customColors.chordAccent,
+                        focusedLabelColor = customColors.chordAccent,
+                        cursorColor = customColors.chordAccent
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (renameNameText.isNotBlank()) {
+                            onRenameSetlist(renameNameText.trim())
+                            showRenameDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = customColors.chordAccent,
+                        contentColor = Color.Black
+                    ),
+                    enabled = renameNameText.isNotBlank()
+                ) {
+                    Text("Rename", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            }
+        )
+    }
+
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Move Setlist to Trash?",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Setlist \"${setlistWithSongs.setlist.name}\" will be moved to the Trash. You can restore it anytime from the Trash tab.",
+                    color = customColors.textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteSetlist()
+                        showDeleteConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFD32F2F),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Move to Trash", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -3046,8 +3162,11 @@ private fun SpecPill(icon: ImageVector, label: String) {
 @Composable
 private fun TrashTabContent(
     deletedSongs: List<SongEntity>,
+    deletedSetlists: List<SetlistWithSongs> = emptyList(),
     onRestoreSong: (Long) -> Unit,
     onPermanentDeleteSong: (Long) -> Unit,
+    onRestoreSetlist: (Long) -> Unit = {},
+    onPermanentDeleteSetlist: (Long) -> Unit = {},
     onEmptyTrash: () -> Unit,
     scrollState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier
@@ -3055,13 +3174,16 @@ private fun TrashTabContent(
     val customColors = LocalGtaColors.current
     var showEmptyTrashConfirmDialog by remember { mutableStateOf(false) }
     var songToPermanentDelete by remember { mutableStateOf<SongEntity?>(null) }
+    var setlistToPermanentDelete by remember { mutableStateOf<SetlistWithSongs?>(null) }
+
+    val totalItems = deletedSongs.size + deletedSetlists.size
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp, vertical = 16.dp)
     ) {
-        if (deletedSongs.isEmpty()) {
+        if (totalItems == 0) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -3095,7 +3217,7 @@ private fun TrashTabContent(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Songs deleted from your Songbook will appear here.\nYou can restore them anytime or delete them permanently.",
+                        text = "Songs and setlists deleted from your library will appear here.\nYou can restore them anytime or delete them permanently.",
                         style = MaterialTheme.typography.bodySmall,
                         color = customColors.textSecondary,
                         textAlign = TextAlign.Center
@@ -3118,8 +3240,16 @@ private fun TrashTabContent(
                         fontWeight = FontWeight.Bold,
                         color = customColors.textPrimary
                     )
+                    val countDescription = when {
+                        deletedSongs.isNotEmpty() && deletedSetlists.isNotEmpty() ->
+                            "${deletedSongs.size} ${if (deletedSongs.size == 1) "song" else "songs"} • ${deletedSetlists.size} ${if (deletedSetlists.size == 1) "setlist" else "setlists"}"
+                        deletedSetlists.isNotEmpty() ->
+                            "${deletedSetlists.size} deleted ${if (deletedSetlists.size == 1) "setlist" else "setlists"}"
+                        else ->
+                            "${deletedSongs.size} deleted ${if (deletedSongs.size == 1) "song" else "songs"}"
+                    }
                     Text(
-                        text = "${deletedSongs.size} deleted ${if (deletedSongs.size == 1) "song" else "songs"}",
+                        text = countDescription,
                         style = MaterialTheme.typography.bodySmall,
                         color = customColors.textSecondary
                     )
@@ -3153,75 +3283,178 @@ private fun TrashTabContent(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(deletedSongs, key = { it.id }) { entity ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                if (deletedSetlists.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "DELETED SETLISTS",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = customColors.chordAccent,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                        )
+                    }
+                    items(deletedSetlists, key = { "setlist_${it.setlist.id}" }) { slWithSongs ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = entity.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = customColors.textPrimary
-                                )
-                                val subtitle = listOfNotNull(
-                                    entity.artist?.takeIf { it.isNotBlank() },
-                                    entity.key?.let { "Key: $it" }
-                                ).joinToString(" • ")
-
-                                if (subtitle.isNotBlank()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(customColors.chordAccent.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                        contentDescription = null,
+                                        tint = customColors.chordAccent,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = subtitle,
+                                        text = slWithSongs.setlist.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = customColors.textPrimary
+                                    )
+                                    Text(
+                                        text = "${slWithSongs.songs.size} tracks",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = customColors.textSecondary
                                     )
                                 }
-                            }
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                // Restore Button
-                                FilledTonalButton(
-                                    onClick = { onRestoreSong(entity.id) },
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = customColors.chordAccent.copy(alpha = 0.2f),
-                                        contentColor = customColors.chordAccent
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Restore,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    FilledTonalButton(
+                                        onClick = { onRestoreSetlist(slWithSongs.setlist.id) },
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = customColors.chordAccent.copy(alpha = 0.2f),
+                                            contentColor = customColors.chordAccent
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Restore,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Restore",
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    }
+
+                                    IconButton(onClick = { setlistToPermanentDelete = slWithSongs }) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteForever,
+                                            contentDescription = "Delete Setlist Permanently",
+                                            tint = Color(0xFFEF5350),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (deletedSongs.isNotEmpty()) {
+                    if (deletedSetlists.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "DELETED SONGS",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = customColors.chordAccent,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                            )
+                        }
+                    }
+                    items(deletedSongs, key = { "song_${it.id}" }) { entity ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = customColors.surfaceBackground),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customColors.divider)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Restore",
-                                        fontWeight = FontWeight.SemiBold,
-                                        style = MaterialTheme.typography.labelMedium
+                                        text = entity.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = customColors.textPrimary
                                     )
+                                    val subtitle = listOfNotNull(
+                                        entity.artist?.takeIf { it.isNotBlank() },
+                                        entity.key?.let { "Key: $it" }
+                                    ).joinToString(" • ")
+
+                                    if (subtitle.isNotBlank()) {
+                                        Text(
+                                            text = subtitle,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = customColors.textSecondary
+                                        )
+                                    }
                                 }
 
-                                // Delete Forever Button
-                                IconButton(onClick = { songToPermanentDelete = entity }) {
-                                    Icon(
-                                        imageVector = Icons.Default.DeleteForever,
-                                        contentDescription = "Delete Permanently",
-                                        tint = Color(0xFFEF5350),
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    FilledTonalButton(
+                                        onClick = { onRestoreSong(entity.id) },
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = customColors.chordAccent.copy(alpha = 0.2f),
+                                            contentColor = customColors.chordAccent
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Restore,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Restore",
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    }
+
+                                    IconButton(onClick = { songToPermanentDelete = entity }) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteForever,
+                                            contentDescription = "Delete Permanently",
+                                            tint = Color(0xFFEF5350),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -3244,7 +3477,7 @@ private fun TrashTabContent(
             },
             text = {
                 Text(
-                    text = "This will permanently delete all ${deletedSongs.size} songs in the Trash. This action cannot be undone.",
+                    text = "This will permanently delete all $totalItems items in the Trash. This action cannot be undone.",
                     color = customColors.textSecondary
                 )
             },
@@ -3303,6 +3536,45 @@ private fun TrashTabContent(
             },
             dismissButton = {
                 TextButton(onClick = { songToPermanentDelete = null }) {
+                    Text("Cancel", color = customColors.textSecondary)
+                }
+            }
+        )
+    }
+
+    // Confirmation dialog for single setlist permanent delete
+    setlistToPermanentDelete?.let { sl ->
+        AlertDialog(
+            onDismissRequest = { setlistToPermanentDelete = null },
+            title = {
+                Text(
+                    text = "Delete Setlist Permanently?",
+                    fontWeight = FontWeight.Bold,
+                    color = customColors.textPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to permanently delete setlist \"${sl.setlist.name}\"? This cannot be undone.",
+                    color = customColors.textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onPermanentDeleteSetlist(sl.setlist.id)
+                        setlistToPermanentDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFD32F2F),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Delete Permanently", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { setlistToPermanentDelete = null }) {
                     Text("Cancel", color = customColors.textSecondary)
                 }
             }

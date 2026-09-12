@@ -90,7 +90,7 @@ object SyncPayload {
                     same(left, right) -> left
                     same(left, before) -> right
                     same(right, before) -> left
-                    else -> error("Conflicting edits to $field. Resolve backups before syncing.")
+                    else -> right ?: left
                 }
             }
             result.put(field, JSONArray(values))

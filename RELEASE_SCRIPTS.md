@@ -75,3 +75,58 @@ Without `--push`, existing local-only behavior is unchanged. Dry runs never cont
 origin or modify refs. Production promotion remains local-only.
 Android dev tags trigger the APK preview release; Web dev tags trigger Web tests,
 build, and an artifact upload, without deploying to Cloudflare.
+
+---
+
+## Dedicated QoL Release & Deployment Tools
+
+### 1. Git Push & Release Sync Tool (`push_release.py`)
+
+Atomically pushes dev release tags and the `dev` branch to `origin` without hardcoding versions:
+
+```text
+# Preview push commands without mutating Git or contacting remote
+python push_release.py web --dry-run
+python push_release.py app --dry-run
+python push_release.py all --dry-run
+
+# Execute atomic release push to origin
+python push_release.py web
+python push_release.py app
+python push_release.py all
+```
+
+- Dynamically resolves dev versions and tags from `release_web.py` and `release_android.py`.
+- Validates that the working tree and index are clean before pushing.
+- Creates annotated local tags (`web-v1.0.*-dev.*` / `app-v1.0.*-dev.*`) if not already present.
+- Executes `git push --atomic origin refs/heads/dev:refs/heads/dev refs/tags/<tag>:refs/tags/<tag>`.
+
+### 2. Automated Production Deployment Tool (`deploy.py`, `deploy_web.py`, `deploy_app.py`)
+
+Handles safe, conflict-free production deployments:
+
+```text
+# Web Production Deployment
+python deploy.py web --dry-run     # or: python deploy_web.py --dry-run
+python deploy.py web               # or: python deploy_web.py
+
+# Android Production Deployment
+python deploy.py app --dry-run     # or: python deploy_app.py --dry-run
+python deploy.py app               # or: python deploy_app.py
+```
+
+**Web Deployment Workflow:**
+1. Detects the latest production release tag (e.g. `web-v1.1.83`).
+2. Validates working tree safety (aborts on dirty files).
+3. Safely switches to `main`.
+4. Pulls latest `origin main`.
+5. Checks out the tracked `web/` directory from the production tag snapshot (`git checkout <tag> -- web/`) to eliminate merge conflicts.
+6. Commits: `chore(release): deploy <tag> to prod`.
+7. Pushes `main` and the production tag to `origin`.
+8. Automatically returns the developer to their initial branch (`dev`).
+
+**Android Deployment Workflow:**
+1. Identifies the latest `app-v1.1.*` production release tag (e.g. `app-v1.1.72`).
+2. Validates working tree cleanliness.
+3. Pushes the production tag to `origin` (`git push origin refs/tags/<tag>:refs/tags/<tag>`), triggering the GitHub Actions build and release workflow (`release.yml`).
+
