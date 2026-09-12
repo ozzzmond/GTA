@@ -104,6 +104,7 @@ class BackupManagerTest {
             crossRefs.clear()
         }
         override suspend fun getActiveSetlistsDirect(): List<SetlistEntity> = setlists.filter { !it.isDeleted }
+        override suspend fun getSetlistById(id: Long): SetlistEntity? = setlists.find { it.id == id }
         override fun getDeletedSetlistsWithSongs(): Flow<List<SetlistWithSongs>> = emptyFlow()
         override suspend fun getDeletedSetlistsDirect(): List<SetlistEntity> = setlists.filter { it.isDeleted }
         override suspend fun renameSetlist(id: Long, newName: String) {

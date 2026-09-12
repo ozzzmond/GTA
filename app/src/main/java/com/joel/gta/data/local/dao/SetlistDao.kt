@@ -25,6 +25,9 @@ interface SetlistDao {
     @Query("SELECT * FROM setlists")
     suspend fun getAllSetlistsDirect(): List<SetlistEntity>
 
+    @Query("SELECT * FROM setlists WHERE id = :id LIMIT 1")
+    suspend fun getSetlistById(id: Long): SetlistEntity?
+
     @Transaction
     @Query("SELECT * FROM setlists WHERE isDeleted = 1 ORDER BY createdAt DESC")
     fun getDeletedSetlistsWithSongs(): Flow<List<SetlistWithSongs>>

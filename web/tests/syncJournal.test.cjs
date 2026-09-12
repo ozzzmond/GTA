@@ -61,7 +61,7 @@ test('archive prunes older recovery snapshots and tolerates quota errors gracefu
   const recoveryKeys = [...store.values.keys()].filter(k=>k.startsWith('gtar_sync_recovery:account:'))
   assert.ok(recoveryKeys.length <= 2, `Expected at most 2 recovery snapshots, got ${recoveryKeys.length}`)
 
-  // Quota exception during archive does not throw or abort sync
+  // Storage failure during archive stops sync safely (throws) and preserves the last durable copy
   let throwsOnSet = false
   const quotaStore = {
     ...store,
@@ -72,6 +72,9 @@ test('archive prunes older recovery snapshots and tolerates quota errors gracefu
   }
   const jQuota = openSyncJournal('account',base,quotaStore)
   throwsOnSet = true
-  assert.doesNotThrow(() => jQuota.archive(base))
+  assert.throws(() => jQuota.archive(base), /Unable to persist recovery snapshot/)
+  // Verify that the existing durable recovery copy is still retained
+  const retainedKeys = [...store.values.keys()].filter(k=>k.startsWith('gtar_sync_recovery:account:'))
+  assert.ok(retainedKeys.length >= 1, 'Last durable recovery copy must be kept')
 })
 

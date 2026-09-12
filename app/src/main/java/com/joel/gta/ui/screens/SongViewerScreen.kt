@@ -165,6 +165,7 @@ fun SongViewerScreen(
     }
 
     val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
     val isTabletOrLandscape = configuration.screenWidthDp >= 600 ||
             configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     var columnCount by remember(isTabletOrLandscape) { mutableIntStateOf(1) }
@@ -398,7 +399,7 @@ fun SongViewerScreen(
                 enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
                 exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it }
             ) {
-                if (!isTabletOrLandscape) {
+                if (isPortrait) {
                     Surface(
                         color = customColors.surfaceBackground,
                         shadowElevation = 3.dp,
@@ -707,39 +708,72 @@ fun SongViewerScreen(
 
                             HorizontalDivider(color = customColors.divider.copy(alpha = 0.6f), thickness = 0.5.dp)
 
-                            // Dedicated Song Title Header Space: Prominently displayed below toolbar
+                            // Dedicated Song Title Header Space: Persistently pinned directly below stage action toolbar
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 5.dp)
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
                                 val effectiveKey = song.key ?: originalKey
-                                val titleText = if (!effectiveKey.isNullOrBlank()) "${song.title} - $effectiveKey" else song.title
-                                Text(
-                                    text = titleText,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = customColors.textPrimary,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
-                                val subtitleParts = listOfNotNull(
-                                    song.artist?.takeIf { it.isNotBlank() },
-                                    if (isInSetlistMode) setlistProgressText else null
-                                )
-                                val subtitle = if (subtitleParts.isNotEmpty()) {
-                                    subtitleParts.joinToString(" | ")
-                                } else {
-                                    fileName ?: "GTAR Viewer"
+                                val effectiveCapo = if (currentCapo.isNotBlank() && !currentCapo.equals("No Capo", ignoreCase = true) && !currentCapo.equals("None", ignoreCase = true)) currentCapo else song.capo
+                                val hasCapo = !effectiveCapo.isNullOrBlank() && !effectiveCapo.equals("No Capo", ignoreCase = true) && !effectiveCapo.equals("None", ignoreCase = true)
+                                val hasKey = !effectiveKey.isNullOrBlank()
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    ) {
+                                        Text(
+                                            text = song.title,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = customColors.textPrimary,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                        val subtitleParts = listOfNotNull(
+                                            song.artist?.takeIf { it.isNotBlank() },
+                                            if (isInSetlistMode) setlistProgressText else null
+                                        )
+                                        val subtitle = if (subtitleParts.isNotEmpty()) {
+                                            subtitleParts.joinToString(" | ")
+                                        } else {
+                                            fileName ?: "GTAR Viewer"
+                                        }
+                                        Text(
+                                            text = subtitle,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = if (isInSetlistMode) FontWeight.SemiBold else FontWeight.Normal,
+                                            color = if (isInSetlistMode) customColors.chordAccent else customColors.textSecondary,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    if (hasKey || hasCapo) {
+                                        Row(
+                                            modifier = Modifier.padding(start = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (hasKey) {
+                                                MetaBadge(label = "KEY: $effectiveKey")
+                                            }
+                                            if (hasCapo) {
+                                                val capoLabel = if (effectiveCapo!!.startsWith("Capo", ignoreCase = true) || effectiveCapo.startsWith("Fret", ignoreCase = true)) {
+                                                    effectiveCapo.uppercase()
+                                                } else {
+                                                    "CAPO: $effectiveCapo"
+                                                }
+                                                MetaBadge(label = capoLabel)
+                                            }
+                                        }
+                                    }
                                 }
-                                Text(
-                                    text = subtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = if (isInSetlistMode) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (isInSetlistMode) customColors.chordAccent else customColors.textSecondary,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
                             }
                         }
                     }
@@ -752,7 +786,8 @@ fun SongViewerScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = customColors.textPrimary,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             val subtitle = if (isInSetlistMode && setlistProgressText != null) {
                                 setlistProgressText
@@ -764,7 +799,8 @@ fun SongViewerScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = if (isInSetlistMode) FontWeight.SemiBold else FontWeight.Normal,
                                 color = if (isInSetlistMode) customColors.chordAccent else customColors.textSecondary,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                     },

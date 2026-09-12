@@ -46,13 +46,13 @@ export function openSyncJournal(account: string, local: SyncLibrary, storage: St
       try {
         storage.setItem(recovery, JSON.stringify({ local, remote, journal }))
       } catch (e) {
-        // If quota exceeded, aggressively purge older recovery snapshots and try once more
-        console.warn('Initial recovery snapshot save failed. Purging older snapshots to free quota.', e)
-        pruneRecoverySnapshots(storage, account, 0)
+        // If quota exceeded, prune down to 1 (preserving the last durable copy) and try once more
+        console.warn('Initial recovery snapshot save failed. Purging older snapshots down to last durable copy.', e)
+        pruneRecoverySnapshots(storage, account, 1)
         try {
           storage.setItem(recovery, JSON.stringify({ local, remote, journal }))
         } catch (retryErr) {
-          console.warn('Unable to persist recovery snapshot to storage (quota exceeded). Proceeding with sync.', retryErr)
+          throw new Error('Unable to persist recovery snapshot to storage (quota exceeded). Sync stopped safely.', { cause: retryErr })
         }
       }
     },
@@ -62,8 +62,8 @@ export function openSyncJournal(account: string, local: SyncLibrary, storage: St
       try {
         storage.setItem(key(account), JSON.stringify(journal))
       } catch {
-        // Free recovery snapshots if quota is hit when updating the journal
-        pruneRecoverySnapshots(storage, account, 0)
+        // Free older recovery snapshots down to 1 (preserving last durable copy) if quota is hit
+        pruneRecoverySnapshots(storage, account, 1)
         storage.setItem(key(account), JSON.stringify(journal))
       }
     },
@@ -74,7 +74,7 @@ export function openSyncJournal(account: string, local: SyncLibrary, storage: St
       try {
         storage.setItem(key(account), JSON.stringify(journal))
       } catch {
-        pruneRecoverySnapshots(storage, account, 0)
+        pruneRecoverySnapshots(storage, account, 1)
         storage.setItem(key(account), JSON.stringify(journal))
       }
     },
@@ -84,7 +84,7 @@ export function openSyncJournal(account: string, local: SyncLibrary, storage: St
       try {
         storage.setItem(key(account), JSON.stringify(journal))
       } catch {
-        pruneRecoverySnapshots(storage, account, 0)
+        pruneRecoverySnapshots(storage, account, 1)
         storage.setItem(key(account), JSON.stringify(journal))
       }
     },

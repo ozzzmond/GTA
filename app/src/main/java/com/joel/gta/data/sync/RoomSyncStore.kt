@@ -58,7 +58,7 @@ class RoomSyncStore(private val db: GtaDatabase) {
         val incomingIds = mutableSetOf<String>()
         for (s in SyncPayload.objects(payload.getJSONArray("setlists"))) {
             val syncId = SyncPayload.id(s); incomingIds.add(syncId)
-            val entity = SetlistEntity(id = existingSetlists[syncId]?.id ?: 0, syncId = syncId, name = s.getString("name"), createdAt = s.optLong("createdAt"))
+            val entity = SetlistEntity(id = existingSetlists[syncId]?.id ?: 0, syncId = syncId, name = s.getString("name"), createdAt = s.optLong("createdAt"), isDeleted = s.optBoolean("isDeleted", false))
             val localId = if (entity.id == 0L) db.setlistDao().insertSetlist(entity) else {
                 if (existingSetlists[syncId] != entity) db.setlistDao().updateSetlist(entity); entity.id
             }
@@ -68,7 +68,14 @@ class RoomSyncStore(private val db: GtaDatabase) {
                 refs.forEach { db.setlistDao().addSongToSetlist(it) }
             }
         }
-        existingSetlists.filterKeys { it !in incomingIds }.values.forEach { db.setlistDao().clearSongsFromSetlist(it.id); db.setlistDao().deleteSetlist(it) }
+        // Safe sync trash semantics: transport omission must NOT authorize permanent local deletion of soft-deleted items.
+        // Trashed rows (isDeleted = true) and their memberships survive sync snapshots and remain restorable from Android trash.
+        // Reserve permanent deletion strictly for explicit user-initiated purge/permanent-delete actions.
+        existingSetlists.filterKeys { it !in incomingIds }.values.forEach {
+            if (!it.isDeleted) {
+                db.setlistDao().softDeleteSetlist(it.id)
+            }
+        }
         existingSongs.filterKeys { it !in songIds }.values.forEach { db.songDao().deleteSong(it) }
         read()
     }

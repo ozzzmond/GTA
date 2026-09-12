@@ -4,6 +4,9 @@ import androidx.room.Room
 import org.robolectric.RuntimeEnvironment
 import com.joel.gta.data.local.GtaDatabase
 import com.joel.gta.data.local.entity.SongEntity
+import com.joel.gta.data.local.entity.SetlistEntity
+import com.joel.gta.data.local.entity.SetlistSongCrossRef
+import com.joel.gta.data.repository.SongRepository
 import com.joel.gta.data.sync.RoomSyncStore
 import com.joel.gta.data.sync.SyncPayload
 import kotlinx.coroutines.runBlocking
@@ -29,7 +32,7 @@ class DriveSyncTest {
             val incoming = web()
             val restored = store.apply(store.snapshot(), incoming)
             assertTrue(SyncPayload.sameLibrary(incoming, restored))
-            java.io.File("build/reports/sync-roundtrip.json").apply { parentFile.mkdirs(); writeText(restored.toString()) }
+            java.io.File("build/reports/sync-roundtrip.json").apply { parentFile?.mkdirs(); writeText(restored.toString()) }
             assertTrue(db.songDao().getAllSongsDirect().single().isDeleted)
             val firstId = db.songDao().getAllSongsDirect().single().id
             store.apply(restored, web("Edited"))
@@ -151,4 +154,64 @@ class DriveSyncTest {
         assertEquals(1, repaired.getJSONArray("setlists").getJSONObject(0).getJSONArray("songs").length())
     }
 
+    @Test fun preserveAndroidSetlistTrashThroughSyncAndRestore() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), GtaDatabase::class.java).build()
+        try {
+            val store = RoomSyncStore(db)
+            val repo = SongRepository(db)
+
+            // Seed active song and two setlists: one active, one to be trashed
+            val song1Id = db.songDao().insertSong(SongEntity(syncId = "song-1", title = "First Song", rawContent = "[C]Hello"))
+            val song2Id = db.songDao().insertSong(SongEntity(syncId = "song-2", title = "Second Song", rawContent = "[G]World"))
+
+            val activeListId = db.setlistDao().insertSetlist(SetlistEntity(syncId = "setlist-active", name = "Active Gig", isDeleted = false))
+            db.setlistDao().addSongToSetlist(SetlistSongCrossRef(activeListId, song1Id, 0))
+
+            val trashListId = db.setlistDao().insertSetlist(SetlistEntity(syncId = "setlist-trash", name = "Trashed Gig", isDeleted = false))
+            db.setlistDao().addSongToSetlist(SetlistSongCrossRef(trashListId, song2Id, 0))
+
+            // Soft-delete the second setlist locally
+            repo.softDeleteSetlist(trashListId)
+            assertTrue(db.setlistDao().getSetlistById(trashListId)!!.isDeleted)
+            assertEquals(1, db.setlistDao().getCrossRefsForSetlist(trashListId).size)
+
+            // Verify snapshot only exports active setlists
+            val snapshot = store.snapshot()
+            val exportedSetlists = snapshot.getJSONArray("setlists")
+            assertEquals(1, exportedSetlists.length())
+            assertEquals("setlist-active", exportedSetlists.getJSONObject(0).getString("id"))
+
+            // Apply an unchanged active snapshot: Trashed setlist must NOT be permanently deleted!
+            val applied = store.apply(snapshot, snapshot)
+            val trashedAfterSync = db.setlistDao().getSetlistById(trashListId)
+            assertNotNull("Soft-deleted setlist must survive active-only sync snapshots", trashedAfterSync)
+            assertTrue(trashedAfterSync!!.isDeleted)
+            val crossRefsAfterSync = db.setlistDao().getCrossRefsForSetlist(trashListId)
+            assertEquals("Song memberships of trashed setlists must survive sync", 1, crossRefsAfterSync.size)
+            assertEquals(song2Id, crossRefsAfterSync[0].songId)
+
+            // Remote edit to active setlist applies cleanly while trash remains intact
+            val remotePayload = JSONObject(snapshot.toString())
+            remotePayload.getJSONArray("setlists").getJSONObject(0).put("name", "Renamed Active Gig")
+            val updated = store.apply(applied, remotePayload)
+            assertEquals("Renamed Active Gig", db.setlistDao().getSetlistById(activeListId)!!.name)
+            assertNotNull(db.setlistDao().getSetlistById(trashListId))
+            assertTrue(db.setlistDao().getSetlistById(trashListId)!!.isDeleted)
+            assertEquals(1, db.setlistDao().getCrossRefsForSetlist(trashListId).size)
+
+            // Restore from trash
+            repo.restoreSetlist(trashListId)
+            assertFalse(db.setlistDao().getSetlistById(trashListId)!!.isDeleted)
+            assertEquals(1, db.setlistDao().getCrossRefsForSetlist(trashListId).size)
+
+            // Trashing again and explicit purge permanently deletes it
+            repo.softDeleteSetlist(trashListId)
+            assertTrue(db.setlistDao().getSetlistById(trashListId)!!.isDeleted)
+            repo.emptySetlistTrash()
+            assertNull("Explicit purge must permanently delete trashed setlists", db.setlistDao().getSetlistById(trashListId))
+            assertEquals(0, db.setlistDao().getCrossRefsForSetlist(trashListId).size)
+            // Active setlist still exists
+            assertNotNull(db.setlistDao().getSetlistById(activeListId))
+        } finally { db.close() }
+    }
 }

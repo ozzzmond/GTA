@@ -62,6 +62,43 @@ def find_latest_prod_tag(platform: str) -> str:
     return matched[-1][1]
 
 
+def validate_prod_tag(tag: str, platform: str) -> str:
+    """Strictly validate that tag matches target production format and exists locally."""
+    expected_platform = "app" if platform in ("app", "android") else "web"
+    pattern = rf"^{expected_platform}-v1\.1\.(\d+)$"
+    if not re.fullmatch(pattern, tag):
+        raise ValueError(
+            f"Invalid production release tag '{tag}' for platform '{platform}'. "
+            f"Must strictly match format '{expected_platform}-v1.1.<patch>' (dev tags and cross-platform tags are rejected)."
+        )
+    local_tags = git("tag", "-l", tag).split()
+    if tag not in local_tags:
+        raise ValueError(f"Production release tag '{tag}' does not exist locally.")
+    return tag
+
+
+def verify_remote_tag_peeled_sha(tag: str, remote: str) -> bool:
+    """If tag exists on remote, verify peeled commit SHA matches local commit SHA."""
+    ls_out = git("ls-remote", "--tags", remote, f"refs/tags/{tag}*", check=False)
+    if not ls_out.strip():
+        return False
+    remote_shas = {}
+    for line in ls_out.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2:
+            remote_shas[parts[1]] = parts[0]
+    remote_commit_sha = remote_shas.get(f"refs/tags/{tag}^{{}}") or remote_shas.get(f"refs/tags/{tag}")
+    if not remote_commit_sha:
+        return False
+    local_commit_sha = git("rev-parse", f"refs/tags/{tag}^{{commit}}")
+    if local_commit_sha != remote_commit_sha:
+        raise ValueError(
+            f"Remote tag '{tag}' points to commit {remote_commit_sha}, but local tag points to {local_commit_sha}. "
+            "Aborting deployment to avoid overwriting or divergent release history."
+        )
+    return True
+
+
 def deploy_web(tag: str = None, remote: str = "origin", dry_run: bool = False):
     print("\n=======================================================")
     print("           GTAR Web Production Deployment              ")
@@ -69,10 +106,7 @@ def deploy_web(tag: str = None, remote: str = "origin", dry_run: bool = False):
 
     if not tag:
         tag = find_latest_prod_tag("web")
-
-    local_tags = git("tag", "-l", tag).split()
-    if tag not in local_tags:
-        raise ValueError(f"Production release tag '{tag}' does not exist locally.")
+    tag = validate_prod_tag(tag, "web")
 
     initial_branch = git("branch", "--show-current")
     if not initial_branch:
@@ -83,8 +117,8 @@ def deploy_web(tag: str = None, remote: str = "origin", dry_run: bool = False):
     print(f"[TARGET] Return working branch:   {initial_branch}")
     print(f"[TARGET] Remote repository:       {remote}")
 
-    remote_tag_exists = bool(git("ls-remote", "--tags", remote, f"refs/tags/{tag}").strip())
-    print(f"[STATUS] Tag on remote {remote}:   {'YES' if remote_tag_exists else 'NO (will be pushed)'}")
+    remote_tag_exists = verify_remote_tag_peeled_sha(tag, remote)
+    print(f"[STATUS] Tag on remote {remote}:   {'YES (verified peeled SHA)' if remote_tag_exists else 'NO (will be pushed)'}")
 
     if dry_run:
         print("\n[DRY RUN] Web Production Deployment Plan:")
@@ -92,15 +126,16 @@ def deploy_web(tag: str = None, remote: str = "origin", dry_run: bool = False):
         print(f"  2. Record current branch: '{initial_branch}'")
         print(f"  3. Switch to 'main': git checkout main")
         print(f"  4. Sync latest from remote: git pull --ff-only {remote} main")
-        print(f"  5. Checkout tracked files from tag: git checkout {tag} -- web/")
-        print(f"  6. Stage changes: git add -- web/")
+        print(f"  5. Synchronize complete tracked tree: git rm -rf --ignore-unmatch -- web/ && git checkout {tag} -- web/")
+        print(f"  6. Stage changes: git add -A -- web/")
         print(f"  7. Create standardized commit: git commit -m 'chore(release): deploy {tag} to prod'")
-        print(f"  8. Push 'main' to remote: git push {remote} main")
+        print(f"  8. Verify Git object tree equality: HEAD:web == {tag}:web")
+        print(f"  9. Push 'main' to remote: git push {remote} main")
         if not remote_tag_exists:
-            print(f"  9. Push production tag: git push {remote} refs/tags/{tag}:refs/tags/{tag}")
+            print(f"  10. Push production tag: git push {remote} refs/tags/{tag}:refs/tags/{tag}")
         else:
-            print(f"  9. Production tag {tag} already on {remote}; push not needed.")
-        print(f"  10. Restore initial branch: git checkout {initial_branch}")
+            print(f"  10. Production tag {tag} already on {remote}; push not needed.")
+        print(f"  11. Restore initial branch: git checkout {initial_branch}")
         print("\n[DRY RUN] No changes were made to repository or remote.")
         return 0
 
@@ -109,23 +144,37 @@ def deploy_web(tag: str = None, remote: str = "origin", dry_run: bool = False):
 
     try:
         print(f"[DEPLOY] 2/6 Pulling latest 'main' from {remote}...")
-        try:
-            git("pull", "--ff-only", remote, "main")
-        except Exception as pull_err:
-            print(f"[WARN] Fast-forward pull skipped or already up to date: {pull_err}")
+        remote_main_exists = bool(git("ls-remote", "--heads", remote, "refs/heads/main", check=False).strip())
+        if remote_main_exists:
+            try:
+                git("pull", "--ff-only", remote, "main")
+            except Exception as pull_err:
+                raise ValueError(f"Failed to fast-forward pull 'main' from {remote}: {pull_err}")
+        else:
+            print(f"[INFO] Remote branch 'main' does not exist yet on {remote}; pull skipped.")
 
-        print(f"[DEPLOY] 3/6 Checking out tracked files from snapshot '{tag}'...")
+        print(f"[DEPLOY] 3/6 Synchronizing complete tracked tree from snapshot '{tag}'...")
+        git("rm", "-rf", "--ignore-unmatch", "--", "web/")
         git("checkout", tag, "--", "web/")
+        git("add", "-A", "--", "web/")
 
         status = git("status", "--porcelain", "--", "web/")
         if status.strip():
             print(f"[DEPLOY] 4/6 Staging and committing release snapshot...")
-            git("add", "--", "web/")
             commit_msg = f"chore(release): deploy {tag} to prod"
             git("commit", "-m", commit_msg)
             print(f"[DEPLOY] Created commit: {commit_msg}")
         else:
             print(f"[INFO] 4/6 'main' is already synchronized with '{tag}'. No commit needed.")
+
+        # Verify Git object tree equality
+        head_tree = git("rev-parse", "HEAD:web")
+        tag_tree = git("rev-parse", f"{tag}:web")
+        if head_tree != tag_tree:
+            raise ValueError(
+                f"Tree equality check failed! main:web ({head_tree}) does not match {tag}:web ({tag_tree})."
+            )
+        print(f"[DEPLOY] Git object tree equality verified: main:web == {tag}:web ({tag_tree})")
 
         print(f"[DEPLOY] 5/6 Pushing 'main' to {remote}...")
         git("push", remote, "main")
@@ -154,16 +203,13 @@ def deploy_app(tag: str = None, remote: str = "origin", dry_run: bool = False):
 
     if not tag:
         tag = find_latest_prod_tag("app")
-
-    local_tags = git("tag", "-l", tag).split()
-    if tag not in local_tags:
-        raise ValueError(f"Production release tag '{tag}' does not exist locally.")
+    tag = validate_prod_tag(tag, "app")
 
     print(f"[TARGET] Production release tag: {tag}")
     print(f"[TARGET] Remote repository:       {remote}")
 
-    remote_tag_exists = bool(git("ls-remote", "--tags", remote, f"refs/tags/{tag}").strip())
-    print(f"[STATUS] Tag on remote {remote}:   {'YES' if remote_tag_exists else 'NO (will be pushed)'}")
+    remote_tag_exists = verify_remote_tag_peeled_sha(tag, remote)
+    print(f"[STATUS] Tag on remote {remote}:   {'YES (verified peeled SHA)' if remote_tag_exists else 'NO (will be pushed)'}")
 
     if dry_run:
         print("\n[DRY RUN] Android Production Deployment Plan:")
