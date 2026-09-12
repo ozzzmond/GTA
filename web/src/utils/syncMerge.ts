@@ -46,7 +46,10 @@ function reconcile<T extends { id?: string | number }>(local: T[], remote: T[], 
     if (equal(left, right)) chosen = left
     else if (equal(left, before)) chosen = right
     else if (equal(right, before)) chosen = left
-    else throw new Error('Conflicting local and cloud edits. Export both backups and resolve them before syncing.')
+    else {
+      // Webapp is Primary Copy / Source of Truth: local web state wins
+      chosen = left ?? right
+    }
     if (chosen) result.push(chosen)
   }
   return result

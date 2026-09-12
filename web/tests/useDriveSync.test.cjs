@@ -103,8 +103,8 @@ test('adoptCloudLibrary forcefully replaces divergent device library with cloud 
  try{
   await act(async()=>root.render(React.createElement(AuthGate,null,React.createElement(Library))))
   await act(async()=>{await new Promise(r=>setTimeout(r,50))})
-  // Initial sync encounters conflict due to non-default unbaselined song
-  assert.match(controls.status,/Conflicting/)
+  // Initial sync automatically resolves with Web Local Wins as primary copy
+  assert.match(controls.status,/Synced with Google Drive/)
   // Call adoptCloudLibrary
   await act(async()=>await controls.adoptCloudLibrary())
   assert.match(controls.status,/Cloud library adopted successfully/)

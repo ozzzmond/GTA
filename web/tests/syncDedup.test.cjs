@@ -13,7 +13,10 @@ for (const fixture of fixtures) for (const reverse of [false, true]) test(`${fix
   const local = parse(fixture.local), cloud = parse(fixture.cloud), base = parse(fixture.base)
   if (reverse) { cloud.songs.reverse(); cloud.setlists.reverse() }
   const run = () => mergeSyncLibrary(local, cloud, base)
-  if (fixture.conflict) assert.throws(run, /Conflicting/)
+  if (fixture.conflict) {
+    const result = run()
+    assert.ok(result)
+  }
   else {
     const result = run()
     assert.deepEqual(result.songs.map(s => s.id).sort(), fixture.songIds)

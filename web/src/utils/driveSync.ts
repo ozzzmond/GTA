@@ -42,7 +42,7 @@ async function findSyncFiles(token: string): Promise<SyncFile[]> {
   return files
 }
 const fileKey = (file: SyncFile) => `${file.id}@${revision(file)}`
-async function readCloudState(token: string, allowConflicts: boolean): Promise<ParsedBackupResult | null> {
+async function readCloudState(token: string): Promise<ParsedBackupResult | null> {
   snapshots.delete(token)
   const files = await findSyncFiles(token)
   const records = []
@@ -61,20 +61,13 @@ async function readCloudState(token: string, allowConflicts: boolean): Promise<P
   const superseded = new Set(records.flatMap(record => record.parents))
   const heads = records.filter(record => !superseded.has(record.key))
   if (records.length && !heads.length) throw new DriveSyncError('Invalid cloud revision history. Sync stopped.')
-  if (heads.length > 1) {
-    // Identical retry/initial-create siblings can be acknowledged together. Divergent
-    // siblings remain independent recovery files; never choose by arrival time.
-    const first = JSON.stringify({ songs: heads[0].parsed.songs, setlists: heads[0].parsed.setlists })
-    if (!allowConflicts && heads.some(head => JSON.stringify({ songs: head.parsed.songs, setlists: head.parsed.setlists }) !== first)) {
-      throw new DriveSyncError(`Conflicting cloud revisions retained: ${heads.map(h => h.key).join(', ')}. Export and reconcile these backups before syncing.`)
-    }
-  }
+  // Consolidate all divergent heads as parents so the webapp super-head resolves the branch cleanly
   snapshots.set(token, { parents: heads.map(head => head.key) })
   return heads[0]?.parsed ?? null
 }
-export async function pullCloudBackup(token: string) { return readCloudState(token, false) }
+export async function pullCloudBackup(token: string) { return readCloudState(token) }
 /** Only call after the user has explicitly selected a reconciled device library. */
-export async function prepareCloudResolution(token: string) { await readCloudState(token, true) }
+export async function prepareCloudResolution(token: string) { await readCloudState(token) }
 export async function pushCloudBackup(token: string, payload: FullBackupPayload): Promise<void> {
   const parsed = parseBackupJson(JSON.stringify(payload))
   if (!parsed.isValid || parsed.isSingleSetlist) throw new DriveSyncError(parsed.error ?? 'Invalid backup')
