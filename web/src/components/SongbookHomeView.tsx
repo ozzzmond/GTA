@@ -309,9 +309,9 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
 
       {/* 3. Main Songs Grid / List */}
       <div>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 mb-3 px-1">
+        <div className="flex items-center justify-between mb-3 px-1">
           <div className="flex items-center gap-2">
-            <Music className="w-4 h-4 text-[#2AA198] shrink-0" />
+            <Music className="w-4 h-4 text-[#2AA198]" />
             <h2 className="text-sm font-bold text-[#FDF6E3] uppercase tracking-wider font-mono">
               Songs Library ({filteredIndexedSongs.length} of {songs.length})
             </h2>
@@ -324,7 +324,7 @@ export const SongbookHomeView: React.FC<SongbookHomeViewProps> = ({
         {/* Sort & Filter Toolbar */}
         {songs.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 rounded-2xl bg-[#073642]/70 border border-[#1A4A55] shadow-sm">
-            <div className="flex items-center gap-2 flex-1 min-w-[160px] sm:min-w-[200px]">
+            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
               <Search className="w-3.5 h-3.5 text-[#93A1A1] shrink-0" />
               <input
                 type="text"

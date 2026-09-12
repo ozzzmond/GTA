@@ -1053,7 +1053,7 @@ function LibraryApp() {
     : songs
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#002B36] text-[#EEE8D5] max-w-full overflow-x-hidden w-full">
+    <div className="min-h-screen flex flex-col bg-[#002B36] text-[#EEE8D5]">
       {/* Unified Android v1.0.44 Top Bar — hidden in stage performance mode */}
       {!isStagePerformanceMode && (
         <Header
@@ -1109,7 +1109,7 @@ function LibraryApp() {
       )}
 
       {/* Main Workspace: Songbook Library vs Split Desktop Editor vs Trash vs 1:1 Stage View */}
-      <main className="flex-1 flex overflow-hidden max-w-full">
+      <main className="flex-1 flex overflow-hidden">
         {activeView === 'songbook' ? (
           <SongbookHomeView
             songs={filteredSongs.length > 0 ? filteredSongs : songs}
